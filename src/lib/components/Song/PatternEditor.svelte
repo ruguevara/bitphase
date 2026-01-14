@@ -122,14 +122,21 @@
 					ayFormatter.envelopeAsNote = newEnvelopeAsNote;
 					clearAllCaches();
 
-					if (currentCharIndex !== undefined && currentPattern && selectedRow >= 0 && selectedRow < currentPattern.length) {
+					if (
+						currentCharIndex !== undefined &&
+						currentPattern &&
+						selectedRow >= 0 &&
+						selectedRow < currentPattern.length
+					) {
 						const rowString = getPatternRowData(currentPattern, selectedRow);
 						const cellPositions = getCellPositions(rowString, selectedRow);
 
 						let closestColumnIndex = 0;
 						let minDistance = Infinity;
 						for (let i = 0; i < cellPositions.length; i++) {
-							const distance = Math.abs(cellPositions[i].charIndex - currentCharIndex);
+							const distance = Math.abs(
+								cellPositions[i].charIndex - currentCharIndex
+							);
 							if (distance < minDistance) {
 								minDistance = distance;
 								closestColumnIndex = i;
@@ -182,7 +189,7 @@
 	let renderer: PatternEditorRenderer | null = $state(null);
 	let lastVisibleRowsCache: VisibleRowsCache | null = null;
 
-	const MANUAL_PATTERN_CHANGE_TIMEOUT_MS = 1000;
+	const MANUAL_PATTERN_CHANGE_TIMEOUT_MS = 100;
 
 	let currentPattern = $derived.by(() => {
 		const patternId = patternOrder[currentPatternOrderIndex];
@@ -761,8 +768,16 @@
 				moveColumn(1);
 			}
 
-			if (!playbackStore.isPlaying && fieldInfoBeforeEdit && fieldInfoBeforeEdit.channelIndex >= 0) {
-				if (chipProcessor && 'playPreviewNote' in chipProcessor && !pressedKeyChannels.has(event.key)) {
+			if (
+				!playbackStore.isPlaying &&
+				fieldInfoBeforeEdit &&
+				fieldInfoBeforeEdit.channelIndex >= 0
+			) {
+				if (
+					chipProcessor &&
+					'playPreviewNote' in chipProcessor &&
+					!pressedKeyChannels.has(event.key)
+				) {
 					const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
 					const isNoteField = fieldInfoBeforeEdit.fieldType === 'note';
 					previewService.playFromContext(
