@@ -161,6 +161,7 @@ class TrackerPatternProcessor {
 		const SLIDE_DOWN = 2;
 		const PORTAMENTO = 'P'.charCodeAt(0);
 		const ON_OFF = 6;
+		const PWM = 7;
 		const SPEED = 'S'.charCodeAt(0);
 
 		if (effect.effect === ARPEGGIO) {
@@ -251,6 +252,14 @@ class TrackerPatternProcessor {
 			this.state.channelOnOffCounter[channelIndex] = onOffState.counter;
 			this.state.channelSlideCount[channelIndex] = 0;
 			this.state.channelToneSliding[channelIndex] = 0;
+		} else if (effect.effect === PWM) {
+			const pwmState = EffectAlgorithms.initPWM(effect.parameter, effect.delay);
+			this.state.channelPWMEnabled[channelIndex] = pwmState.enabled;
+			this.state.channelPWMDutyCycle[channelIndex] = pwmState.dutyCycle;
+			this.state.channelPWMMinDuty[channelIndex] = pwmState.minDuty;
+			this.state.channelPWMMaxDuty[channelIndex] = pwmState.maxDuty;
+			this.state.channelPWMAutomationSpeed[channelIndex] = pwmState.automationSpeed;
+			this.state.channelPWMAutomationDirection[channelIndex] = pwmState.direction;
 		}
 	}
 

@@ -27,6 +27,7 @@ enum EffectType {
 	SamplePosition = 4,
 	OrnamentPosition = 5,
 	OnOff = 6,
+	PWM = 7,
 	Speed = 'S'.charCodeAt(0)
 }
 

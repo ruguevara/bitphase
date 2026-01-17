@@ -179,7 +179,8 @@ export class AYChipRenderer implements ChipRenderer {
 				patternProcessor.processSlides();
 				patternProcessor.processArpeggio();
 				audioDriver.processInstruments(state, registerState);
-				ayumiEngine.applyRegisterState(registerState);
+				audioDriver.processPWMAutomation(state);
+				audioDriver.savePWMOriginalVolumes(state, registerState);
 
 				const isLastPattern =
 					state.currentPatternOrderIndex >= state.patternOrder.length - 1;
@@ -204,6 +205,10 @@ export class AYChipRenderer implements ChipRenderer {
 
 				state.sampleCounter = 0;
 			}
+
+			const chipFrequency = song.chipFrequency || DEFAULT_AYM_FREQUENCY;
+			audioDriver.processPWMPerSample(state, registerState, chipFrequency, SAMPLE_RATE);
+			ayumiEngine.applyRegisterState(registerState);
 
 			ayumiEngine.process();
 			ayumiEngine.removeDC();

@@ -638,6 +638,9 @@
 				playbackStore.isPlaying = false;
 				pausePlayback();
 			},
+			onPlayFromCursor: () => {
+				services.audioService.playFromRow(selectedRow, currentPatternOrderIndex, getSpeedForChip);
+			},
 			onMoveRow: moveRow,
 			onMoveColumn: moveColumn,
 			onSetSelectedRow: (row: number) => {

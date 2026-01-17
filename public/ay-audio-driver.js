@@ -569,6 +569,61 @@ class AYAudioDriver {
 			registerState.envelopePeriod = wrappedValue;
 		}
 	}
+
+	processPWMAutomation(state) {
+		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
+			if (state.channelPWMEnabled[channelIndex]) {
+				const result = EffectAlgorithms.processPWMAutomation(
+					state.channelPWMDutyCycle[channelIndex],
+					state.channelPWMMinDuty[channelIndex],
+					state.channelPWMMaxDuty[channelIndex],
+					state.channelPWMAutomationSpeed[channelIndex],
+					state.channelPWMAutomationDirection[channelIndex]
+				);
+				state.channelPWMDutyCycle[channelIndex] = result.dutyCycle;
+				state.channelPWMAutomationDirection[channelIndex] = result.direction;
+			}
+		}
+	}
+
+	savePWMOriginalVolumes(state, registerState) {
+		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
+			if (state.channelPWMEnabled[channelIndex]) {
+				state.channelPWMOriginalVolume[channelIndex] =
+					registerState.channels[channelIndex].volume;
+			}
+		}
+	}
+
+	processPWMPerSample(state, registerState, aymFrequency, sampleRate) {
+		const clocksPerSample = aymFrequency / sampleRate / 8;
+
+		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
+			if (!state.channelPWMEnabled[channelIndex]) {
+				continue;
+			}
+
+			const tonePeriod = registerState.channels[channelIndex].tone;
+			if (tonePeriod === 0) {
+				continue;
+			}
+
+			const dutyCycle = state.channelPWMDutyCycle[channelIndex];
+			const phase = state.channelPWMPhase[channelIndex];
+
+			const normalizedPhase = (phase % tonePeriod) / tonePeriod;
+			const normalizedDuty = Math.min(dutyCycle / 255, 1.0);
+
+			if (normalizedPhase < normalizedDuty) {
+				registerState.channels[channelIndex].volume =
+					state.channelPWMOriginalVolume[channelIndex];
+			} else {
+				registerState.channels[channelIndex].volume = 0;
+			}
+
+			state.channelPWMPhase[channelIndex] = (phase + clocksPerSample) % tonePeriod;
+		}
+	}
 }
 
 export default AYAudioDriver;

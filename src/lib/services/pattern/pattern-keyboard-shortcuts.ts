@@ -18,6 +18,7 @@ export interface PatternKeyboardShortcutsContext {
 	onSelectAll: (column: number, startRow: number, endRow: number) => void;
 	onTogglePlayback: () => void;
 	onPausePlayback: () => void;
+	onPlayFromCursor: () => void;
 	onMoveRow: (delta: number) => void;
 	onMoveColumn: (delta: number) => void;
 	onSetSelectedRow: (row: number) => void;
@@ -36,10 +37,18 @@ export interface KeyboardShortcutResult {
 }
 
 export class PatternKeyboardShortcutsService {
+	private static isEnterKeyHeld = false;
+
 	static handleKeyDown(
 		event: KeyboardEvent,
 		shortcutsContext: PatternKeyboardShortcutsContext
 	): KeyboardShortcutResult {
+		if (event.key === 'Enter' && !event.repeat && !this.isEnterKeyHeld) {
+			this.isEnterKeyHeld = true;
+			shortcutsContext.onPlayFromCursor();
+			return { handled: true, shouldPreventDefault: true };
+		}
+
 		const isModifier = event.shiftKey;
 		const key = event.key.toLowerCase();
 

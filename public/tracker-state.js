@@ -42,6 +42,14 @@ class TrackerState {
 		this.channelArpeggioDelay = Array(channelCount).fill(0);
 		this.channelArpeggioCounter = Array(channelCount).fill(0);
 		this.channelArpeggioPosition = Array(channelCount).fill(0);
+		this.channelPWMEnabled = Array(channelCount).fill(false);
+		this.channelPWMDutyCycle = Array(channelCount).fill(128);
+		this.channelPWMMinDuty = Array(channelCount).fill(0);
+		this.channelPWMMaxDuty = Array(channelCount).fill(255);
+		this.channelPWMAutomationSpeed = Array(channelCount).fill(0);
+		this.channelPWMAutomationDirection = Array(channelCount).fill(1);
+		this.channelPWMPhase = Array(channelCount).fill(0);
+		this.channelPWMOriginalVolume = Array(channelCount).fill(0);
 	}
 
 	reset() {
@@ -72,6 +80,14 @@ class TrackerState {
 		this.channelArpeggioDelay.fill(0);
 		this.channelArpeggioCounter.fill(0);
 		this.channelArpeggioPosition.fill(0);
+		this.channelPWMEnabled.fill(false);
+		this.channelPWMDutyCycle.fill(128);
+		this.channelPWMMinDuty.fill(0);
+		this.channelPWMMaxDuty.fill(255);
+		this.channelPWMAutomationSpeed.fill(0);
+		this.channelPWMAutomationDirection.fill(1);
+		this.channelPWMPhase.fill(0);
+		this.channelPWMOriginalVolume.fill(0);
 	}
 
 	setTuningTable(table) {

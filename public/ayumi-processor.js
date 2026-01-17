@@ -466,6 +466,8 @@ class AyumiProcessor extends AudioWorkletProcessor {
 							) {
 								this.audioDriver.processInstruments(this.state, this.registerState);
 							}
+							this.audioDriver.processPWMAutomation(this.state);
+							this.audioDriver.savePWMOriginalVolumes(this.state, this.registerState);
 							this.previewSampleCounters.set(channel, 0);
 						} else {
 							this.previewSampleCounters.set(channel, counter + 1);
@@ -498,10 +500,10 @@ class AyumiProcessor extends AudioWorkletProcessor {
 					this.patternProcessor.processSlides();
 					this.patternProcessor.processArpeggio();
 					this.audioDriver.processInstruments(this.state, this.registerState);
+					this.audioDriver.processPWMAutomation(this.state);
+					this.audioDriver.savePWMOriginalVolumes(this.state, this.registerState);
 
 					this.enforceMuteState();
-
-					this.ayumiEngine.applyRegisterState(this.registerState);
 
 					const needsPatternChange = this.state.advancePosition();
 					if (needsPatternChange) {
@@ -513,6 +515,14 @@ class AyumiProcessor extends AudioWorkletProcessor {
 
 					this.state.sampleCounter = 0;
 				}
+
+				this.audioDriver.processPWMPerSample(
+					this.state,
+					this.registerState,
+					this.aymFrequency,
+					sampleRate
+				);
+				this.ayumiEngine.applyRegisterState(this.registerState);
 
 				this.ayumiEngine.process();
 				this.ayumiEngine.removeDC();

@@ -159,6 +159,48 @@ class EffectAlgorithms {
 		if (position === 2) return semitone2;
 		return 0;
 	}
+
+	static initPWM(parameter, automationSpeed) {
+		const minDutyNibble = (parameter >> 4) & 0xF;
+		const maxDutyNibble = parameter & 0xF;
+
+		const minDuty = minDutyNibble * 17;
+		const maxDuty = maxDutyNibble * 17;
+
+		return {
+			dutyCycle: minDuty,
+			minDuty: minDuty,
+			maxDuty: maxDuty,
+			automationSpeed: automationSpeed,
+			direction: 1,
+			enabled: true
+		};
+	}
+
+	static processPWMAutomation(currentDutyCycle, minDuty, maxDuty, speed, direction) {
+		if (speed === 0) {
+			return {
+				dutyCycle: currentDutyCycle,
+				direction: direction
+			};
+		}
+
+		let newDutyCycle = currentDutyCycle + (speed * direction);
+
+		let newDirection = direction;
+		if (newDutyCycle >= maxDuty) {
+			newDutyCycle = maxDuty;
+			newDirection = -1;
+		} else if (newDutyCycle <= minDuty) {
+			newDutyCycle = minDuty;
+			newDirection = 1;
+		}
+
+		return {
+			dutyCycle: newDutyCycle,
+			direction: newDirection
+		};
+	}
 }
 
 export default EffectAlgorithms;
