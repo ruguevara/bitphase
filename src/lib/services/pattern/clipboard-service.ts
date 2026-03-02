@@ -324,7 +324,8 @@ export class ClipboardService {
 				context.tuningTable,
 				context.getOctave
 			);
-			if (pasteValue === null) continue;
+			const isSameField = clipCell.fieldKey === cell.fieldKey;
+			if (pasteValue === null && !isSameField) continue;
 
 			const editingContext = createEditingContext(pattern, targetRow, targetCol);
 			const fieldInfo = PatternFieldDetection.detectFieldAtCursor(editingContext);
@@ -333,7 +334,7 @@ export class ClipboardService {
 			pattern = PatternValueUpdates.updateFieldValue(
 				{ ...editingContext, pattern },
 				fieldInfo,
-				pasteValue as string | number
+				pasteValue as string | number | null
 			);
 		}
 
