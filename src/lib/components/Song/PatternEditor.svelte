@@ -77,6 +77,7 @@
 	import type { UserScript } from '../../services/user-scripts/types';
 	import { PatternTemplateParser } from '../../services/pattern/editing/pattern-template-parsing';
 	import { ContextMenu } from '../Menu';
+	import type { MenuItem } from '../Menu/types';
 	import { editMenuItems } from '../../config/app-menu';
 	import {
 		ACTION_PLAY_FROM_ROW,
@@ -93,7 +94,8 @@
 	import {
 		getVirtualChannelGroups,
 		getHardwareChannelIndex,
-		computeEffectiveChannelLabels
+		computeEffectiveChannelLabels,
+		getTotalVirtualChannelCount
 	} from '../../models/virtual-channels';
 	import { VirtualChannelService } from '../../services/pattern/virtual-channel-service';
 	import { AYProcessor } from '../../chips/ay/processor';
@@ -1361,6 +1363,17 @@
 			},
 			onSwapChannelLeft: swapChannelLeft,
 			onSwapChannelRight: swapChannelRight,
+			onToggleSolo: () => {
+				const chipIdx = getChipIndex();
+				if (chipIdx < 0) return;
+				const channelIndex = getChannelIndexAtCursor();
+				if (channelIndex < 0) return;
+				if (isPlayingSolo()) {
+					executeUnmuteAll();
+				} else {
+					executePlaySolo(chipIdx, channelIndex);
+				}
+			},
 			selectionStartRow,
 			selectionStartColumn,
 			selectionEndRow,
@@ -1926,19 +1939,98 @@
 		refreshAfterVirtualChannelChange();
 	}
 
+	function getChannelIndexAtCursor(): number {
+		const patternId = patternOrder[currentPatternOrderIndex];
+		const pattern = findOrCreatePattern(patternId);
+		if (!pattern) return -1;
+		const rowString = getPatternRowData(pattern, selectedRow);
+		const cellPositions = getCellPositions(rowString, selectedRow);
+		const segments = textParser ? textParser.parseRowString(rowString, selectedRow) : undefined;
+		const fieldInfo = PatternFieldDetection.detectFieldAtCursor({
+			pattern,
+			selectedRow,
+			selectedColumn,
+			cellPositions,
+			segments,
+			converter,
+			formatter,
+			schema
+		});
+		if (!fieldInfo) return -1;
+		if (fieldInfo.channelIndex < 0) return 0;
+		return fieldInfo.channelIndex;
+	}
+
+	function isPlayingSolo(): boolean {
+		let unmutedCount = 0;
+		const chipProcessors = services.audioService.chipProcessors;
+		for (let chipIdx = 0; chipIdx < chipProcessors.length; chipIdx++) {
+			const chipSong = projectStore.songs[chipIdx];
+			const chipSchema = chipProcessors[chipIdx].chip.schema;
+			const hwLabels = chipSchema.channelLabels ?? ['A', 'B', 'C'];
+			const totalChannels = getTotalVirtualChannelCount(
+				hwLabels.length,
+				chipSong?.virtualChannelMap ?? {}
+			);
+			for (let ch = 0; ch < totalChannels; ch++) {
+				if (!channelMuteStore.isChannelMuted(chipIdx, ch)) unmutedCount++;
+			}
+		}
+		return unmutedCount === 1;
+	}
+
+	function executePlaySolo(clickedChipIndex: number, soloChannel: number): void {
+		const chipProcessors = services.audioService.chipProcessors;
+		chipProcessors.forEach((processor, chipIdx) => {
+			const chipSong = projectStore.songs[chipIdx];
+			const chipSchema = processor.chip.schema;
+			const hwLabels = chipSchema.channelLabels ?? ['A', 'B', 'C'];
+			const totalChannels = getTotalVirtualChannelCount(
+				hwLabels.length,
+				chipSong?.virtualChannelMap ?? {}
+			);
+			for (let ch = 0; ch < totalChannels; ch++) {
+				const muted = chipIdx === clickedChipIndex ? ch !== soloChannel : true;
+				channelMuteStore.setChannelMuted(chipIdx, ch, muted);
+				processor.updateParameter(`channelMute_${ch}`, muted);
+			}
+		});
+		draw();
+	}
+
+	function executeUnmuteAll(): void {
+		const chipProcessors = services.audioService.chipProcessors;
+		chipProcessors.forEach((processor, chipIdx) => {
+			const chipSong = projectStore.songs[chipIdx];
+			const chipSchema = processor.chip.schema;
+			const hwLabels = chipSchema.channelLabels ?? ['A', 'B', 'C'];
+			const totalChannels = getTotalVirtualChannelCount(
+				hwLabels.length,
+				chipSong?.virtualChannelMap ?? {}
+			);
+			for (let ch = 0; ch < totalChannels; ch++) {
+				channelMuteStore.setChannelMuted(chipIdx, ch, false);
+				processor.updateParameter(`channelMute_${ch}`, false);
+			}
+		});
+		draw();
+	}
+
 	function handleChannelContextMenuAction(data: { action: string }): void {
 		closeChannelContextMenu();
-		if (playbackStore.isPlaying) return;
 		const song = projectStore.songs[songIndex];
 		if (!song) return;
 
 		const hwIndex = channelContextMenuHwIndex;
+		const isPlaying = playbackStore.isPlaying;
 
 		if (data.action === 'add_virtual_channel') {
+			if (isPlaying) return;
 			applyVirtualChannelChange(
 				VirtualChannelService.addVirtualChannel(song, hwIndex, patterns)
 			);
 		} else if (data.action === 'remove_virtual_channel') {
+			if (isPlaying) return;
 			const result = VirtualChannelService.removeVirtualChannel(
 				song,
 				hwIndex,
@@ -1948,10 +2040,14 @@
 			if (result) {
 				applyVirtualChannelChange(result);
 			}
+		} else if (data.action === 'play_solo') {
+			executePlaySolo(getChipIndex(), channelContextMenuVirtualIndex);
+		} else if (data.action === 'unmute_all') {
+			executeUnmuteAll();
 		}
 	}
 
-	function getChannelContextMenuItems(): import('../../components/Menu/types').MenuItem[] {
+	function getChannelContextMenuItems(): MenuItem[] {
 		const song = projectStore.songs[songIndex];
 		const hwLabels = schema.channelLabels ?? ['A', 'B', 'C'];
 		const hwIndex = channelContextMenuHwIndex;
@@ -1964,18 +2060,29 @@
 		const clickedLabel = effectiveLabels[channelContextMenuVirtualIndex] ?? hwLabel;
 		const isPlaying = playbackStore.isPlaying;
 
-		return [
+		const items: MenuItem[] = [
+			{
+				label: 'Play solo',
+				action: 'play_solo'
+			},
+			{
+				label: 'Unmute all',
+				action: 'unmute_all'
+			},
 			{
 				label: `Add virtual channel to ${hwLabel}`,
 				action: 'add_virtual_channel',
 				disabled: isPlaying
-			},
-			{
-				label: `Remove virtual channel ${clickedLabel}`,
-				action: 'remove_virtual_channel',
-				disabled: currentCount <= 1 || isPlaying
 			}
 		];
+		if (currentCount > 1) {
+			items.push({
+				label: `Remove virtual channel ${clickedLabel}`,
+				action: 'remove_virtual_channel',
+				disabled: isPlaying
+			});
+		}
+		return items;
 	}
 
 	function sendVirtualChannelConfigToProcessor(): void {
