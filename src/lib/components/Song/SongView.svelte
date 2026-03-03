@@ -34,6 +34,7 @@
 	import { projectStore } from '../../stores/project.svelte';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
+	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
 	import { ACTION_TOGGLE_PLAYBACK } from '../../config/keybindings';
 
 	let {
@@ -139,6 +140,7 @@
 			const action = keybindingsStore.getActionForShortcut(shortcut);
 			if (action !== ACTION_TOGGLE_PLAYBACK) return;
 			if (!container.contains(document.activeElement)) return;
+			if (isEditableElement(document.activeElement)) return;
 			if (handler) {
 				e.preventDefault();
 				e.stopPropagation();

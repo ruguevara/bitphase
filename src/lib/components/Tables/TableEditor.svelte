@@ -20,6 +20,7 @@
 		ACTION_TRANSPOSE_OCTAVE_UP,
 		ACTION_TRANSPOSE_OCTAVE_DOWN
 	} from '../../config/keybindings';
+	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
 	import { settingsStore } from '../../stores/settings.svelte';
 
 	let {
@@ -388,6 +389,7 @@
 
 		function handleKeyDown(event: KeyboardEvent) {
 			if (selectedRowIndices.length === 0) return;
+			if (isEditableElement(event.target)) return;
 			const shortcut = ShortcutString.fromEvent(event);
 			const action = keybindingsStore.getActionForShortcut(shortcut);
 			const delta =
