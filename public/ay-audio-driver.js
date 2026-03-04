@@ -98,8 +98,19 @@ class AYAudioDriver {
 			} else {
 				this._processNote(state, channelIndex, row, registerState);
 				this._processInstrument(state, channelIndex, row);
+				this._applySamplePosition(state, channelIndex, row);
 				this._processEnvelope(state, channelIndex, row, patternRow, registerState);
 			}
+		}
+	}
+
+	_applySamplePosition(state, channelIndex, row) {
+		const effect = row.effects?.[0];
+		if (
+			effect?.effect === EffectAlgorithms.SAMPLE_POSITION &&
+			state.instrumentPositions
+		) {
+			state.instrumentPositions[channelIndex] = effect.parameter & 0xff;
 		}
 	}
 
