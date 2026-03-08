@@ -2760,8 +2760,6 @@
 	let playbackRafId: number | null = null;
 	let playbackStartTime = 0;
 	let lastPatternOrderIndexFromPlayback = currentPatternOrderIndex;
-	let userJustChangedPattern = false;
-	const USER_PATTERN_CHANGE_GRACE_MS = 800;
 
 	$effect(() => {
 		if (
@@ -2769,7 +2767,6 @@
 			services.audioService.playing
 		) {
 			const indexToApply = currentPatternOrderIndex;
-			userJustChangedPattern = true;
 			pendingPlaybackPosition = null;
 			playbackStartTime = performance.now();
 			if (playbackRafId !== null) {
@@ -2777,43 +2774,11 @@
 				playbackRafId = null;
 			}
 			selectedRow = 0;
-			const timeoutId = window.setTimeout(() => {
-				userJustChangedPattern = false;
-			}, USER_PATTERN_CHANGE_GRACE_MS);
-			if (isPlaybackMaster) {
-				if (initAllChips) {
-					initAllChips();
-					requestAnimationFrame(() => {
-						requestAnimationFrame(() => {
-							services.audioService.chipProcessors.forEach((processor, index) => {
-								const speed = getSpeedForChip ? getSpeedForChip(index) : undefined;
-								if (processor.changePatternDuringPlayback) {
-									processor.changePatternDuringPlayback(
-										0,
-										indexToApply,
-										undefined,
-										speed
-									);
-								} else {
-									processor.playFromRow(0, indexToApply, speed);
-								}
-							});
-						});
-					});
-				} else {
-					const pattern = findOrCreatePattern(patternOrder[indexToApply]);
-					services.audioService.chipProcessors.forEach((processor, index) => {
-						const speed = getSpeedForChip ? getSpeedForChip(index) : undefined;
-						if (processor.changePatternDuringPlayback) {
-							processor.changePatternDuringPlayback(0, indexToApply, pattern, speed);
-						} else {
-							processor.playFromRow(0, indexToApply, speed);
-						}
-					});
-				}
-			}
 			lastPatternOrderIndexFromPlayback = indexToApply;
-			return () => clearTimeout(timeoutId);
+			if (isPlaybackMaster) {
+				services.audioService.stop();
+				togglePlayback();
+			}
 		}
 	});
 
@@ -2854,13 +2819,6 @@
 					if (pending.timestamp < playbackStartTime) {
 						return;
 					}
-					if (
-						userJustChangedPattern &&
-						pending.orderIndex !== undefined &&
-						pending.orderIndex !== currentPatternOrderIndex
-					) {
-						return;
-					}
 
 					if (settingsStore.debugMode) {
 						const orderIdx =
@@ -2884,9 +2842,6 @@
 					) {
 						currentPatternOrderIndex = pending.orderIndex;
 						lastPatternOrderIndexFromPlayback = pending.orderIndex;
-					}
-					if (pending.orderIndex === currentPatternOrderIndex) {
-						userJustChangedPattern = false;
 					}
 				});
 			}
