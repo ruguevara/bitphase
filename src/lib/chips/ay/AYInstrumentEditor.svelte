@@ -140,12 +140,7 @@
 	function handleRowSelect(index: number, event: MouseEvent) {
 		event.preventDefault();
 		event.stopPropagation();
-		const result = computeSelectionFromClick(
-			index,
-			event,
-			selectedRowIndices,
-			selectionAnchor
-		);
+		const result = computeSelectionFromClick(index, event, selectedRowIndices, selectionAnchor);
 		selectedRowIndices = result.indices;
 		selectionAnchor = result.anchor;
 		editorContainerRef?.focus();
@@ -313,6 +308,8 @@
 		const key = event.key;
 		const inputEl = event.target as HTMLInputElement;
 
+		if (event.ctrlKey || event.metaKey || event.altKey) return;
+
 		if (key === 'ArrowDown') {
 			event.preventDefault();
 			const nextIndex = index + 1;
@@ -469,10 +466,7 @@
 
 		function handleClickOutside(event: MouseEvent) {
 			const target = event.target as Node;
-			if (
-				selectedRowIndices.length > 0 &&
-				!containerEl!.contains(target)
-			) {
+			if (selectedRowIndices.length > 0 && !containerEl!.contains(target)) {
 				selectedRowIndices = [];
 				selectionAnchor = null;
 			}
@@ -512,7 +506,10 @@
 			if (action === ACTION_INCREMENT_VALUE || action === ACTION_TRANSPOSE_OCTAVE_UP) {
 				event.preventDefault();
 				incrementSelectedRows(delta);
-			} else if (action === ACTION_DECREMENT_VALUE || action === ACTION_TRANSPOSE_OCTAVE_DOWN) {
+			} else if (
+				action === ACTION_DECREMENT_VALUE ||
+				action === ACTION_TRANSPOSE_OCTAVE_DOWN
+			) {
 				event.preventDefault();
 				incrementSelectedRows(-delta);
 			}
@@ -521,17 +518,17 @@
 		container.addEventListener('keydown', handleKeyDown);
 		return () => container.removeEventListener('keydown', handleKeyDown);
 	});
-
 </script>
-
 
 {#snippet volumeCell(index: number, value: number, isSelected: boolean, rowSelected: boolean)}
 	<td
-		class={`group h-8 w-6 min-w-6 cursor-pointer border border-[var(--color-app-border)] text-center text-[0.7rem] leading-none ${isSelected
-			? 'bg-[var(--color-app-surface-active)]'
-			: rowSelected
-				? ROW_SELECTION_STYLES.cell
-				: 'bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-secondary)]'}`}
+		class={`group h-8 w-6 min-w-6 cursor-pointer border border-[var(--color-app-border)] text-center text-[0.7rem] leading-none ${
+			isSelected
+				? 'bg-[var(--color-app-surface-active)]'
+				: rowSelected
+					? ROW_SELECTION_STYLES.cell
+					: 'bg-[var(--color-app-surface)] hover:bg-[var(--color-app-surface-secondary)]'
+		}`}
 		tabindex="-1"
 		title={String(value)}
 		onmousedown={() => beginDragVolume(index, value)}
@@ -744,11 +741,15 @@
 						{#each rows as row, index}
 							{@const selected = isRowSelected(index)}
 							<tr
-								class="{isExpanded ? 'h-8' : 'h-7'} {selected ? ROW_SELECTION_STYLES.row : ''}">
+								class="{isExpanded ? 'h-8' : 'h-7'} {selected
+									? ROW_SELECTION_STYLES.row
+									: ''}">
 								<SelectableRowNumberCell
 									{index}
-									selected={selected}
-									sizeClass={isExpanded ? 'w-14 min-w-14 px-2 py-1.5' : 'px-1 py-1 text-[0.65rem]'}
+									{selected}
+									sizeClass={isExpanded
+										? 'w-14 min-w-14 px-2 py-1.5'
+										: 'px-1 py-1 text-[0.65rem]'}
 									onmousedown={(e) => handleRowSelect(index, e)} />
 								<td
 									class="border border-[var(--color-app-border)] {selected
@@ -1043,13 +1044,11 @@
 					<tbody>
 						{#each rows as row, index}
 							{@const selected = isRowSelected(index)}
-							<tr
-								class="h-8 {selected ? ROW_SELECTION_STYLES.row : ''}">
+							<tr class="h-8 {selected ? ROW_SELECTION_STYLES.row : ''}">
 								<td
 									class="border border-[var(--color-app-border)] px-2 text-right {selected
 										? ROW_SELECTION_STYLES.rowNumber
-										: 'bg-[var(--color-app-surface-secondary)]'}"
-									>{index}</td>
+										: 'bg-[var(--color-app-surface-secondary)]'}">{index}</td>
 								{#each VOLUME_VALUES as v}
 									{@render volumeCell(index, v, v === row.volume, selected)}
 								{/each}
