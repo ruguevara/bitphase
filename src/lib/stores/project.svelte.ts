@@ -1,5 +1,6 @@
 import type { Song, Instrument, Pattern } from '../models/song';
 import { Project, Table } from '../models/project';
+import { undoRedoStore } from './undo-redo.svelte';
 
 class ProjectStore {
 	songs = $state<Song[]>([]);
@@ -16,6 +17,7 @@ class ProjectStore {
 	initialized = $state(false);
 
 	applyProject(project: Project): void {
+		undoRedoStore.clear();
 		this.settings = {
 			title: project.name,
 			author: project.author,
