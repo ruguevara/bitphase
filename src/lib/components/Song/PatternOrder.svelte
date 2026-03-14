@@ -391,11 +391,12 @@
 			} else if (key >= '0' && key <= '9') {
 				if (editingPatternValue.length < 2) {
 					editingPatternValue += key;
+					applyPatternEditValue(editingPatternValue);
 					if (editingPatternValue.length === 2) {
-						finishPatternEdit();
-					} else {
-						draw();
+						editingPatternIndex = null;
+						editingPatternValue = '';
 					}
+					draw();
 				}
 			} else if (key === 'Backspace') {
 				editingPatternValue = editingPatternValue.slice(0, -1);
@@ -413,30 +414,34 @@
 		}
 	}
 
+	function applyPatternEditValue(value: string): void {
+		if (editingPatternIndex === null || value === '') return;
+
+		const displayedValue = value.padStart(2, '0');
+		const newId = parseInt(displayedValue);
+
+		const result = PatternService.setPatternIdInOrderMultiChip(
+			projectStore.patterns,
+			patternOrder,
+			editingPatternIndex,
+			newId,
+			(songIndex) => projectStore.songs[songIndex]?.getSchema(),
+			(songIndex) => projectStore.songs[songIndex]?.getEffectiveChannelLabels()
+		);
+
+		if (result) {
+			result.newPatternsPerSong.forEach((newPatterns, songIndex) => {
+				projectStore.updatePatterns(songIndex, newPatterns);
+			});
+			projectStore.patternOrder = result.newPatternOrder;
+			onPatternOrderEdited?.();
+		}
+	}
+
 	function finishPatternEdit(): void {
 		if (editingPatternIndex === null) return;
 
-		if (editingPatternValue !== '') {
-			const displayedValue = editingPatternValue.padStart(2, '0');
-			const newId = parseInt(displayedValue);
-
-			const result = PatternService.setPatternIdInOrderMultiChip(
-				projectStore.patterns,
-				patternOrder,
-				editingPatternIndex,
-				newId,
-				(songIndex) => projectStore.songs[songIndex]?.getSchema(),
-				(songIndex) => projectStore.songs[songIndex]?.getEffectiveChannelLabels()
-			);
-
-			if (result) {
-				result.newPatternsPerSong.forEach((newPatterns, songIndex) => {
-					projectStore.updatePatterns(songIndex, newPatterns);
-				});
-				projectStore.patternOrder = result.newPatternOrder;
-				onPatternOrderEdited?.();
-			}
-		}
+		applyPatternEditValue(editingPatternValue);
 
 		editingPatternIndex = null;
 		editingPatternValue = '';
