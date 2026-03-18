@@ -5,9 +5,15 @@
 	import type { PreviewNoteSupport } from '../base/processor';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { getContext } from 'svelte';
-	import { parseNoteFromString, formatNoteFromEnum } from '../../utils/note-utils';
+	import {
+		parseNoteFromString,
+		formatNoteFromEnum,
+		midiNoteToNoteString
+	} from '../../utils/note-utils';
 	import { PatternNoteInput } from '../../services/pattern/editing/pattern-note-input';
 	import { editorStateStore } from '../../stores/editor-state.svelte';
+	import { settingsStore } from '../../stores/settings.svelte';
+	import { midiService } from '../../services/midi/midi-service';
 	import { instrumentIdToNumber } from '../../utils/instrument-id';
 	import { playbackStore } from '../../stores/playback.svelte';
 	import { projectStore } from '../../stores/project.svelte';
@@ -182,6 +188,42 @@
 		return () => window.removeEventListener('keyup', onWindowKeyUp);
 	});
 
+	$effect(() => {
+		if (!settingsStore.midiInputDeviceId || isDisabled || !midiService.isSupported()) return;
+		const remove = midiService.addNoteListener((midiNote: number, velocity: number) => {
+			const noteFocused = noteInputEl && document.activeElement === noteInputEl;
+			const envelopeFocused =
+				canEnvelopeAsNote &&
+				envelopeInputEl &&
+				document.activeElement === envelopeInputEl;
+			if (noteFocused) {
+				if (velocity > 0) {
+					if (activeNotes.length >= maxPoly) return;
+					if (activeNotes.some((n) => n.key === `midi-${midiNote}`)) return;
+					const noteStr = midiNoteToNoteString(midiNote);
+					if (!noteStr) return;
+					activeNotes = [...activeNotes, { key: `midi-${midiNote}`, note: noteStr }];
+				} else {
+					const nextNotes = activeNotes.filter((n) => n.key !== `midi-${midiNote}`);
+					if (nextNotes.length === 0 && activeNotes.length > 0) {
+						lastPlayedNotes = activeNotes.map((n) => n.note);
+					}
+					activeNotes = nextNotes;
+				}
+			} else if (envelopeFocused && velocity > 0) {
+				const noteStr = midiNoteToNoteString(midiNote);
+				if (!noteStr) return;
+				const period = noteStringToEnvelopePeriod(
+					noteStr,
+					tuningTable,
+					editorStateStore.octave
+				);
+				envelopePeriod = Math.max(0, Math.min(0xffff, period));
+			}
+		});
+		return remove;
+	});
+
 	function togglePreviewPlaying() {
 		if (isDisabled || lastPlayedNotes.length === 0) return;
 		isPreviewPlaying = !isPreviewPlaying;
@@ -326,6 +368,16 @@
 		else table = '';
 	}
 
+	function ensureMidiAccess() {
+		if (
+			settingsStore.midiInputDeviceId &&
+			midiService.isSupported() &&
+			!midiService.hasAccess()
+		) {
+			midiService.requestAccess();
+		}
+	}
+
 	function clampVolume() {
 		const v = volume
 			.replace(/[^0-9a-fA-F]/g, '')
@@ -383,6 +435,7 @@
 					tabindex={isDisabled ? -1 : 0}
 					aria-label="Envelope as note (keyboard: piano keys or letters)"
 					title="Envelope as note. Piano: Z–P, Q–I; A = OFF; letters = note with current octave."
+					onmousedown={ensureMidiAccess}
 					onclick={() => envelopeInputEl?.focus()}
 					onkeydown={handleEnvelopeNoteKeyDown}>
 					{envelopePeriod === 0 ? '—' : envelopeDisplayValue}
@@ -498,6 +551,7 @@
 				aria-label="Note (keyboard: piano keys)"
 				aria-disabled={isDisabled}
 				title={`Click to focus, then use keyboard. Polyphony: ${maxPoly} notes (3 per chip). Piano: Z–P, Q–I; A = OFF; letters = note with current octave. ${ShortcutString.toDisplay(keybindingsStore.getShortcut(ACTION_TOGGLE_PLAYBACK))} = toggle play.`}
+				onmousedown={ensureMidiAccess}
 				onclick={() => noteInputEl?.focus()}
 				onkeydown={handleNoteKeyDown}
 				onkeyup={handleNoteKeyUp}

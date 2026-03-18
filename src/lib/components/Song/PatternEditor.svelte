@@ -99,6 +99,8 @@
 	} from '../../models/virtual-channels';
 	import { VirtualChannelService } from '../../services/pattern/virtual-channel-service';
 	import { AYProcessor } from '../../chips/ay/processor';
+	import { midiService } from '../../services/midi/midi-service';
+	import type { EditingContext, FieldInfo } from '../../services/pattern/editing/editing-context';
 
 	let {
 		songIndex,
@@ -1399,6 +1401,108 @@
 		return fromEvent === shortcut;
 	}
 
+	function buildEditingContext(): {
+		context: EditingContext;
+		fieldInfoBeforeEdit: FieldInfo | null;
+	} | null {
+		const patternId = patternOrder[currentPatternOrderIndex];
+		const pattern = findOrCreatePattern(patternId);
+		const rowString = getPatternRowData(pattern, selectedRow);
+		const cellPositions = getCellPositions(rowString, selectedRow);
+		const segments = textParser ? textParser.parseRowString(rowString, selectedRow) : undefined;
+		const context: EditingContext = {
+			pattern,
+			selectedRow,
+			selectedColumn,
+			cellPositions,
+			segments,
+			converter,
+			formatter,
+			schema,
+			tuningTable
+		};
+		const fieldInfoBeforeEdit = PatternEditingService.getFieldAtCursor(context);
+		return { context, fieldInfoBeforeEdit };
+	}
+
+	function applyEditingResult(
+		editingResult: { updatedPattern: Pattern; shouldMoveNext: boolean },
+		fieldInfoBeforeEdit: FieldInfo | null,
+		context: EditingContext,
+		previewKey?: string
+	): void {
+		let finalPattern = editingResult.updatedPattern;
+
+		if (
+			autoEnvStore.enabled &&
+			fieldInfoBeforeEdit &&
+			fieldInfoBeforeEdit.channelIndex >= 0 &&
+			(fieldInfoBeforeEdit.fieldType === 'note' ||
+				fieldInfoBeforeEdit.fieldKey === 'envelopeShape')
+		) {
+			const autoEnvPattern = AutoEnvService.applyAutoEnvelope(
+				finalPattern,
+				selectedRow,
+				fieldInfoBeforeEdit.channelIndex,
+				tuningTable,
+				autoEnvStore.currentRatio
+			);
+			if (autoEnvPattern) {
+				finalPattern = autoEnvPattern;
+			}
+		}
+
+		recordPatternEdit(context.pattern, finalPattern);
+		updatePatternInArray(finalPattern);
+
+		if (editingResult.shouldMoveNext) {
+			moveColumn(1);
+		}
+
+		const shouldPreview =
+			fieldInfoBeforeEdit &&
+			(fieldInfoBeforeEdit.channelIndex >= 0 ||
+				fieldInfoBeforeEdit.fieldKey === 'envelopeValue');
+		const previewChannel =
+			fieldInfoBeforeEdit?.fieldKey === 'envelopeValue'
+				? 0
+				: (fieldInfoBeforeEdit?.channelIndex ?? -1);
+		if (
+			previewKey !== undefined &&
+			!playbackStore.isPlaying &&
+			shouldPreview &&
+			previewChannel >= 0 &&
+			chipProcessor &&
+			'playPreviewRow' in chipProcessor &&
+			!pressedKeyChannels.has(previewKey)
+		) {
+			services.audioService.setPreviewActiveForChips(songIndex);
+			const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+			const isNoteField =
+				fieldInfoBeforeEdit.fieldType === 'note' ||
+				fieldInfoBeforeEdit.fieldKey === 'envelopeValue';
+			const previewChannelResult = previewService.playFromContext(
+				processor,
+				editingResult.updatedPattern,
+				previewChannel,
+				selectedRow,
+				schema,
+				isNoteField
+			);
+			if (previewChannelResult !== undefined) {
+				pressedKeyChannels.set(previewKey, previewChannelResult);
+			}
+		}
+
+		const step = editorStateStore.step;
+		if (step > 0) {
+			moveRow(step);
+		}
+
+		clearAllCaches();
+		draw();
+	}
+
 	function handleKeyDown(event: KeyboardEvent) {
 		if (isPlayFromRowShortcut(event) && !event.repeat && !isEnterKeyHeld) {
 			event.preventDefault();
@@ -1423,116 +1527,56 @@
 			selection.removeAllRanges();
 		}
 
-		const patternId = patternOrder[currentPatternOrderIndex];
-		const pattern = findOrCreatePattern(patternId);
+		const built = buildEditingContext();
+		if (!built) return;
 
-		const rowString = getPatternRowData(pattern, selectedRow);
-		const cellPositions = getCellPositions(rowString, selectedRow);
-		const segments = textParser ? textParser.parseRowString(rowString, selectedRow) : undefined;
-
-		const fieldInfoBeforeEdit = PatternEditingService.getFieldAtCursor({
-			pattern,
-			selectedRow,
-			selectedColumn,
-			cellPositions,
-			segments,
-			converter,
-			formatter,
-			schema,
-			tuningTable
-		});
-
-		const editingResult = PatternEditingService.handleKeyInput(
-			{
-				pattern,
-				selectedRow,
-				selectedColumn,
-				cellPositions,
-				segments,
-				converter,
-				formatter,
-				schema,
-				tuningTable
-			},
-			event.key
-		);
+		const editingResult = PatternEditingService.handleKeyInput(built.context, event.key);
 
 		if (editingResult) {
 			event.preventDefault();
-
-			let finalPattern = editingResult.updatedPattern;
-
-			if (
-				autoEnvStore.enabled &&
-				fieldInfoBeforeEdit &&
-				fieldInfoBeforeEdit.channelIndex >= 0 &&
-				(fieldInfoBeforeEdit.fieldType === 'note' ||
-					fieldInfoBeforeEdit.fieldKey === 'envelopeShape')
-			) {
-				const autoEnvPattern = AutoEnvService.applyAutoEnvelope(
-					finalPattern,
-					selectedRow,
-					fieldInfoBeforeEdit.channelIndex,
-					tuningTable,
-					autoEnvStore.currentRatio
-				);
-				if (autoEnvPattern) {
-					finalPattern = autoEnvPattern;
-				}
-			}
-
-			recordPatternEdit(pattern, finalPattern);
-			updatePatternInArray(finalPattern);
-
-			if (editingResult.shouldMoveNext) {
-				moveColumn(1);
-			}
-
-			const shouldPreview =
-				fieldInfoBeforeEdit &&
-				(fieldInfoBeforeEdit.channelIndex >= 0 ||
-					fieldInfoBeforeEdit.fieldKey === 'envelopeValue');
-			const previewChannel =
-				fieldInfoBeforeEdit?.fieldKey === 'envelopeValue'
-					? 0
-					: (fieldInfoBeforeEdit?.channelIndex ?? -1);
-			if (
-				!playbackStore.isPlaying &&
-				shouldPreview &&
-				previewChannel >= 0 &&
-				chipProcessor &&
-				'playPreviewRow' in chipProcessor &&
-				!pressedKeyChannels.has(event.key)
-			) {
-				services.audioService.setPreviewActiveForChips(songIndex);
-				const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
-				const isNoteField =
-					fieldInfoBeforeEdit.fieldType === 'note' ||
-					fieldInfoBeforeEdit.fieldKey === 'envelopeValue';
-				const previewChannelResult = previewService.playFromContext(
-					processor,
-					editingResult.updatedPattern,
-					previewChannel,
-					selectedRow,
-					schema,
-					isNoteField
-				);
-				if (previewChannelResult !== undefined) {
-					pressedKeyChannels.set(event.key, previewChannelResult);
-				}
-			}
-
-			const step = editorStateStore.step;
-			if (step > 0) {
-				moveRow(step);
-			}
-
-			clearAllCaches();
-			draw();
+			applyEditingResult(
+				editingResult,
+				built.fieldInfoBeforeEdit,
+				built.context,
+				event.key
+			);
 		} else if (event.key.length === 1) {
 			event.preventDefault();
 		}
 	}
+
+	$effect(() => {
+		const enabled = !!settingsStore.midiInputDeviceId;
+		if (!enabled) return;
+		const remove = midiService.addNoteListener((midiNote: number, velocity: number) => {
+			if (!canvas || document.activeElement !== canvas) return;
+			if (velocity === 0) {
+				const previewKey = `midi-${midiNote}`;
+				const channel = pressedKeyChannels.get(previewKey);
+				if (channel !== undefined) {
+					if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
+						const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+						previewService.stopNote(processor, channel === -1 ? undefined : channel);
+					}
+					services.audioService.setPreviewActiveForChips(null);
+					pressedKeyChannels.delete(previewKey);
+				}
+				return;
+			}
+			const built = buildEditingContext();
+			if (!built) return;
+			const result = PatternEditingService.handleMidiNote(built.context, midiNote);
+			if (result) {
+				applyEditingResult(
+					result,
+					built.fieldInfoBeforeEdit,
+					built.context,
+					`midi-${midiNote}`
+				);
+			}
+		});
+		return remove;
+	});
 
 	function handleKeyUp(event: KeyboardEvent) {
 		if (isPlayFromRowShortcut(event) && isEnterKeyHeld) {
@@ -1666,6 +1710,14 @@
 	function handleCanvasMouseDown(event: MouseEvent): void {
 		if (!canvas || !currentPattern || !renderer || !textParser) return;
 		if (event.button === 2) return;
+
+		if (
+			settingsStore.midiInputDeviceId &&
+			midiService.isSupported() &&
+			!midiService.hasAccess()
+		) {
+			midiService.requestAccess();
+		}
 
 		canvas.focus();
 		const selection = window.getSelection();
