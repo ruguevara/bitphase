@@ -230,9 +230,10 @@
 		if (playPattern) {
 			services.audioService.setPlayPatternRestoreOrder(
 				[...projectStore.patternOrder],
-				patternId
+				patternId,
+				projectStore.loopPointId
 			);
-			services.audioService.updateOrder([patternId]);
+			services.audioService.updateOrder([patternId], 0);
 		}
 
 		chipProcessors.forEach((chipProcessor, index) => {
@@ -266,9 +267,19 @@
 		});
 
 		if (!playPattern) {
-			services.audioService.updateOrder(projectStore.patternOrder);
+			services.audioService.updateOrder(projectStore.patternOrder, projectStore.loopPointId);
 		}
 	}
+
+	$effect(() => {
+		projectStore.patternOrder;
+		projectStore.loopPointId;
+		if (services.audioService.getPlayPatternId() !== null) return;
+		services.audioService.updateOrder(
+			[...projectStore.patternOrder],
+			projectStore.loopPointId
+		);
+	});
 
 	function initAllChipsForPlayback() {
 		initAllChips(false);

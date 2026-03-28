@@ -6,6 +6,7 @@ class ProjectStore {
 	songs = $state<Song[]>([]);
 	patterns = $state<Pattern[][]>([]);
 	patternOrder = $state<number[]>([]);
+	loopPointId = $state(0);
 	patternOrderColors = $state<Record<number, string>>({});
 	tables = $state<Table[]>([]);
 	instruments = $state<Instrument[]>([]);
@@ -26,6 +27,8 @@ class ProjectStore {
 		this.patterns = project.songs.map((song) => song.patterns);
 		this.songs = project.songs;
 		this.patternOrder = project.patternOrder;
+		const maxLoop = Math.max(0, project.patternOrder.length - 1);
+		this.loopPointId = Math.min(Math.max(0, project.loopPointId), maxLoop);
 		this.patternOrderColors = project.patternOrderColors ?? {};
 		this.tables = project.tables;
 		this.instruments = project.instruments;
@@ -40,7 +43,7 @@ class ProjectStore {
 			this.settings.title as string,
 			this.settings.author as string,
 			songs,
-			0,
+			this.loopPointId,
 			this.patternOrder,
 			this.tables,
 			this.patternOrderColors,
