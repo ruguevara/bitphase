@@ -60,7 +60,9 @@
 
 	const envelopeAsNote = $derived(editorStateStore.envelopeAsNote);
 	const canEnvelopeAsNote = $derived(envelopeAsNote && tuningTable.length > 0);
-	const envelopeHexValue = $derived((envelopePeriod >>> 0).toString(16).toUpperCase().padStart(4, '0'));
+	const envelopeHexValue = $derived(
+		(envelopePeriod >>> 0).toString(16).toUpperCase().padStart(4, '0')
+	);
 	const envelopeDisplayValue = $derived(
 		canEnvelopeAsNote
 			? (envelopePeriodToNoteString(envelopePeriod, tuningTable) ??
@@ -82,6 +84,10 @@
 	let hadActiveNotes = $state(false);
 	let wasPlaying = $state(false);
 
+	let prevInstruments: typeof projectStore.instruments | undefined = $state();
+	let prevTables: typeof projectStore.tables | undefined = $state();
+	let savedStereoLayout: string | undefined = undefined;
+
 	$effect(() => {
 		if (isDisabled && !wasPlaying) {
 			activeNotes = [];
@@ -89,9 +95,6 @@
 		}
 		wasPlaying = isDisabled;
 	});
-
-	let prevInstruments: typeof projectStore.instruments | undefined = $state();
-	let prevTables: typeof projectStore.tables | undefined = $state();
 
 	$effect(() => {
 		const instruments = projectStore.instruments;
@@ -115,8 +118,6 @@
 	const effectiveNoteStrings = $derived(
 		isPreviewPlaying ? lastPlayedNotes : activeNotes.map((n) => n.note)
 	);
-
-	let savedStereoLayout: string | undefined = undefined;
 
 	$effect(() => {
 		return () => {
@@ -193,9 +194,7 @@
 		const remove = midiService.addNoteListener((midiNote: number, velocity: number) => {
 			const noteFocused = noteInputEl && document.activeElement === noteInputEl;
 			const envelopeFocused =
-				canEnvelopeAsNote &&
-				envelopeInputEl &&
-				document.activeElement === envelopeInputEl;
+				canEnvelopeAsNote && envelopeInputEl && document.activeElement === envelopeInputEl;
 			if (noteFocused) {
 				if (velocity > 0) {
 					if (activeNotes.length >= maxPoly) return;
@@ -224,15 +223,15 @@
 		return remove;
 	});
 
-	function togglePreviewPlaying() {
-		if (isDisabled || lastPlayedNotes.length === 0) return;
-		isPreviewPlaying = !isPreviewPlaying;
-	}
-
 	$effect(() => {
 		registerPreviewSpaceHandler?.(togglePreviewPlaying);
 		return () => registerPreviewSpaceHandler?.(null);
 	});
+
+	function togglePreviewPlaying() {
+		if (isDisabled || lastPlayedNotes.length === 0) return;
+		isPreviewPlaying = !isPreviewPlaying;
+	}
 
 	function parseHex4(s: string): number {
 		const n = parseInt(s.replace(/[^0-9a-fA-F]/g, '').slice(0, 4) || '0', 16);
@@ -392,7 +391,7 @@
 	}
 </script>
 
-<div data-ay-playground class="flex flex-col gap-2">
+<div class="flex flex-col gap-2">
 	<div
 		class="flex items-center gap-1.5 text-xs text-[var(--color-app-text-muted)]"
 		role="group"

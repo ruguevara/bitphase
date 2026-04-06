@@ -1,29 +1,19 @@
 import type { Chip } from './types';
 import type { ResourceLoader } from './base/resource-loader';
+import type { ChipType } from './chip-registration';
 import { AY_CHIP } from './ay';
 
-const chips: Map<string, Chip> = new Map();
-
-function initializeChipRegistry(): void {
-	const registeredChips: Chip[] = [AY_CHIP];
-
-	for (const chip of registeredChips) {
-		chips.set(chip.type, chip);
-	}
-}
-
-initializeChipRegistry();
+const CHIPS = {
+	ay: AY_CHIP
+} satisfies Record<ChipType, Chip>;
 
 export function getChipByType(chipType: string): Chip | null {
-	return chips.get(chipType) || null;
-}
-
-export function registerChip(chip: Chip): void {
-	chips.set(chip.type, chip);
+	if (!(chipType in CHIPS)) return null;
+	return CHIPS[chipType as ChipType];
 }
 
 export function getAllChips(): Chip[] {
-	return Array.from(chips.values());
+	return Object.values(CHIPS);
 }
 
 export function getConverter(chip: Chip) {
@@ -37,4 +27,3 @@ export function getFormatter(chip: Chip) {
 export function createRenderer(chip: Chip, loader?: ResourceLoader) {
 	return chip.createRenderer(loader);
 }
-

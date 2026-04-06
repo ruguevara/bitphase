@@ -212,11 +212,6 @@
 		updateInstrument({ rows });
 	}
 
-	function toggleBoolean(index: number, field: string) {
-		const currentValue = rows[index][field];
-		updateRow(index, field, !currentValue);
-	}
-
 	function cycleAmplitudeSlide(index: number) {
 		const row = rows[index];
 		if (!row.amplitudeSliding) {

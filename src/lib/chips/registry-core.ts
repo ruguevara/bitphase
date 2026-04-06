@@ -8,7 +8,15 @@ async function initializeCoreRegistry(): Promise<void> {
 	for (const type of CHIP_TYPES) {
 		const mod = await import(`./${type}/core`);
 		const chip = (mod as { CHIP: Chip }).CHIP;
+		if (chip.type !== type) {
+			throw new Error(
+				`Core chip ./${type}/core exports CHIP.type "${chip.type}" but folder is "${type}"`
+			);
+		}
 		chips.set(chip.type, chip);
+	}
+	if (chips.size !== CHIP_TYPES.length) {
+		throw new Error('Core chip registry: loaded count does not match CHIP_TYPES');
 	}
 }
 

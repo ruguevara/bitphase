@@ -66,7 +66,6 @@ export function buildMenuItems(chipConfig: ChipConfiguration): MenuItem[] {
 							: [{ label: 'No demo songs', type: 'normal', disabled: true }]
 				},
 				{ label: 'Effects', type: 'normal', action: 'effects' },
-				{ label: 'Documentation', type: 'normal' },
 				{ label: 'About', type: 'normal', action: 'about' }
 			]
 		}
