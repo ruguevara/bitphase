@@ -217,7 +217,7 @@ describe('PatternNoteInput', () => {
 					isGlobal: true
 				};
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q', 'KeyQ');
 
 				expect(result).toBeNull();
 			});
@@ -227,7 +227,7 @@ describe('PatternNoteInput', () => {
 				const context = createMockContext(pattern);
 				const fieldInfo = createFieldInfo(-1);
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q', 'KeyQ');
 
 				expect(result).toBeNull();
 			});
@@ -239,7 +239,7 @@ describe('PatternNoteInput', () => {
 				const context = createMockContext(pattern);
 				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'a');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'a', 'KeyA');
 
 				expect(result).not.toBeNull();
 				expect(mockUpdateFieldValue).toHaveBeenCalledWith(context, fieldInfo, 'OFF');
@@ -247,27 +247,38 @@ describe('PatternNoteInput', () => {
 		});
 
 		describe('piano keyboard input', () => {
-			it('should map Q key to C-4', () => {
+			it('should map KeyQ to C-4', () => {
 				const pattern = new Pattern(DEFAULT_PATTERN_ID, DEFAULT_PATTERN_LENGTH);
 				const context = createMockContext(pattern);
 				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q', 'KeyQ');
 
 				expect(result).not.toBeNull();
 				expect(result?.shouldMoveNext).toBe(false);
 				expect(mockUpdateFieldValue).toHaveBeenCalledWith(context, fieldInfo, 'C-4');
 			});
 
-			it('should map lowercase c key to E-3', () => {
+			it('should map KeyC to E-3', () => {
 				const pattern = new Pattern(DEFAULT_PATTERN_ID, DEFAULT_PATTERN_LENGTH);
 				const context = createMockContext(pattern);
 				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'c');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'c', 'KeyC');
 
 				expect(result).not.toBeNull();
 				expect(mockUpdateFieldValue).toHaveBeenCalledWith(context, fieldInfo, 'E-3');
+			});
+
+			it('should use physical key location regardless of typed character (Colemak layout)', () => {
+				const pattern = new Pattern(DEFAULT_PATTERN_ID, DEFAULT_PATTERN_LENGTH);
+				const context = createMockContext(pattern);
+				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
+
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'w', 'KeyQ');
+
+				expect(result).not.toBeNull();
+				expect(mockUpdateFieldValue).toHaveBeenCalledWith(context, fieldInfo, 'C-4');
 			});
 
 			it('should handle multiple piano keys correctly', () => {
@@ -276,17 +287,17 @@ describe('PatternNoteInput', () => {
 				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
 
 				const testCases = [
-					{ key: 'w', expectedNote: 'D-4' },
-					{ key: 'e', expectedNote: 'E-4' },
-					{ key: 'r', expectedNote: 'F-4' },
-					{ key: 't', expectedNote: 'G-4' },
-					{ key: 'y', expectedNote: 'A-4' },
-					{ key: 'u', expectedNote: 'B-4' }
+					{ key: 'w', code: 'KeyW', expectedNote: 'D-4' },
+					{ key: 'e', code: 'KeyE', expectedNote: 'E-4' },
+					{ key: 'r', code: 'KeyR', expectedNote: 'F-4' },
+					{ key: 't', code: 'KeyT', expectedNote: 'G-4' },
+					{ key: 'y', code: 'KeyY', expectedNote: 'A-4' },
+					{ key: 'u', code: 'KeyU', expectedNote: 'B-4' }
 				];
 
-				testCases.forEach(({ key, expectedNote }) => {
+				testCases.forEach(({ key, code, expectedNote }) => {
 					mockUpdateFieldValue.mockClear();
-					const result = PatternNoteInput.handleNoteInput(context, fieldInfo, key);
+					const result = PatternNoteInput.handleNoteInput(context, fieldInfo, key, code);
 
 					expect(result).not.toBeNull();
 					expect(mockUpdateFieldValue).toHaveBeenCalledWith(
@@ -304,7 +315,7 @@ describe('PatternNoteInput', () => {
 				const context = createMockContext(pattern);
 				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
 
-				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'C');
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'F', 'KeyF');
 
 				expect(result).not.toBeNull();
 				expect(result?.shouldMoveNext).toBe(false);

@@ -1530,7 +1530,11 @@
 		const built = buildEditingContext();
 		if (!built) return;
 
-		const editingResult = PatternEditingService.handleKeyInput(built.context, event.key);
+		const editingResult = PatternEditingService.handleKeyInput(
+			built.context,
+			event.key,
+			event.code
+		);
 
 		if (editingResult) {
 			event.preventDefault();

@@ -16,7 +16,8 @@ export class PatternEditingService {
 
 	static handleKeyInput(
 		context: EditingContext,
-		key: string
+		key: string,
+		code: string
 	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
 		if (key === 'Delete' || key === 'Backspace') {
 			return PatternDeleteHandler.handleDelete(context);
@@ -29,9 +30,9 @@ export class PatternEditingService {
 
 		switch (fieldInfo.fieldType) {
 			case 'note':
-				return PatternNoteInput.handleNoteInput(context, fieldInfo, key);
+				return PatternNoteInput.handleNoteInput(context, fieldInfo, key, code);
 			case 'hex':
-				return PatternFieldInput.handleHexInput(context, fieldInfo, key);
+				return PatternFieldInput.handleHexInput(context, fieldInfo, key, code);
 			case 'dec':
 				return PatternFieldInput.handleDecInput(context, fieldInfo, key);
 			case 'symbol':

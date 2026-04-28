@@ -10,13 +10,14 @@ export class PatternEnvelopeNoteInput {
 	static handleEnvelopeNoteInput(
 		context: EditingContext,
 		fieldInfo: FieldInfo,
-		key: string
+		key: string,
+		code: string
 	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
 		if (!context.tuningTable) {
 			return null;
 		}
 
-		const keyboardNote = PatternNoteInput.mapKeyboardKeyToNote(key);
+		const keyboardNote = PatternNoteInput.mapKeyboardCodeToNote(code);
 		if (keyboardNote) {
 			const noteStr = formatNoteFromEnum(keyboardNote.noteName, keyboardNote.octave);
 			const envelopePeriod = noteStringToEnvelopePeriod(

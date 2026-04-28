@@ -290,7 +290,7 @@
 		if (activeNotes.length >= maxPoly) return;
 		const keyLower = key.toLowerCase();
 		let noteStr: string;
-		const pianoNote = PatternNoteInput.mapKeyboardKeyToNote(event.key);
+		const pianoNote = PatternNoteInput.mapKeyboardCodeToNote(event.code);
 		if (pianoNote) {
 			event.preventDefault();
 			noteStr = formatNoteFromEnum(pianoNote.noteName, pianoNote.octave);
@@ -330,7 +330,7 @@
 		const key = event.key;
 		const keyLower = key.toLowerCase();
 		let noteStr: string;
-		const pianoNote = PatternNoteInput.mapKeyboardKeyToNote(key);
+		const pianoNote = PatternNoteInput.mapKeyboardCodeToNote(event.code);
 		if (pianoNote) {
 			noteStr = formatNoteFromEnum(pianoNote.noteName, pianoNote.octave);
 		} else if (keyLower === 'a') {

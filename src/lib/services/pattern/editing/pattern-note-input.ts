@@ -12,41 +12,41 @@ export class PatternNoteInput {
 		string,
 		{ noteName: NoteName; octaveOffset: number }
 	> = {
-		q: { noteName: NoteName.C, octaveOffset: 1 },
-		'2': { noteName: NoteName.CSharp, octaveOffset: 1 },
-		w: { noteName: NoteName.D, octaveOffset: 1 },
-		'3': { noteName: NoteName.DSharp, octaveOffset: 1 },
-		e: { noteName: NoteName.E, octaveOffset: 1 },
-		r: { noteName: NoteName.F, octaveOffset: 1 },
-		'5': { noteName: NoteName.FSharp, octaveOffset: 1 },
-		t: { noteName: NoteName.G, octaveOffset: 1 },
-		'6': { noteName: NoteName.GSharp, octaveOffset: 1 },
-		y: { noteName: NoteName.A, octaveOffset: 1 },
-		'7': { noteName: NoteName.ASharp, octaveOffset: 1 },
-		u: { noteName: NoteName.B, octaveOffset: 1 },
-		i: { noteName: NoteName.C, octaveOffset: 2 },
-		'9': { noteName: NoteName.CSharp, octaveOffset: 2 },
-		o: { noteName: NoteName.D, octaveOffset: 2 },
-		'0': { noteName: NoteName.DSharp, octaveOffset: 2 },
-		p: { noteName: NoteName.E, octaveOffset: 2 },
-		'[': { noteName: NoteName.F, octaveOffset: 2 },
-		z: { noteName: NoteName.C, octaveOffset: 0 },
-		s: { noteName: NoteName.CSharp, octaveOffset: 0 },
-		x: { noteName: NoteName.D, octaveOffset: 0 },
-		d: { noteName: NoteName.DSharp, octaveOffset: 0 },
-		c: { noteName: NoteName.E, octaveOffset: 0 },
-		v: { noteName: NoteName.F, octaveOffset: 0 },
-		g: { noteName: NoteName.FSharp, octaveOffset: 0 },
-		b: { noteName: NoteName.G, octaveOffset: 0 },
-		h: { noteName: NoteName.GSharp, octaveOffset: 0 },
-		n: { noteName: NoteName.A, octaveOffset: 0 },
-		j: { noteName: NoteName.ASharp, octaveOffset: 0 },
-		m: { noteName: NoteName.B, octaveOffset: 0 },
-		',': { noteName: NoteName.C, octaveOffset: 1 },
-		l: { noteName: NoteName.CSharp, octaveOffset: 1 },
-		'.': { noteName: NoteName.D, octaveOffset: 1 },
-		';': { noteName: NoteName.DSharp, octaveOffset: 1 },
-		'/': { noteName: NoteName.E, octaveOffset: 1 }
+		KeyQ: { noteName: NoteName.C, octaveOffset: 1 },
+		Digit2: { noteName: NoteName.CSharp, octaveOffset: 1 },
+		KeyW: { noteName: NoteName.D, octaveOffset: 1 },
+		Digit3: { noteName: NoteName.DSharp, octaveOffset: 1 },
+		KeyE: { noteName: NoteName.E, octaveOffset: 1 },
+		KeyR: { noteName: NoteName.F, octaveOffset: 1 },
+		Digit5: { noteName: NoteName.FSharp, octaveOffset: 1 },
+		KeyT: { noteName: NoteName.G, octaveOffset: 1 },
+		Digit6: { noteName: NoteName.GSharp, octaveOffset: 1 },
+		KeyY: { noteName: NoteName.A, octaveOffset: 1 },
+		Digit7: { noteName: NoteName.ASharp, octaveOffset: 1 },
+		KeyU: { noteName: NoteName.B, octaveOffset: 1 },
+		KeyI: { noteName: NoteName.C, octaveOffset: 2 },
+		Digit9: { noteName: NoteName.CSharp, octaveOffset: 2 },
+		KeyO: { noteName: NoteName.D, octaveOffset: 2 },
+		Digit0: { noteName: NoteName.DSharp, octaveOffset: 2 },
+		KeyP: { noteName: NoteName.E, octaveOffset: 2 },
+		BracketLeft: { noteName: NoteName.F, octaveOffset: 2 },
+		KeyZ: { noteName: NoteName.C, octaveOffset: 0 },
+		KeyS: { noteName: NoteName.CSharp, octaveOffset: 0 },
+		KeyX: { noteName: NoteName.D, octaveOffset: 0 },
+		KeyD: { noteName: NoteName.DSharp, octaveOffset: 0 },
+		KeyC: { noteName: NoteName.E, octaveOffset: 0 },
+		KeyV: { noteName: NoteName.F, octaveOffset: 0 },
+		KeyG: { noteName: NoteName.FSharp, octaveOffset: 0 },
+		KeyB: { noteName: NoteName.G, octaveOffset: 0 },
+		KeyH: { noteName: NoteName.GSharp, octaveOffset: 0 },
+		KeyN: { noteName: NoteName.A, octaveOffset: 0 },
+		KeyJ: { noteName: NoteName.ASharp, octaveOffset: 0 },
+		KeyM: { noteName: NoteName.B, octaveOffset: 0 },
+		Comma: { noteName: NoteName.C, octaveOffset: 1 },
+		KeyL: { noteName: NoteName.CSharp, octaveOffset: 1 },
+		Period: { noteName: NoteName.D, octaveOffset: 1 },
+		Semicolon: { noteName: NoteName.DSharp, octaveOffset: 1 },
+		Slash: { noteName: NoteName.E, octaveOffset: 1 }
 	};
 
 	private static readonly LETTER_NOTE_MAP: Record<string, NoteName> = {
@@ -61,19 +61,20 @@ export class PatternNoteInput {
 	static handleNoteInput(
 		context: EditingContext,
 		fieldInfo: FieldInfo,
-		key: string
+		key: string,
+		code: string
 	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
 		if (fieldInfo.isGlobal || fieldInfo.channelIndex < 0) {
 			return null;
 		}
 
-		const keyboardNote = this.mapKeyboardKeyToNote(key);
+		const keyboardNote = this.mapKeyboardCodeToNote(code);
 		if (keyboardNote) {
 			const noteStr = formatNoteFromEnum(keyboardNote.noteName, keyboardNote.octave);
 			return this.applyNoteToField(context, fieldInfo, noteStr);
 		}
 
-		if (this.isPianoKey(key)) {
+		if (this.isPianoCode(code)) {
 			return null;
 		}
 
@@ -149,13 +150,12 @@ export class PatternNoteInput {
 		);
 	}
 
-	static isPianoKey(key: string): boolean {
-		return key.length === 1 && key.toLowerCase() in this.PIANO_KEYBOARD_MAP;
+	static isPianoCode(code: string): boolean {
+		return code in this.PIANO_KEYBOARD_MAP;
 	}
 
-	static mapKeyboardKeyToNote(key: string): { noteName: NoteName; octave: number } | null {
-		const lowerKey = key.toLowerCase();
-		const keyMapping = this.PIANO_KEYBOARD_MAP[lowerKey];
+	static mapKeyboardCodeToNote(code: string): { noteName: NoteName; octave: number } | null {
+		const keyMapping = this.PIANO_KEYBOARD_MAP[code];
 		if (!keyMapping) {
 			return null;
 		}

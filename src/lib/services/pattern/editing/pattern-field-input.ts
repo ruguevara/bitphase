@@ -11,7 +11,8 @@ export class PatternFieldInput {
 	static handleHexInput(
 		context: EditingContext,
 		fieldInfo: FieldInfo,
-		key: string
+		key: string,
+		code: string
 	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
 		if (fieldInfo.fieldKey === 'envelopeValue' && context.tuningTable) {
 			const envelopeAsNote = editorStateStore.envelopeAsNote;
@@ -19,7 +20,8 @@ export class PatternFieldInput {
 				const noteInputResult = PatternEnvelopeNoteInput.handleEnvelopeNoteInput(
 					context,
 					fieldInfo,
-					key
+					key,
+					code
 				);
 				if (noteInputResult) {
 					return noteInputResult;
