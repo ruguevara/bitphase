@@ -3,9 +3,9 @@ import { buildEditMenuItems } from './keybindings';
 import { getDemoMenuItems } from './demo-songs';
 import { buildExportMenuItems, type ChipConfiguration } from './export-formats';
 
-export const editMenuItems: MenuItem[] = buildEditMenuItems();
-
 const demoMenuItems: MenuItem[] = getDemoMenuItems();
+
+export const editMenuItems: MenuItem[] = buildEditMenuItems();
 
 export function buildMenuItems(chipConfig: ChipConfiguration): MenuItem[] {
 	return [
@@ -37,7 +37,7 @@ export function buildMenuItems(chipConfig: ChipConfiguration): MenuItem[] {
 		},
 		{
 			label: 'Edit',
-			items: editMenuItems
+			items: buildEditMenuItems()
 		},
 		{
 			label: 'View',

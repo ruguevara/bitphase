@@ -1,7 +1,7 @@
 import { NoteName } from '../../../models/song';
-import { formatNoteFromEnum, midiNoteToNoteString } from '../../../utils/note-utils';
-import type { EditingContext, FieldInfo } from './editing-context';
 import type { Pattern } from '../../../models/song';
+import { formatNoteFromEnum, midiNoteToNoteString } from '../../../utils/note-utils';
+import type { EditingContext, FieldInfo, PatternEditingResult } from './editing-context';
 import { PatternValueUpdates } from './pattern-value-updates';
 import { editorStateStore } from '../../../stores/editor-state.svelte';
 import { settingsStore } from '../../../stores/settings.svelte';
@@ -63,7 +63,7 @@ export class PatternNoteInput {
 		fieldInfo: FieldInfo,
 		key: string,
 		code: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (fieldInfo.isGlobal || fieldInfo.channelIndex < 0) {
 			return null;
 		}
@@ -97,7 +97,7 @@ export class PatternNoteInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		midiNote: number
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (fieldInfo.isGlobal || fieldInfo.channelIndex < 0) {
 			return null;
 		}
@@ -110,7 +110,10 @@ export class PatternNoteInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		noteStr: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } {
+	): PatternEditingResult | null {
+		if (PatternValueUpdates.getFieldValue(context, fieldInfo) === noteStr) {
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
+		}
 		let updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, noteStr);
 		updatedPattern = this.autoEnterInstrument(context, fieldInfo, updatedPattern);
 		return { updatedPattern, shouldMoveNext: false };

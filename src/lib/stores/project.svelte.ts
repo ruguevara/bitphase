@@ -1,6 +1,10 @@
 import type { Song, Instrument, Pattern } from '../models/song';
 import { Project, Table } from '../models/project';
 import { undoRedoStore } from './undo-redo.svelte';
+import type { ProjectDiff, ProjectHistoryEntry, ProjectHistoryMetadata } from '../models/history';
+import { HistoryClone } from '../services/history/history-clone';
+import { ProjectDiffService } from '../services/history/project-diff-service';
+import { ProjectHistoryEntryFactory } from '../services/history/project-history-entry-factory';
 
 class ProjectStore {
 	songs = $state<Song[]>([]);
@@ -16,6 +20,56 @@ class ProjectStore {
 		initialSpeed: 3
 	});
 	initialized = $state(false);
+
+	recordHistory(metadata: ProjectHistoryMetadata, diffs: ProjectDiff[]): void {
+		if (undoRedoStore.isApplying) return;
+		const entry = ProjectHistoryEntryFactory.create(metadata, diffs);
+		if (entry) undoRedoStore.pushProjectEntry(entry);
+	}
+
+	applyHistoryEntry(entry: ProjectHistoryEntry, direction: 'undo' | 'redo'): void {
+		const diffs = direction === 'undo' ? entry.inverseDiffs : entry.diffs;
+		ProjectDiffService.applyAll(this, diffs);
+		this.refreshHistoryDomains(entry);
+	}
+
+	createSetDiff(path: (string | number)[], before: unknown, after: unknown): ProjectDiff {
+		return {
+			kind: 'set',
+			path,
+			before: HistoryClone.value(before),
+			after: HistoryClone.value(after)
+		};
+	}
+
+	cloneForHistory<T>(value: T): T {
+		return HistoryClone.value(value);
+	}
+
+	private refreshHistoryDomains(entry: ProjectHistoryEntry): void {
+		if (entry.affectedDomains.includes('songs') || entry.affectedDomains.includes('chipSettings')) {
+			this.songs = [...this.songs];
+		}
+		if (
+			entry.affectedDomains.includes('patterns') ||
+			entry.affectedDomains.includes('virtualChannels')
+		) {
+			this.patterns = [...this.patterns];
+		}
+		if (entry.affectedDomains.includes('patternOrder')) {
+			this.patternOrder = [...this.patternOrder];
+			this.patternOrderColors = { ...this.patternOrderColors };
+		}
+		if (entry.affectedDomains.includes('tables')) {
+			this.tables = [...this.tables];
+		}
+		if (entry.affectedDomains.includes('instruments')) {
+			this.instruments = [...this.instruments];
+		}
+		if (entry.affectedDomains.includes('settings')) {
+			this.settings = { ...this.settings };
+		}
+	}
 
 	applyProject(project: Project): void {
 		undoRedoStore.clear();
@@ -78,3 +132,4 @@ class ProjectStore {
 }
 
 export const projectStore = new ProjectStore();
+undoRedoStore.setProjectEntryApplier((entry, direction) => projectStore.applyHistoryEntry(entry, direction));

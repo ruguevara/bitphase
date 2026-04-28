@@ -59,6 +59,21 @@
 	let selectedColumn = $state(0);
 	let selectedFieldKey = $state<string | null>(null);
 
+	function clampPatternOrderIndex(index: number, patternOrderLength: number): number {
+		if (patternOrderLength <= 0) return 0;
+		return Math.min(Math.max(index, 0), patternOrderLength - 1);
+	}
+
+	$effect(() => {
+		const clampedIndex = clampPatternOrderIndex(
+			sharedPatternOrderIndex,
+			projectStore.patternOrder.length
+		);
+		if (sharedPatternOrderIndex !== clampedIndex) {
+			sharedPatternOrderIndex = clampedIndex;
+		}
+	});
+
 	$effect(() => {
 		if (rightPanelActiveTabId === 'details') {
 			isRightPanelExpanded = false;
@@ -159,6 +174,8 @@
 	const SPEED_EFFECT_TYPE = 'S'.charCodeAt(0);
 
 	function handleMakeUnique(index: number): void {
+		const beforePatterns = projectStore.patterns.map((songPatterns) => [...songPatterns]);
+		const beforePatternOrder = [...projectStore.patternOrder];
 		const result = PatternService.makePatternUniqueMultiChip(
 			projectStore.patterns,
 			projectStore.patternOrder,
@@ -169,6 +186,17 @@
 			projectStore.updatePatterns(i, newPatterns);
 		});
 		projectStore.patternOrder = result.newPatternOrder;
+		projectStore.recordHistory(
+			{
+				type: 'patternOrder.makeUnique',
+				label: `Make pattern ${beforePatternOrder[index]} unique`,
+				affectedDomains: ['patterns', 'patternOrder']
+			},
+			[
+				projectStore.createSetDiff(['patterns'], beforePatterns, projectStore.patterns),
+				projectStore.createSetDiff(['patternOrder'], beforePatternOrder, projectStore.patternOrder)
+			]
+		);
 		if (index === sharedPatternOrderIndex) {
 			sharedSelectedRow = 0;
 		}
@@ -355,15 +383,28 @@
 
 	function applyLengthToAllSongs(length: number) {
 		const patternId = projectStore.patternOrder[sharedPatternOrderIndex];
+		const beforePatterns = projectStore.patterns.map((songPatterns) => [...songPatterns]);
+		let changed = false;
 		for (let j = 0; j < projectStore.patterns.length; j++) {
 			const songPatterns = projectStore.patterns[j];
 			const pattern = songPatterns.find((p) => p.id === patternId);
 			if (!pattern || pattern.length === length) continue;
 			const schema = chipProcessors[j].chip.schema;
 			const resized = PatternService.resizePattern(pattern, length, schema);
+			changed = true;
 			projectStore.updatePatterns(
 				j,
 				PatternService.updatePatternInArray(songPatterns, resized)
+			);
+		}
+		if (changed) {
+			projectStore.recordHistory(
+				{
+					type: 'pattern.resize',
+					label: `Resize pattern ${patternId}`,
+					affectedDomains: ['patterns']
+				},
+				[projectStore.createSetDiff(['patterns'], beforePatterns, projectStore.patterns)]
 			);
 		}
 		if (sharedSelectedRow >= length) {

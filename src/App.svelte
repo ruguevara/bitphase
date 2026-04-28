@@ -39,6 +39,8 @@
 	import { projectStore } from './lib/stores/project.svelte';
 	import AlphaNoticeModal from './lib/components/Modal/AlphaNoticeModal.svelte';
 	import { alphaNoticeStore } from './lib/stores/alpha-notice.svelte';
+	import HistoryFeedback from './lib/components/History/HistoryFeedback.svelte';
+	import { undoRedoStore } from './lib/stores/undo-redo.svelte';
 
 	runAppBootstrap();
 
@@ -107,6 +109,8 @@
 	let activeSongIndex = $state(0);
 
 	const menuItems = $derived.by(() => {
+		undoRedoStore.nextUndoLabel;
+		undoRedoStore.nextRedoLabel;
 		const chipTypes = projectStore.songs
 			.map((s) => s.chipType)
 			.filter((t): t is string => t !== undefined);
@@ -164,6 +168,31 @@
 
 	$effect(() => {
 		container.audioService.updateInstruments(projectStore.instruments);
+	});
+
+	let chipProcessorSyncToken = 0;
+	$effect(() => {
+		if (!projectStore.initialized) return;
+		const songs = projectStore.songs;
+		const desiredCount = songs.length;
+		const currentCount = container.audioService.chipProcessors.length;
+		if (currentCount === desiredCount) return;
+		const token = ++chipProcessorSyncToken;
+		(async () => {
+			if (container.audioService.chipProcessors.length > desiredCount) {
+				for (let i = container.audioService.chipProcessors.length - 1; i >= desiredCount; i--) {
+					if (token !== chipProcessorSyncToken) return;
+					container.audioService.removeChipProcessor(i);
+				}
+				return;
+			}
+			for (let i = container.audioService.chipProcessors.length; i < desiredCount; i++) {
+				if (token !== chipProcessorSyncToken) return;
+				const chipType = songs[i]?.chipType;
+				const chip = chipType ? getChipByType(chipType) : null;
+				await container.audioService.addChipProcessor(chip ?? AY_CHIP);
+			}
+		})();
 	});
 
 	$effect(() => {
@@ -291,6 +320,7 @@
 			chipProcessors={container.audioService.chipProcessors} />
 	</div>
 	<ModalContainer />
+	<HistoryFeedback />
 
 	{#if themeEditorStore.editingTheme}
 		<ThemeEditorModal

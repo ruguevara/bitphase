@@ -161,25 +161,74 @@
 		return true;
 	}
 
+	let pendingInstrumentUpdateBefore: Instrument[] | null = null;
+	let pendingInstrumentUpdateLabel = '';
+	let pendingInstrumentUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	function scheduleInstrumentUpdateHistory(before: Instrument[], label: string): void {
+		pendingInstrumentUpdateBefore ??= before;
+		pendingInstrumentUpdateLabel = label;
+		if (pendingInstrumentUpdateTimeout !== null) {
+			clearTimeout(pendingInstrumentUpdateTimeout);
+		}
+		pendingInstrumentUpdateTimeout = setTimeout(flushInstrumentUpdateHistory, 120);
+	}
+
+	function flushInstrumentUpdateHistory(): void {
+		if (pendingInstrumentUpdateTimeout !== null) {
+			clearTimeout(pendingInstrumentUpdateTimeout);
+			pendingInstrumentUpdateTimeout = null;
+		}
+		if (!pendingInstrumentUpdateBefore) return;
+		projectStore.recordHistory(
+			{
+				type: 'instrument.update',
+				label: pendingInstrumentUpdateLabel,
+				affectedDomains: ['instruments']
+			},
+			[
+				projectStore.createSetDiff(
+					['instruments'],
+					pendingInstrumentUpdateBefore,
+					projectStore.instruments
+				)
+			]
+		);
+		pendingInstrumentUpdateBefore = null;
+		pendingInstrumentUpdateLabel = '';
+	}
+
 	function handleInstrumentChange(instrument: Instrument): void {
 		const id = instrument.id;
 		const idx = instruments.findIndex((inst) => inst.id === id);
 		if (idx >= 0) {
+			const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 			const updated = [...instruments];
 			updated[idx] = { ...instrument };
 			projectStore.instruments = updated;
+			scheduleInstrumentUpdateHistory(beforeInstruments, `Edit instrument ${id}`);
 		}
 		services.audioService.updateInstruments(projectStore.instruments);
 	}
 
 	async function addInstrument(): Promise<void> {
+		flushInstrumentUpdateHistory();
 		const existingIds = instruments.map((inst) => inst.id);
 		const newId = getNextAvailableInstrumentId(existingIds);
 		if (!newId) return;
 		const newInstrument = new InstrumentModel(newId, [], 0, `Instrument ${newId}`);
+		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 		projectStore.instruments = [...instruments, newInstrument];
 		sortInstrumentsAndSyncSelection(newId);
 		editorStateStore.setCurrentInstrument(newId);
+		projectStore.recordHistory(
+			{
+				type: 'instrument.add',
+				label: `Add instrument ${newId}`,
+				affectedDomains: ['instruments']
+			},
+			[projectStore.createSetDiff(['instruments'], beforeInstruments, projectStore.instruments)]
+		);
 		services.audioService.updateInstruments(projectStore.instruments);
 		await tick();
 		instrumentListScrollRef
@@ -188,16 +237,27 @@
 	}
 
 	function removeInstrument(index: number): void {
+		flushInstrumentUpdateHistory();
 		const toRemove = instruments[index];
 		if (!toRemove || instruments.length <= 1) return;
+		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 		projectStore.instruments = instruments.filter((inst) => inst.id !== toRemove.id);
 		if (selectedInstrumentIndex >= projectStore.instruments.length) {
 			selectedInstrumentIndex = Math.max(0, projectStore.instruments.length - 1);
 		}
+		projectStore.recordHistory(
+			{
+				type: 'instrument.remove',
+				label: `Remove instrument ${toRemove.id}`,
+				affectedDomains: ['instruments']
+			},
+			[projectStore.createSetDiff(['instruments'], beforeInstruments, projectStore.instruments)]
+		);
 		services.audioService.updateInstruments(projectStore.instruments);
 	}
 
 	async function copyInstrument(copiedIndex: number): Promise<void> {
+		flushInstrumentUpdateHistory();
 		const instrument = instruments[copiedIndex];
 		if (!instrument) return;
 		const existingIds = instruments.map((inst) => inst.id);
@@ -211,9 +271,18 @@
 			instrument.name + ' (Copy)'
 		);
 
+		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 		projectStore.instruments = [...instruments, copy];
 		sortInstrumentsAndSyncSelection(newId);
 		editorStateStore.setCurrentInstrument(newId);
+		projectStore.recordHistory(
+			{
+				type: 'instrument.copy',
+				label: `Copy instrument ${instrument.id}`,
+				affectedDomains: ['instruments']
+			},
+			[projectStore.createSetDiff(['instruments'], beforeInstruments, projectStore.instruments)]
+		);
 		services.audioService.updateInstruments(projectStore.instruments);
 		await tick();
 		instrumentListScrollRef
@@ -222,6 +291,7 @@
 	}
 
 	function updateInstrumentId(index: number, newId: string): void {
+		flushInstrumentUpdateHistory();
 		const normalizedId = normalizeInstrumentId(newId);
 		if (!isValidInstrumentId(normalizedId) || !isInstrumentIdInRange(normalizedId)) {
 			return;
@@ -231,6 +301,9 @@
 		if (existingIds.includes(normalizedId)) {
 			return;
 		}
+		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
+		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
+		const beforePatterns = projectStore.cloneForHistory(projectStore.patterns);
 		for (const song of songs) {
 			migrateInstrumentIdInSong(song, oldId, normalizedId);
 		}
@@ -238,6 +311,18 @@
 		updated[index] = { ...updated[index], id: normalizedId };
 		projectStore.instruments = updated;
 		sortInstrumentsAndSyncSelection(normalizedId);
+		projectStore.recordHistory(
+			{
+				type: 'instrument.changeId',
+				label: `Rename instrument ${oldId} to ${normalizedId}`,
+				affectedDomains: ['instruments', 'patterns']
+			},
+			[
+				projectStore.createSetDiff(['instruments'], beforeInstruments, projectStore.instruments),
+				projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs),
+				projectStore.createSetDiff(['patterns'], beforePatterns, projectStore.patterns)
+			]
+		);
 		services.audioService.updateInstruments(instruments);
 		requestPatternRedraw?.();
 	}
@@ -275,6 +360,7 @@
 	}
 
 	async function loadInstrument(): Promise<void> {
+		flushInstrumentUpdateHistory();
 		if (instruments.length === 0) return;
 		try {
 			const text = await pickFileAsText();
@@ -300,6 +386,7 @@
 			);
 			const idx = instruments.findIndex((inst) => inst.id === currentId);
 			if (idx >= 0) {
+				const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 				const updated = [...instruments];
 				updated[idx] = new InstrumentModel(
 					currentId,
@@ -308,6 +395,20 @@
 					replacement.name
 				);
 				projectStore.instruments = updated;
+				projectStore.recordHistory(
+					{
+						type: 'instrument.replace',
+						label: `Replace instrument ${currentId}`,
+						affectedDomains: ['instruments']
+					},
+					[
+						projectStore.createSetDiff(
+							['instruments'],
+							beforeInstruments,
+							projectStore.instruments
+						)
+					]
+				);
 			}
 			services.audioService.updateInstruments(projectStore.instruments);
 			requestPatternRedraw?.();
@@ -319,6 +420,7 @@
 	}
 
 	async function openPresets(): Promise<void> {
+		flushInstrumentUpdateHistory();
 		if (instruments.length === 0) return;
 		const item = await open(PresetsModal, { presetType: 'instrument' });
 		if (
@@ -341,6 +443,7 @@
 		);
 		const idx = instruments.findIndex((inst) => inst.id === currentId);
 		if (idx >= 0) {
+			const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
 			const updated = [...instruments];
 			updated[idx] = new InstrumentModel(
 				currentId,
@@ -349,6 +452,14 @@
 				replacement.name
 			);
 			projectStore.instruments = updated;
+			projectStore.recordHistory(
+				{
+					type: 'instrument.replace',
+					label: `Apply preset to instrument ${currentId}`,
+					affectedDomains: ['instruments']
+				},
+				[projectStore.createSetDiff(['instruments'], beforeInstruments, projectStore.instruments)]
+			);
 		}
 		services.audioService.updateInstruments(projectStore.instruments);
 		requestPatternRedraw?.();

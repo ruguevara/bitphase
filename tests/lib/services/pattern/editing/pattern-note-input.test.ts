@@ -174,7 +174,7 @@ describe('PatternNoteInput', () => {
 			mockUpdateFieldValue as (
 				context: EditingContext,
 				fieldInfo: FieldInfo,
-				newValue: string | number
+				newValue: string | number | Record<string, unknown> | null
 			) => Pattern
 		);
 		vi.mocked(PatternValueUpdates.getFieldValue).mockImplementation(
@@ -257,6 +257,25 @@ describe('PatternNoteInput', () => {
 				expect(result).not.toBeNull();
 				expect(result?.shouldMoveNext).toBe(false);
 				expect(mockUpdateFieldValue).toHaveBeenCalledWith(context, fieldInfo, 'C-4');
+			});
+
+			it('should return a non-mutating result when mapped note matches the current note', () => {
+				const pattern = new Pattern(DEFAULT_PATTERN_ID, DEFAULT_PATTERN_LENGTH);
+				pattern.channels[DEFAULT_CHANNEL_INDEX].rows[DEFAULT_ROW_INDEX].note = new Note(
+					NoteName.C,
+					FIXED_OCTAVE
+				);
+				const context = createMockContext(pattern);
+				const fieldInfo = createFieldInfo(DEFAULT_CHANNEL_INDEX);
+
+				const result = PatternNoteInput.handleNoteInput(context, fieldInfo, 'q', 'KeyQ');
+
+				expect(result).toEqual({
+					updatedPattern: pattern,
+					shouldMoveNext: false,
+					didChange: false
+				});
+				expect(mockUpdateFieldValue).not.toHaveBeenCalled();
 			});
 
 			it('should map KeyC to E-3', () => {

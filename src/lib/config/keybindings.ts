@@ -165,7 +165,12 @@ export function buildEditMenuItems(): MenuItem[] {
 		const action = actionById[id];
 		if (!action) continue;
 		items.push({
-			label: action.label,
+			label:
+				action.id === ACTION_UNDO
+					? undoRedoStore.nextUndoLabel
+					: action.id === ACTION_REDO
+						? undoRedoStore.nextRedoLabel
+						: action.label,
 			type: 'normal',
 			action: action.id,
 			disabled: DISABLED_GETTERS[action.id]

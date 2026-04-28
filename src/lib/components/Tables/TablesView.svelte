@@ -93,29 +93,79 @@
 		return true;
 	}
 
+	let pendingTableUpdateBefore: Table[] | null = null;
+	let pendingTableUpdateLabel = '';
+	let pendingTableUpdateTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	function scheduleTableUpdateHistory(before: Table[], label: string): void {
+		pendingTableUpdateBefore ??= before;
+		pendingTableUpdateLabel = label;
+		if (pendingTableUpdateTimeout !== null) {
+			clearTimeout(pendingTableUpdateTimeout);
+		}
+		pendingTableUpdateTimeout = setTimeout(flushTableUpdateHistory, 120);
+	}
+
+	function flushTableUpdateHistory(): void {
+		if (pendingTableUpdateTimeout !== null) {
+			clearTimeout(pendingTableUpdateTimeout);
+			pendingTableUpdateTimeout = null;
+		}
+		if (!pendingTableUpdateBefore) return;
+		projectStore.recordHistory(
+			{
+				type: 'table.update',
+				label: pendingTableUpdateLabel,
+				affectedDomains: ['tables']
+			},
+			[projectStore.createSetDiff(['tables'], pendingTableUpdateBefore, projectStore.tables)]
+		);
+		pendingTableUpdateBefore = null;
+		pendingTableUpdateLabel = '';
+	}
+
 	function handleTableChange(table: Table): void {
+		const beforeTables = projectStore.cloneForHistory(projectStore.tables);
 		const updated = [...tables];
 		updated[selectedTableIndex] = { ...table };
 		projectStore.tables = updated;
+		scheduleTableUpdateHistory(beforeTables, `Edit table ${tableIdToDisplayChar(table.id)}`);
 		services.audioService.updateTables(projectStore.tables);
 	}
 
 	function updateTableId(index: number, displayChar: string): void {
+		flushTableUpdateHistory();
 		const newId = tableDisplayCharToId(displayChar);
 		if (newId < 0) return;
 		const existingIds = tables.map((t, i) => (i === index ? -1 : t.id));
 		if (existingIds.includes(newId)) return;
+		const beforeTables = projectStore.cloneForHistory(projectStore.tables);
+		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
+		const beforePatterns = projectStore.cloneForHistory(projectStore.patterns);
 		const oldId = tables[index].id;
 		migrateTableIdInSongs(songs, oldId, newId);
 		const updated = [...tables];
 		updated[index] = { ...updated[index], id: newId };
 		projectStore.tables = updated;
 		sortTablesAndSyncSelection(newId);
+		projectStore.recordHistory(
+			{
+				type: 'table.changeId',
+				label: `Rename table ${tableIdToDisplayChar(oldId)} to ${tableIdToDisplayChar(newId)}`,
+				affectedDomains: ['tables', 'patterns']
+			},
+			[
+				projectStore.createSetDiff(['tables'], beforeTables, projectStore.tables),
+				projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs),
+				projectStore.createSetDiff(['patterns'], beforePatterns, projectStore.patterns)
+			]
+		);
 		services.audioService.updateTables(projectStore.tables);
 		requestPatternRedraw?.();
 	}
 
 	async function addTable(): Promise<void> {
+		flushTableUpdateHistory();
 		const existingIds = tables.map((t) => t.id);
 		const newId = getNextAvailableTableId(existingIds);
 		if (newId < 0) return;
@@ -125,9 +175,18 @@
 			0,
 			`Table ${(newId + 1).toString(36).toUpperCase()}`
 		);
+		const beforeTables = projectStore.cloneForHistory(projectStore.tables);
 		projectStore.tables = [...tables, newTable];
 		sortTablesAndSyncSelection(newId);
 		editorStateStore.setCurrentTable(newId);
+		projectStore.recordHistory(
+			{
+				type: 'table.add',
+				label: `Add table ${tableIdToDisplayChar(newId)}`,
+				affectedDomains: ['tables']
+			},
+			[projectStore.createSetDiff(['tables'], beforeTables, projectStore.tables)]
+		);
 		services.audioService.updateTables(projectStore.tables);
 		await tick();
 		tableListScrollRef
@@ -136,24 +195,45 @@
 	}
 
 	function removeTable(index: number): void {
+		flushTableUpdateHistory();
 		if (tables.length <= 1) return;
+		const beforeTables = projectStore.cloneForHistory(projectStore.tables);
+		const removed = tables[index];
 		projectStore.tables = tables.filter((_, i) => i !== index);
 		if (selectedTableIndex >= projectStore.tables.length) {
 			selectedTableIndex = projectStore.tables.length - 1;
 		}
+		projectStore.recordHistory(
+			{
+				type: 'table.remove',
+				label: `Remove table ${tableIdToDisplayChar(removed.id)}`,
+				affectedDomains: ['tables']
+			},
+			[projectStore.createSetDiff(['tables'], beforeTables, projectStore.tables)]
+		);
 		services.audioService.updateTables(projectStore.tables);
 	}
 
 	async function copyTable(copiedIndex: number): Promise<void> {
+		flushTableUpdateHistory();
 		const table = tables[copiedIndex];
 		if (!table) return;
 		const existingIds = tables.map((t) => t.id);
 		const newId = getNextAvailableTableId(existingIds);
 		if (newId < 0) return;
 		const copy = new TableModel(newId, [...table.rows], table.loop, table.name + ' (Copy)');
+		const beforeTables = projectStore.cloneForHistory(projectStore.tables);
 		projectStore.tables = [...tables, copy];
 		sortTablesAndSyncSelection(newId);
 		editorStateStore.setCurrentTable(newId);
+		projectStore.recordHistory(
+			{
+				type: 'table.copy',
+				label: `Copy table ${tableIdToDisplayChar(table.id)}`,
+				affectedDomains: ['tables']
+			},
+			[projectStore.createSetDiff(['tables'], beforeTables, projectStore.tables)]
+		);
 		services.audioService.updateTables(projectStore.tables);
 		await tick();
 		tableListScrollRef
@@ -248,6 +328,7 @@
 	}
 
 	async function loadTable(): Promise<void> {
+		flushTableUpdateHistory();
 		if (tables.length === 0) return;
 		try {
 			const text = await pickFileAsText();
@@ -271,9 +352,18 @@
 				loop,
 				name || `Table ${tableIdToDisplayChar(currentId)}`
 			);
+			const beforeTables = projectStore.cloneForHistory(projectStore.tables);
 			const updated = [...tables];
 			updated[selectedTableIndex] = replacement;
 			projectStore.tables = updated;
+			projectStore.recordHistory(
+				{
+					type: 'table.replace',
+					label: `Replace table ${tableIdToDisplayChar(currentId)}`,
+					affectedDomains: ['tables']
+				},
+				[projectStore.createSetDiff(['tables'], beforeTables, projectStore.tables)]
+			);
 			services.audioService.updateTables(projectStore.tables);
 		} catch (err) {
 			if ((err as Error).message !== 'No file selected') {

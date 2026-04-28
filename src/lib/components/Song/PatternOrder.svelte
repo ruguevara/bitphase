@@ -17,6 +17,7 @@
 	import { open } from '../../services/modal/modal-service';
 	import ColorPickerModal from '../Modal/ColorPickerModal.svelte';
 	import { projectStore } from '../../stores/project.svelte';
+	import type { ProjectDiff } from '../../models/history';
 
 	interface Props {
 		currentPatternOrderIndex: number;
@@ -222,6 +223,50 @@
 		}
 	}
 
+	function recordPatternOrderHistory(
+		type:
+			| 'patternOrder.add'
+			| 'patternOrder.remove'
+			| 'patternOrder.move'
+			| 'patternOrder.setPatternId'
+			| 'patternOrder.clone'
+			| 'patternOrder.makeUnique'
+			| 'patternOrder.loopPoint'
+			| 'patternOrder.color',
+		label: string,
+		before: {
+			patterns?: Pattern[][];
+			patternOrder?: number[];
+			loopPointId?: number;
+			patternOrderColors?: Record<number, string>;
+		}
+	): void {
+		const diffs: ProjectDiff[] = [];
+		if (before.patterns) {
+			diffs.push(projectStore.createSetDiff(['patterns'], before.patterns, projectStore.patterns));
+		}
+		if (before.patternOrder) {
+			diffs.push(
+				projectStore.createSetDiff(['patternOrder'], before.patternOrder, projectStore.patternOrder)
+			);
+		}
+		if (before.loopPointId !== undefined) {
+			diffs.push(
+				projectStore.createSetDiff(['loopPointId'], before.loopPointId, projectStore.loopPointId)
+			);
+		}
+		if (before.patternOrderColors) {
+			diffs.push(
+				projectStore.createSetDiff(
+					['patternOrderColors'],
+					before.patternOrderColors,
+					projectStore.patternOrderColors
+				)
+			);
+		}
+		projectStore.recordHistory({ type, label, affectedDomains: ['patterns', 'patternOrder'] }, diffs);
+	}
+
 	function getVisibleRange() {
 		const visibleCount = Math.floor(canvasHeight / CELL_HEIGHT);
 		const halfVisible = Math.floor(visibleCount / 2);
@@ -361,6 +406,11 @@
 			dropTargetIndex !== null &&
 			draggedIndex !== dropTargetIndex
 		) {
+			const before = {
+				patternOrder: [...projectStore.patternOrder],
+				loopPointId: projectStore.loopPointId,
+				patternOrderColors: { ...projectStore.patternOrderColors }
+			};
 			const result = PatternService.movePatternInOrder(
 				patternOrder,
 				draggedIndex,
@@ -369,6 +419,7 @@
 			projectStore.patternOrder = result.newPatternOrder;
 			moveColor(draggedIndex, dropTargetIndex);
 			adjustLoopPointAfterMove(draggedIndex, dropTargetIndex);
+			recordPatternOrderHistory('patternOrder.move', 'Move pattern order slot', before);
 
 			if (currentPatternOrderIndex === draggedIndex) {
 				currentPatternOrderIndex = dropTargetIndex;
@@ -467,10 +518,19 @@
 		);
 
 		if (result) {
+			const before = {
+				patterns: projectStore.patterns.map((songPatterns) => [...songPatterns]),
+				patternOrder: [...projectStore.patternOrder]
+			};
 			result.newPatternsPerSong.forEach((newPatterns, songIndex) => {
 				projectStore.updatePatterns(songIndex, newPatterns);
 			});
 			projectStore.patternOrder = result.newPatternOrder;
+			recordPatternOrderHistory(
+				'patternOrder.setPatternId',
+				`Set pattern order slot to ${newId}`,
+				before
+			);
 			onPatternOrderEdited?.();
 		}
 	}
@@ -621,6 +681,12 @@
 	}
 
 	function addPatternAtIndex(index: number): void {
+		const before = {
+			patterns: projectStore.patterns.map((songPatterns) => [...songPatterns]),
+			patternOrder: [...projectStore.patternOrder],
+			loopPointId: projectStore.loopPointId,
+			patternOrderColors: { ...projectStore.patternOrderColors }
+		};
 		const result = PatternService.addPatternAfterMultiChip(
 			projectStore.patterns,
 			patternOrder,
@@ -635,6 +701,7 @@
 		projectStore.patternOrder = result.newPatternOrder;
 		shiftColorsAfterAdd(result.insertIndex);
 		adjustLoopPointAfterAdd(result.insertIndex);
+		recordPatternOrderHistory('patternOrder.add', `Add pattern ${result.newPatternId}`, before);
 		currentPatternOrderIndex = result.insertIndex;
 		selectedRow = 0;
 		onPatternSelect?.(result.insertIndex);
@@ -643,11 +710,17 @@
 	}
 
 	function removePatternAtIndex(index: number): void {
+		const before = {
+			patternOrder: [...projectStore.patternOrder],
+			loopPointId: projectStore.loopPointId,
+			patternOrderColors: { ...projectStore.patternOrderColors }
+		};
 		const result = PatternService.removePatternAt(patternOrder, index);
 
 		projectStore.patternOrder = result.newPatternOrder;
 		shiftColorsAfterRemove(index);
 		adjustLoopPointAfterRemove(index, result.newPatternOrder.length);
+		recordPatternOrderHistory('patternOrder.remove', `Remove pattern ${patternOrder[index]}`, before);
 
 		currentPatternOrderIndex = PatternService.calculateAdjustedIndex(
 			currentPatternOrderIndex,
@@ -661,6 +734,12 @@
 	}
 
 	function clonePatternAtIndex(index: number): void {
+		const before = {
+			patterns: projectStore.patterns.map((songPatterns) => [...songPatterns]),
+			patternOrder: [...projectStore.patternOrder],
+			loopPointId: projectStore.loopPointId,
+			patternOrderColors: { ...projectStore.patternOrderColors }
+		};
 		const result = PatternService.clonePatternAfterMultiChip(
 			projectStore.patterns,
 			patternOrder,
@@ -676,6 +755,7 @@
 		projectStore.patternOrder = result.newPatternOrder;
 		shiftColorsAfterAdd(result.insertIndex);
 		adjustLoopPointAfterAdd(result.insertIndex);
+		recordPatternOrderHistory('patternOrder.clone', `Clone pattern ${patternOrder[index]}`, before);
 		currentPatternOrderIndex = result.insertIndex;
 		selectedRow = 0;
 		onPatternSelect?.(result.insertIndex);
@@ -693,6 +773,10 @@
 		const targetPattern = patternsRecord[targetPatternId] ?? null;
 
 		if (!targetPattern) return;
+		const before = {
+			patterns: projectStore.patterns.map((songPatterns) => [...songPatterns]),
+			patternOrder: [...projectStore.patternOrder]
+		};
 
 		const result = PatternService.makePatternUnique(
 			patternsRecord,
@@ -705,6 +789,11 @@
 
 		projectStore.addPatternToAllSongs(result.newPatterns[result.newPatternId]);
 		projectStore.patternOrder = result.newPatternOrder;
+		recordPatternOrderHistory(
+			'patternOrder.makeUnique',
+			`Make pattern ${targetPatternId} unique`,
+			before
+		);
 
 		if (index === currentPatternOrderIndex) {
 			selectedRow = 0;
@@ -751,21 +840,27 @@
 		closeContextMenu();
 
 		if (data.action === 'loop-set') {
+			const before = { loopPointId: projectStore.loopPointId };
 			projectStore.loopPointId = index;
+			recordPatternOrderHistory('patternOrder.loopPoint', `Set loop marker to ${index}`, before);
 			draw();
 			return;
 		}
 
 		if (data.action === 'loop-clear') {
+			const before = { loopPointId: projectStore.loopPointId };
 			projectStore.loopPointId = 0;
+			recordPatternOrderHistory('patternOrder.loopPoint', 'Clear loop marker', before);
 			draw();
 			return;
 		}
 
 		if (data.action === 'color-clear') {
+			const before = { patternOrderColors: { ...projectStore.patternOrderColors } };
 			const next = { ...patternOrderColors };
 			delete next[index];
 			projectStore.patternOrderColors = next;
+			recordPatternOrderHistory('patternOrder.color', `Clear color for order ${index}`, before);
 			draw();
 			return;
 		}
@@ -776,7 +871,9 @@
 			})
 				.then((color: string | undefined) => {
 					if (color !== undefined) {
+						const before = { patternOrderColors: { ...projectStore.patternOrderColors } };
 						projectStore.patternOrderColors = { ...patternOrderColors, [index]: color };
+						recordPatternOrderHistory('patternOrder.color', `Set color for order ${index}`, before);
 						draw();
 					}
 				})

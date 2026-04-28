@@ -94,6 +94,8 @@
 	}
 
 	function setValue(mode: 'pitch' | 'shift', index: number, value: number) {
+		if (mode === 'pitch' && pitches[index] === value) return;
+		if (mode === 'shift' && shifts[index] === value) return;
 		if (mode === 'pitch') {
 			pitches[index] = value;
 		} else {

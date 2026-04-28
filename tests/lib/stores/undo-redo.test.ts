@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { undoRedoStore } from '../../../src/lib/stores/undo-redo.svelte';
 import type { Action, CursorPosition } from '../../../src/lib/models/actions';
+import type { ProjectHistoryEntry } from '../../../src/lib/models/history';
 
 class MockAction implements Action {
 	executed = false;
@@ -201,6 +202,55 @@ describe('UndoRedoStore', () => {
 		expect(undoRedoStore.getRedoStackSize()).toBe(0);
 		expect(undoRedoStore.canUndo).toBe(false);
 		expect(undoRedoStore.canRedo).toBe(false);
+	});
+
+	it('should expose labels for project history entries', () => {
+		const entry: ProjectHistoryEntry = {
+			type: 'table.add',
+			label: 'Add table 2',
+			undoLabel: 'Undo Add Table',
+			redoLabel: 'Redo Add Table',
+			diffs: [],
+			inverseDiffs: [],
+			affectedDomains: ['tables']
+		};
+
+		undoRedoStore.pushProjectEntry(entry);
+
+		expect(undoRedoStore.nextUndoLabel).toBe('Undo Add Table');
+		expect(undoRedoStore.nextRedoLabel).toBe('Redo');
+	});
+
+	it('should apply project history entries and emit feedback', () => {
+		const applier = vi.fn();
+		const feedback = vi.fn();
+		const unsubscribe = undoRedoStore.onFeedback(feedback);
+		const entry: ProjectHistoryEntry = {
+			type: 'instrument.add',
+			label: 'Add instrument 02',
+			undoLabel: 'Undo Add Instrument',
+			redoLabel: 'Redo Add Instrument',
+			diffs: [],
+			inverseDiffs: [],
+			affectedDomains: ['instruments']
+		};
+
+		undoRedoStore.setProjectEntryApplier(applier);
+		undoRedoStore.pushProjectEntry(entry);
+		undoRedoStore.undo();
+		undoRedoStore.redo();
+		unsubscribe();
+
+		expect(applier).toHaveBeenNthCalledWith(1, entry, 'undo');
+		expect(applier).toHaveBeenNthCalledWith(2, entry, 'redo');
+		expect(feedback).toHaveBeenNthCalledWith(1, {
+			direction: 'undo',
+			label: 'Add instrument 02'
+		});
+		expect(feedback).toHaveBeenNthCalledWith(2, {
+			direction: 'redo',
+			label: 'Add instrument 02'
+		});
 	});
 });
 

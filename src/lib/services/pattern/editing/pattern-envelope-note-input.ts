@@ -1,5 +1,4 @@
-import type { EditingContext, FieldInfo } from './editing-context';
-import type { Pattern } from '../../../models/song';
+import type { EditingContext, FieldInfo, PatternEditingResult } from './editing-context';
 import { PatternValueUpdates } from './pattern-value-updates';
 import { editorStateStore } from '../../../stores/editor-state.svelte';
 import { formatNoteFromEnum, midiNoteToNoteString } from '../../../utils/note-utils';
@@ -12,7 +11,7 @@ export class PatternEnvelopeNoteInput {
 		fieldInfo: FieldInfo,
 		key: string,
 		code: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (!context.tuningTable) {
 			return null;
 		}
@@ -25,18 +24,12 @@ export class PatternEnvelopeNoteInput {
 				context.tuningTable,
 				editorStateStore.octave
 			);
-			const updatedPattern = PatternValueUpdates.updateFieldValue(
-				context,
-				fieldInfo,
-				envelopePeriod
-			);
-			return { updatedPattern, shouldMoveNext: false };
+			return this.applyEnvelopePeriod(context, fieldInfo, envelopePeriod);
 		}
 
 		const upperKey = key.toUpperCase();
 		if (upperKey === 'A') {
-			const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, 0);
-			return { updatedPattern, shouldMoveNext: false };
+			return this.applyEnvelopePeriod(context, fieldInfo, 0);
 		}
 
 		const letterNote = PatternNoteInput.getLetterNote(key);
@@ -48,12 +41,7 @@ export class PatternEnvelopeNoteInput {
 				context.tuningTable,
 				currentOctave
 			);
-			const updatedPattern = PatternValueUpdates.updateFieldValue(
-				context,
-				fieldInfo,
-				envelopePeriod
-			);
-			return { updatedPattern, shouldMoveNext: false };
+			return this.applyEnvelopePeriod(context, fieldInfo, envelopePeriod);
 		}
 
 		return null;
@@ -63,7 +51,7 @@ export class PatternEnvelopeNoteInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		midiNote: number
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (!context.tuningTable) {
 			return null;
 		}
@@ -74,6 +62,17 @@ export class PatternEnvelopeNoteInput {
 			context.tuningTable,
 			editorStateStore.octave
 		);
+		return this.applyEnvelopePeriod(context, fieldInfo, envelopePeriod);
+	}
+
+	private static applyEnvelopePeriod(
+		context: EditingContext,
+		fieldInfo: FieldInfo,
+		envelopePeriod: number
+	): PatternEditingResult {
+		if (PatternValueUpdates.getFieldValue(context, fieldInfo) === envelopePeriod) {
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
+		}
 		const updatedPattern = PatternValueUpdates.updateFieldValue(
 			context,
 			fieldInfo,

@@ -77,10 +77,12 @@
 
 	let chipSettingOverrides = $state<Record<string, Record<string, unknown>>>({});
 	let previousSongsRef = $state<Song[] | undefined>(undefined);
+	let settingsHistorySnapshot = $state<Record<string, unknown>>({});
 	$effect(() => {
 		if (songs !== previousSongsRef) {
 			previousSongsRef = songs;
 			chipSettingOverrides = {};
+			settingsHistorySnapshot = { ...projectStore.settings };
 		}
 	});
 
@@ -101,11 +103,25 @@
 	}
 
 	function handleSettingChange(key: string, value: unknown, setting: ChipSetting) {
+		const beforeSettings = { ...settingsHistorySnapshot };
+		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
 		const normalized =
 			setting.type === 'number' ? Number(value) || setting.defaultValue : value;
 		for (const song of songs) {
 			(song as unknown as Record<string, unknown>)[key] = normalized;
 		}
+		settingsHistorySnapshot = { ...projectStore.settings };
+		projectStore.recordHistory(
+			{
+				type: 'settings.update',
+				label: `Update ${setting.label}`,
+				affectedDomains: ['settings', 'songs']
+			},
+			[
+				projectStore.createSetDiff(['settings'], beforeSettings, projectStore.settings),
+				projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs)
+			]
+		);
 		if (setting.notifyAudioService) {
 			services.audioService.chipSettings.set(key, value);
 		}
@@ -131,6 +147,7 @@
 		value: unknown,
 		setting: ChipSetting
 	) {
+		const beforeSongs = projectStore.cloneForHistory(projectStore.songs);
 		let normalized = setting.type === 'number' ? Number(value) || setting.defaultValue : value;
 		if (setting.type === 'number' && setting.min !== undefined && setting.max !== undefined) {
 			const n = Number(normalized);
@@ -161,6 +178,14 @@
 			}
 			services.audioService.chipSettings.set(key, normalized);
 		}
+		projectStore.recordHistory(
+			{
+				type: 'chipSettings.update',
+				label: `Update ${setting.label}`,
+				affectedDomains: ['chipSettings', 'songs']
+			},
+			[projectStore.createSetDiff(['songs'], beforeSongs, projectStore.songs)]
+		);
 	}
 
 	function getChipSettingValue(chipType: string, key: string): unknown {

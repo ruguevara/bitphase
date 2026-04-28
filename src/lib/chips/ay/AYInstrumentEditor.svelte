@@ -65,17 +65,19 @@
 	};
 
 	const MAX_ROWS = 512;
-
-	let isDragging = $state(false);
-	let dragType:
-		| 'volume'
+	type BooleanInstrumentField =
 		| 'tone'
 		| 'noise'
 		| 'envelope'
 		| 'retriggerEnvelope'
 		| 'toneAccumulation'
 		| 'noiseAccumulation'
-		| 'envelopeAccumulation'
+		| 'envelopeAccumulation';
+
+	let isDragging = $state(false);
+	let dragType:
+		| 'volume'
+		| BooleanInstrumentField
 		| null = $state(null);
 	let dragValue: boolean | null = $state(null);
 
@@ -99,37 +101,17 @@
 		}
 	}
 
-	function beginDragBoolean(
-		index: number,
-		field:
-			| 'tone'
-			| 'noise'
-			| 'envelope'
-			| 'retriggerEnvelope'
-			| 'toneAccumulation'
-			| 'noiseAccumulation'
-			| 'envelopeAccumulation'
-	) {
+	function beginDragBoolean(index: number, field: BooleanInstrumentField) {
 		isDragging = true;
 		dragType = field;
 		const currentValue = rows[index][field];
 		dragValue = !currentValue;
-		updateRow(index, field, dragValue);
+		updateBooleanRow(index, field, dragValue);
 	}
 
-	function dragOverBoolean(
-		index: number,
-		field:
-			| 'tone'
-			| 'noise'
-			| 'envelope'
-			| 'retriggerEnvelope'
-			| 'toneAccumulation'
-			| 'noiseAccumulation'
-			| 'envelopeAccumulation'
-	) {
+	function dragOverBoolean(index: number, field: BooleanInstrumentField) {
 		if (isDragging && dragValue !== null) {
-			updateRow(index, field, dragValue);
+			updateBooleanRow(index, field, dragValue);
 		}
 	}
 
@@ -185,9 +167,15 @@
 	}
 
 	function updateRow(index: number, field: string, value: any) {
+		if (rows[index][field] === value) return;
 		rows[index] = { ...rows[index], [field]: value };
 		rows = [...rows];
 		updateInstrument({ rows });
+	}
+
+	function updateBooleanRow(index: number, field: BooleanInstrumentField, value: boolean) {
+		if (Boolean(rows[index][field]) === value) return;
+		updateRow(index, field, value);
 	}
 
 	const NUMERIC_FIELDS = [
@@ -215,14 +203,14 @@
 	function cycleAmplitudeSlide(index: number) {
 		const row = rows[index];
 		if (!row.amplitudeSliding) {
-			updateRow(index, 'amplitudeSliding', true);
-			updateRow(index, 'amplitudeSlideUp', true);
+			rows[index] = { ...row, amplitudeSliding: true, amplitudeSlideUp: true };
 		} else if (row.amplitudeSlideUp) {
-			updateRow(index, 'amplitudeSlideUp', false);
+			rows[index] = { ...row, amplitudeSlideUp: false };
 		} else {
-			updateRow(index, 'amplitudeSliding', false);
-			updateRow(index, 'amplitudeSlideUp', false);
+			rows[index] = { ...row, amplitudeSliding: false, amplitudeSlideUp: false };
 		}
+		rows = [...rows];
+		updateInstrument({ rows });
 	}
 
 	function updateNumericField(index: number, field: string, event: Event) {

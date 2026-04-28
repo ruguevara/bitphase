@@ -39,14 +39,7 @@
 	import { EffectField } from '../../services/pattern/editing/effect-field';
 	import { undoRedoStore } from '../../stores/undo-redo.svelte';
 	import { editorStateStore } from '../../stores/editor-state.svelte';
-	import {
-		PatternFieldEditAction,
-		BulkPatternEditAction,
-		VirtualChannelAction,
-		type PatternEditContext,
-		type VirtualChannelEditContext,
-		type CursorPosition
-	} from '../../models/actions';
+	import type { CursorPosition } from '../../models/actions';
 	import {
 		ClipboardService,
 		type ClipboardContext
@@ -78,10 +71,10 @@
 	import { PatternTemplateParser } from '../../services/pattern/editing/pattern-template-parsing';
 	import { ContextMenu } from '../Menu';
 	import type { MenuItem } from '../Menu/types';
-	import { editMenuItems } from '../../config/app-menu';
 	import {
 		ACTION_PLAY_FROM_ROW,
-		ACTION_SELECT_INSTRUMENT_OR_TABLE_IN_EDITOR
+		ACTION_SELECT_INSTRUMENT_OR_TABLE_IN_EDITOR,
+		buildEditMenuItems
 	} from '../../config/keybindings';
 	import { tableDisplayCharToId } from '../../utils/table-id';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
@@ -100,7 +93,11 @@
 	import { VirtualChannelService } from '../../services/pattern/virtual-channel-service';
 	import { AYProcessor } from '../../chips/ay/processor';
 	import { midiService } from '../../services/midi/midi-service';
-	import type { EditingContext, FieldInfo } from '../../services/pattern/editing/editing-context';
+	import type {
+		EditingContext,
+		FieldInfo,
+		PatternEditingResult
+	} from '../../services/pattern/editing/editing-context';
 
 	let {
 		songIndex,
@@ -151,6 +148,7 @@
 	let channelContextMenuPosition = $state<{ x: number; y: number } | null>(null);
 	let channelContextMenuHwIndex = $state<number>(-1);
 	let channelContextMenuVirtualIndex = $state<number>(-1);
+	const editContextMenuItems = $derived(buildEditMenuItems());
 
 	const services: { audioService: AudioService } = getContext('container');
 
@@ -304,9 +302,11 @@
 	}
 
 	$effect(() => {
-		patterns.length;
-		patternOrder.length;
+		patterns;
+		patternOrder;
 		clearAllCaches();
+		lastVisibleRowsCache = null;
+		if (ctx && renderer && textParser) draw();
 	});
 
 	let lastActiveState = isActive;
@@ -348,26 +348,6 @@
 		lastVisibleRowsCache = null;
 	}
 
-	function createEditContext(): PatternEditContext {
-		return {
-			patterns,
-			updatePatterns: (newPatterns: Pattern[]) => {
-				updatePatterns(newPatterns);
-				lastDrawnPatternLength = -1;
-				lastVisibleRowsCache = null;
-				clearAllCaches();
-				draw();
-			},
-			setCursor: (position: CursorPosition) => {
-				selectedRow = position.row;
-				selectedColumn = position.column;
-				currentPatternOrderIndex = position.patternOrderIndex;
-				clearAllCaches();
-				draw();
-			}
-		};
-	}
-
 	function getCursorPosition(): CursorPosition {
 		return {
 			row: selectedRow,
@@ -376,14 +356,24 @@
 		};
 	}
 
-	function recordPatternEdit(oldPattern: Pattern, newPattern: Pattern): void {
-		const action = new PatternFieldEditAction(
-			createEditContext(),
-			oldPattern,
-			newPattern,
-			getCursorPosition()
+	function getPatternHistoryPath(pattern: Pattern): (string | number)[] {
+		const patternIndex = patterns.findIndex((p) => p.id === pattern.id);
+		return patternIndex >= 0 ? ['patterns', songIndex, patternIndex] : ['patterns', songIndex];
+	}
+
+	function recordPatternEdit(oldPattern: Pattern, newPattern: Pattern, bulk = false): void {
+		projectStore.recordHistory(
+			{
+				type: bulk ? 'pattern.bulkEdit' : 'pattern.edit',
+				label: bulk
+					? `Bulk edit pattern ${oldPattern.id}`
+					: `Edit pattern ${oldPattern.id}`,
+				affectedDomains: ['patterns'],
+				beforeSelection: getCursorPosition(),
+				afterSelection: getCursorPosition()
+			},
+			[projectStore.createSetDiff(getPatternHistoryPath(oldPattern), oldPattern, newPattern)]
 		);
-		undoRedoStore.pushAction(action);
 	}
 
 	function refreshAfterVirtualChannelChange(): void {
@@ -394,33 +384,8 @@
 		draw();
 	}
 
-	function createVirtualChannelEditContext(): VirtualChannelEditContext {
-		const song = projectStore.songs[songIndex];
-		return {
-			patterns,
-			song: song!,
-			updatePatterns: (newPatterns: Pattern[]) => {
-				updatePatterns(newPatterns);
-				lastDrawnPatternLength = -1;
-				lastVisibleRowsCache = null;
-			},
-			setCursor: (position: CursorPosition) => {
-				selectedRow = position.row;
-				selectedColumn = position.column;
-				currentPatternOrderIndex = position.patternOrderIndex;
-			},
-			onVirtualChannelChange: refreshAfterVirtualChannelChange
-		};
-	}
-
 	function recordBulkPatternEdit(oldPattern: Pattern, newPattern: Pattern): void {
-		const action = new BulkPatternEditAction(
-			createEditContext(),
-			oldPattern,
-			newPattern,
-			getCursorPosition()
-		);
-		undoRedoStore.pushAction(action);
+		recordPatternEdit(oldPattern, newPattern, true);
 	}
 
 	export function resetToBeginning() {
@@ -503,6 +468,19 @@
 		}
 
 		const resizedPattern = PatternService.resizePattern(pattern, newLength, schema);
+		projectStore.recordHistory(
+			{
+				type: 'pattern.resize',
+				label: `Resize pattern ${pattern.id}`,
+				affectedDomains: ['patterns'],
+				beforeSelection: getCursorPosition(),
+				afterSelection: {
+					...getCursorPosition(),
+					row: Math.min(selectedRow, resizedPattern.length - 1)
+				}
+			},
+			[projectStore.createSetDiff(getPatternHistoryPath(pattern), pattern, resizedPattern)]
+		);
 		const newPatterns = PatternService.updatePatternInArray(patterns, resizedPattern);
 		updatePatterns(newPatterns);
 
@@ -1426,34 +1404,37 @@
 	}
 
 	function applyEditingResult(
-		editingResult: { updatedPattern: Pattern; shouldMoveNext: boolean },
+		editingResult: PatternEditingResult,
 		fieldInfoBeforeEdit: FieldInfo | null,
 		context: EditingContext,
 		previewKey?: string
 	): void {
 		let finalPattern = editingResult.updatedPattern;
+		const didMutate = editingResult.didChange !== false;
 
-		if (
-			autoEnvStore.enabled &&
-			fieldInfoBeforeEdit &&
-			fieldInfoBeforeEdit.channelIndex >= 0 &&
-			(fieldInfoBeforeEdit.fieldType === 'note' ||
-				fieldInfoBeforeEdit.fieldKey === 'envelopeShape')
-		) {
-			const autoEnvPattern = AutoEnvService.applyAutoEnvelope(
-				finalPattern,
-				selectedRow,
-				fieldInfoBeforeEdit.channelIndex,
-				tuningTable,
-				autoEnvStore.currentRatio
-			);
-			if (autoEnvPattern) {
-				finalPattern = autoEnvPattern;
+		if (didMutate) {
+			if (
+				autoEnvStore.enabled &&
+				fieldInfoBeforeEdit &&
+				fieldInfoBeforeEdit.channelIndex >= 0 &&
+				(fieldInfoBeforeEdit.fieldType === 'note' ||
+					fieldInfoBeforeEdit.fieldKey === 'envelopeShape')
+			) {
+				const autoEnvPattern = AutoEnvService.applyAutoEnvelope(
+					finalPattern,
+					selectedRow,
+					fieldInfoBeforeEdit.channelIndex,
+					tuningTable,
+					autoEnvStore.currentRatio
+				);
+				if (autoEnvPattern) {
+					finalPattern = autoEnvPattern;
+				}
 			}
-		}
 
-		recordPatternEdit(context.pattern, finalPattern);
-		updatePatternInArray(finalPattern);
+			recordPatternEdit(context.pattern, finalPattern);
+			updatePatternInArray(finalPattern);
+		}
 
 		if (editingResult.shouldMoveNext) {
 			moveColumn(1);
@@ -1538,12 +1519,7 @@
 
 		if (editingResult) {
 			event.preventDefault();
-			applyEditingResult(
-				editingResult,
-				built.fieldInfoBeforeEdit,
-				built.context,
-				event.key
-			);
+			applyEditingResult(editingResult, built.fieldInfoBeforeEdit, built.context, event.key);
 		} else if (event.key.length === 1) {
 			event.preventDefault();
 		}
@@ -1981,16 +1957,27 @@
 
 		song.virtualChannelMap = result.updatedMap;
 		updatePatterns(result.updatedPatterns);
-
-		const action = new VirtualChannelAction(
-			createVirtualChannelEditContext(),
-			oldPatterns,
-			result.updatedPatterns,
-			oldMap,
-			result.updatedMap,
-			getCursorPosition()
+		projectStore.recordHistory(
+			{
+				type: 'virtualChannels.update',
+				label: 'Update virtual channels',
+				affectedDomains: ['virtualChannels', 'patterns'],
+				beforeSelection: getCursorPosition(),
+				afterSelection: getCursorPosition()
+			},
+			[
+				projectStore.createSetDiff(
+					['songs', songIndex, 'virtualChannelMap'],
+					oldMap,
+					result.updatedMap
+				),
+				projectStore.createSetDiff(
+					['patterns', songIndex],
+					oldPatterns,
+					result.updatedPatterns
+				)
+			]
 		);
-		undoRedoStore.pushAction(action);
 
 		refreshAfterVirtualChannelChange();
 	}
@@ -2955,7 +2942,7 @@
 
 		<ContextMenu
 			position={contextMenuPosition}
-			items={editMenuItems}
+			items={editContextMenuItems}
 			onAction={handleContextMenuAction}
 			onClose={closeContextMenu} />
 

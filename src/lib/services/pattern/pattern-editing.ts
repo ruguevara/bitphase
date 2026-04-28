@@ -1,5 +1,4 @@
-import type { Pattern } from '../../models/song';
-import type { EditingContext, FieldInfo } from './editing/editing-context';
+import type { EditingContext, FieldInfo, PatternEditingResult } from './editing/editing-context';
 import { PatternFieldDetection } from './editing/pattern-field-detection';
 import { PatternNoteInput } from './editing/pattern-note-input';
 import { PatternEnvelopeNoteInput } from './editing/pattern-envelope-note-input';
@@ -18,7 +17,7 @@ export class PatternEditingService {
 		context: EditingContext,
 		key: string,
 		code: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (key === 'Delete' || key === 'Backspace') {
 			return PatternDeleteHandler.handleDelete(context);
 		}
@@ -44,10 +43,7 @@ export class PatternEditingService {
 		}
 	}
 
-	static handleMidiNote(
-		context: EditingContext,
-		midiNote: number
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	static handleMidiNote(context: EditingContext, midiNote: number): PatternEditingResult | null {
 		const fieldInfo = this.getFieldAtCursor(context);
 		if (!fieldInfo) {
 			return null;

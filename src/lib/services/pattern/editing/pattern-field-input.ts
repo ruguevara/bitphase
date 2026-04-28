@@ -1,5 +1,4 @@
-import type { EditingContext, FieldInfo } from './editing-context';
-import type { Pattern } from '../../../models/song';
+import type { EditingContext, FieldInfo, PatternEditingResult } from './editing-context';
 import { PatternValueUpdates } from './pattern-value-updates';
 import { StringManipulation } from './string-manipulation';
 import { FieldStrategyFactory } from './field-strategies';
@@ -13,7 +12,7 @@ export class PatternFieldInput {
 		fieldInfo: FieldInfo,
 		key: string,
 		code: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (fieldInfo.fieldKey === 'envelopeValue' && context.tuningTable) {
 			const envelopeAsNote = editorStateStore.envelopeAsNote;
 			if (envelopeAsNote) {
@@ -58,6 +57,8 @@ export class PatternFieldInput {
 			fieldInfo.charOffset,
 			upperKey
 		);
+		if (newStr === currentStr)
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 		const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newValue);
@@ -68,7 +69,7 @@ export class PatternFieldInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		key: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (!/^[0-9]$/.test(key)) {
 			return null;
 		}
@@ -84,6 +85,8 @@ export class PatternFieldInput {
 			fieldInfo.charOffset,
 			key
 		);
+		if (newStr === currentStr)
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 		const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newValue);
@@ -94,11 +97,14 @@ export class PatternFieldInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		key: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		const upperKey = key.toUpperCase();
 		const isTableField = fieldInfo.fieldKey === 'table';
 
 		if (isTableField && (upperKey === 'A' || upperKey === 'O')) {
+			const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
+			if (currentValue === -1)
+				return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 			const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, -1);
 			return { updatedPattern, shouldMoveNext: false };
 		}
@@ -117,6 +123,8 @@ export class PatternFieldInput {
 			fieldInfo.charOffset,
 			upperKey
 		);
+		if (newStr === currentStr)
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 		const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newValue);
@@ -127,7 +135,7 @@ export class PatternFieldInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		key: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		if (key.length !== 1) {
 			return null;
 		}
@@ -143,6 +151,8 @@ export class PatternFieldInput {
 			fieldInfo.charOffset,
 			key
 		);
+		if (newStr === currentStr)
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newStr);
 		return { updatedPattern, shouldMoveNext: false };
@@ -152,7 +162,7 @@ export class PatternFieldInput {
 		context: EditingContext,
 		fieldInfo: FieldInfo,
 		key: string
-	): { updatedPattern: Pattern; shouldMoveNext: boolean } | null {
+	): PatternEditingResult | null {
 		const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
 		let currentStr = EffectField.formatValue(currentValue);
 		if (currentStr === null) {
@@ -163,6 +173,8 @@ export class PatternFieldInput {
 			fieldInfo.charOffset,
 			key
 		);
+		if (newStr === currentStr)
+			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 		const newEffectObj = EffectField.parseValue(newStr);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(

@@ -16,6 +16,12 @@ export interface EditingContext {
 	tuningTable?: number[];
 }
 
+export interface PatternEditingResult {
+	updatedPattern: Pattern;
+	shouldMoveNext: boolean;
+	didChange?: boolean;
+}
+
 export interface FieldInfo {
 	fieldKey: string;
 	fieldType: string;
