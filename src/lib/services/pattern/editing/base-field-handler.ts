@@ -17,7 +17,7 @@ export abstract class BaseFieldHandler {
 	protected getCurrentValue(
 		context: EditingContext,
 		fieldInfo: FieldInfo
-	): string | number | null {
+	): string | number | null | Record<string, unknown> {
 		return PatternValueUpdates.getFieldValue(context, fieldInfo);
 	}
 

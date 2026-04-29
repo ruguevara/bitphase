@@ -90,6 +90,9 @@ export class PatternDeleteHandler {
 		if (!FieldStrategyFactory.isSupported(field.type)) {
 			return null;
 		}
+		if (typeof currentValue === 'object' && currentValue !== null) {
+			return null;
+		}
 
 		if (currentValue === ZERO_VALUE) {
 			const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, 0);
@@ -233,6 +236,7 @@ export class PatternDeleteHandler {
 		const currentValue = PatternValueUpdates.getValueFromGeneric(generic, row, fieldInfo);
 		const ZERO_VALUE = -1;
 		if (!FieldStrategyFactory.isSupported(field.type)) return;
+		if (typeof currentValue === 'object' && currentValue !== null) return;
 
 		if (currentValue === ZERO_VALUE) {
 			this.setGenericValue(generic, row, fieldInfo, 0);

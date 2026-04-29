@@ -2319,7 +2319,7 @@
 		row: number,
 		col: number,
 		fieldInfo: any,
-		currentValue: string | number | null,
+		currentValue: string | number | null | Record<string, unknown>,
 		delta: number,
 		isOctaveIncrement: boolean
 	): Pattern {
@@ -2401,12 +2401,42 @@
 				);
 			}
 			return pattern;
+		} else if (EffectField.isEffectField(fieldInfo.fieldKey)) {
+			const newValue = PatternValueUpdates.computeIncrementValue(
+				fieldInfo,
+				currentValue,
+				delta,
+				isOctaveIncrement,
+				fieldDefinition,
+				tuningTable,
+				editorStateStore.envelopeAsNote
+			);
+			if (newValue === null) {
+				return pattern;
+			}
+			return PatternValueUpdates.updateFieldValue(
+				{
+					pattern,
+					selectedRow: row,
+					selectedColumn: col,
+					cellPositions,
+					segments,
+					converter,
+					formatter,
+					schema
+				},
+				fieldInfo,
+				newValue
+			);
 		} else if (
 			(fieldInfo.fieldType === 'hex' ||
 				fieldInfo.fieldType === 'dec' ||
 				fieldInfo.fieldType === 'symbol') &&
 			!EffectField.isEffectField(fieldInfo.fieldKey)
 		) {
+			if (currentValue !== null && typeof currentValue === 'object') {
+				return pattern;
+			}
 			if (
 				PatternValueUpdates.isDisplayedAsEmpty(
 					currentValue,
@@ -2421,7 +2451,8 @@
 				currentValue as number,
 				delta,
 				fieldInfo.fieldType,
-				fieldDefinition?.length
+				fieldDefinition?.length,
+				fieldDefinition?.allowZeroValue
 			);
 			return PatternValueUpdates.updateFieldValue(
 				{

@@ -51,14 +51,33 @@ export class PatternFieldInput {
 
 		const strategy = FieldStrategyFactory.getStrategy('hex');
 		const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
+		if (typeof currentValue === 'object' && currentValue !== null) return null;
 		const currentStr = strategy.format(currentValue, field.length, field.allowZeroValue);
 		const newStr = StringManipulation.replaceCharAtOffset(
 			currentStr,
 			fieldInfo.charOffset,
 			upperKey
 		);
-		if (newStr === currentStr)
+		if (newStr === currentStr) {
+			if (
+				this.shouldCommitDisplayedZero(
+					currentValue,
+					newStr,
+					field.type,
+					field.length,
+					field.allowZeroValue
+				)
+			) {
+				const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
+				const updatedPattern = PatternValueUpdates.updateFieldValue(
+					context,
+					fieldInfo,
+					newValue
+				);
+				return { updatedPattern, shouldMoveNext: false };
+			}
 			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
+		}
 		const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newValue);
@@ -79,6 +98,7 @@ export class PatternFieldInput {
 
 		const strategy = FieldStrategyFactory.getStrategy('dec');
 		const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
+		if (typeof currentValue === 'object' && currentValue !== null) return null;
 		const currentStr = strategy.format(currentValue, field.length, field.allowZeroValue);
 		const newStr = StringManipulation.replaceCharAtOffset(
 			currentStr,
@@ -117,14 +137,33 @@ export class PatternFieldInput {
 
 		const strategy = FieldStrategyFactory.getStrategy('symbol');
 		const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
+		if (typeof currentValue === 'object' && currentValue !== null) return null;
 		const currentStr = strategy.format(currentValue, field.length, field.allowZeroValue);
 		const newStr = StringManipulation.replaceCharAtOffset(
 			currentStr,
 			fieldInfo.charOffset,
 			upperKey
 		);
-		if (newStr === currentStr)
+		if (newStr === currentStr) {
+			if (
+				this.shouldCommitDisplayedZero(
+					currentValue,
+					newStr,
+					field.type,
+					field.length,
+					field.allowZeroValue
+				)
+			) {
+				const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
+				const updatedPattern = PatternValueUpdates.updateFieldValue(
+					context,
+					fieldInfo,
+					newValue
+				);
+				return { updatedPattern, shouldMoveNext: false };
+			}
 			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
+		}
 		const newValue = strategy.parse(newStr, field.length, field.allowZeroValue);
 
 		const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, newValue);
@@ -183,5 +222,24 @@ export class PatternFieldInput {
 			newEffectObj
 		);
 		return { updatedPattern, shouldMoveNext: false };
+	}
+
+	private static shouldCommitDisplayedZero(
+		currentValue: string | number | null,
+		newStr: string,
+		fieldType: string,
+		fieldLength: number,
+		allowZeroValue?: boolean
+	): boolean {
+		if (!/^0+$/.test(newStr)) return false;
+		if (fieldType === 'hex' && !allowZeroValue) return false;
+		if (fieldType === 'symbol' && allowZeroValue === false) return false;
+		if (fieldType !== 'hex' && fieldType !== 'symbol') return false;
+		return PatternValueUpdates.isDisplayedAsEmpty(
+			currentValue,
+			fieldType,
+			fieldLength,
+			allowZeroValue
+		);
 	}
 }

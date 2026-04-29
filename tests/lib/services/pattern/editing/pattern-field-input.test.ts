@@ -4,6 +4,7 @@ import { AYConverter } from '../../../../../src/lib/chips/ay/adapter';
 import { AYFormatter } from '../../../../../src/lib/chips/ay/formatter';
 import { AY_CHIP_SCHEMA } from '../../../../../src/lib/chips/ay/schema';
 import { PatternFieldInput } from '../../../../../src/lib/services/pattern/editing/pattern-field-input';
+import { PatternValueUpdates } from '../../../../../src/lib/services/pattern/editing/pattern-value-updates';
 import type {
 	EditingContext,
 	FieldInfo
@@ -21,13 +22,18 @@ function createContext(pattern: Pattern): EditingContext {
 	};
 }
 
-function createFieldInfo(fieldKey: string, fieldType: string): FieldInfo {
+function createFieldInfo(
+	fieldKey: string,
+	fieldType: string,
+	isGlobal = false,
+	charOffset = 0
+): FieldInfo {
 	return {
 		fieldKey,
 		fieldType,
-		isGlobal: false,
+		isGlobal,
 		channelIndex: 0,
-		charOffset: 0
+		charOffset
 	};
 }
 
@@ -81,5 +87,95 @@ describe('PatternFieldInput', () => {
 
 		expect(result).not.toBeNull();
 		expect(result?.updatedPattern.channels[0].rows[0].volume).toBe(0xf);
+	});
+
+	it('commits displayed zero for empty noise values', () => {
+		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
+
+		const result = PatternFieldInput.handleHexInput(
+			createContext(pattern),
+			createFieldInfo('noiseValue', 'hex', true),
+			'0',
+			'Digit0'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result?.updatedPattern.patternRows[0].noiseValue).toBe(-1);
+	});
+
+	it('commits displayed zero for empty table values', () => {
+		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
+
+		const result = PatternFieldInput.handleSymbolInput(
+			createContext(pattern),
+			createFieldInfo('table', 'symbol'),
+			'0'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result?.updatedPattern.channels[0].rows[0].table).toBe(-1);
+	});
+
+	it('does not commit zero for empty volume values', () => {
+		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
+
+		const result = PatternFieldInput.handleHexInput(
+			createContext(pattern),
+			createFieldInfo('volume', 'hex'),
+			'0',
+			'Digit0'
+		);
+
+		expect(result).toEqual({
+			updatedPattern: pattern,
+			shouldMoveNext: false,
+			didChange: false
+		});
+	});
+
+	it('decrements zero-capable fields to their displayed zero value', () => {
+		expect(PatternValueUpdates.incrementNumericValue(1, -1, 'hex', 2, true)).toBe(-1);
+		expect(PatternValueUpdates.incrementNumericValue(1, -1, 'symbol', 1)).toBe(-1);
+		expect(PatternValueUpdates.incrementNumericValue(1, -1, 'hex', 1)).toBe(0);
+	});
+
+	it('increments displayed zero values from zero to one', () => {
+		expect(PatternValueUpdates.incrementNumericValue(-1, 1, 'hex', 2, true)).toBe(1);
+		expect(PatternValueUpdates.incrementNumericValue(-1, 1, 'symbol', 1)).toBe(1);
+	});
+
+	it('increments effect parameters', () => {
+		const result = PatternValueUpdates.incrementEffectParameterValue(
+			{ effect: 'E'.charCodeAt(0), delay: 0xa, parameter: 0x01 },
+			1,
+			createFieldInfo('envelopeEffect', 'hex', true, 3)
+		);
+
+		expect(result).toEqual({ effect: 'E'.charCodeAt(0), delay: 0xa, parameter: 0x02 });
+	});
+
+	it('decrements effect parameters', () => {
+		const result = PatternValueUpdates.incrementEffectParameterValue(
+			{ effect: 'E'.charCodeAt(0), delay: 0xa, parameter: 0x01 },
+			-1,
+			createFieldInfo('envelopeEffect', 'hex', true, 3)
+		);
+
+		expect(result).toEqual({ effect: 'E'.charCodeAt(0), delay: 0xa, parameter: 0x00 });
+	});
+
+	it('increments effect table parameters', () => {
+		const result = PatternValueUpdates.incrementEffectParameterValue(
+			{ effect: 'S'.charCodeAt(0), delay: 0, parameter: 0, tableIndex: 0 },
+			1,
+			createFieldInfo('effect', 'hex', false, 3)
+		);
+
+		expect(result).toEqual({
+			effect: 'S'.charCodeAt(0),
+			delay: 0,
+			parameter: 0,
+			tableIndex: 1
+		});
 	});
 });

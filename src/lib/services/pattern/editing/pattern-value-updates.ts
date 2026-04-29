@@ -13,8 +13,17 @@ import { EffectField } from './effect-field';
 export interface GenericFieldUpdate {
 	row: number;
 	fieldInfo: FieldInfo;
-	newValue: string | number | null;
+	newValue: string | number | null | Record<string, unknown>;
 }
+
+type EffectValue = {
+	effect: number;
+	delay: number;
+	parameter: number;
+	tableIndex?: number;
+};
+
+const MAX_EFFECT_TABLE_INDEX = 30;
 
 export class PatternValueUpdates {
 	static updateFieldValue(
@@ -36,7 +45,7 @@ export class PatternValueUpdates {
 	static getFieldValue(
 		context: EditingContext,
 		fieldInfo: FieldInfo
-	): string | number | null {
+	): string | number | null | Record<string, unknown> {
 		const genericPattern = context.converter.toGeneric(context.pattern);
 		return PatternValueUpdates.getValueFromGeneric(
 			genericPattern,
@@ -49,14 +58,23 @@ export class PatternValueUpdates {
 		genericPattern: GenericPattern,
 		row: number,
 		fieldInfo: FieldInfo
-	): string | number | null {
+	): string | number | null | Record<string, unknown> {
 		if (fieldInfo.isGlobal) {
 			const patternRow = genericPattern.patternRows[row];
-			return (patternRow[fieldInfo.fieldKey] as string | number | null) ?? null;
+			return (
+				(patternRow[fieldInfo.fieldKey] as
+					| string
+					| number
+					| null
+					| Record<string, unknown>) ?? null
+			);
 		}
 		const channel = genericPattern.channels[fieldInfo.channelIndex];
 		const rowData = channel.rows[row];
-		return (rowData[fieldInfo.fieldKey] as string | number | null) ?? null;
+		return (
+			(rowData[fieldInfo.fieldKey] as string | number | null | Record<string, unknown>) ??
+			null
+		);
 	}
 
 	static applyUpdatesToGeneric(
@@ -133,9 +151,14 @@ export class PatternValueUpdates {
 		currentValue: number,
 		delta: number,
 		fieldType: string,
-		fieldLength?: number
+		fieldLength?: number,
+		allowZeroValue?: boolean
 	): number {
-		let newValue = currentValue + delta;
+		const canDisplayZero =
+			(fieldType === 'hex' && allowZeroValue === true) ||
+			(fieldType === 'symbol' && allowZeroValue !== false);
+		const baseValue = currentValue === -1 && canDisplayZero ? 0 : currentValue;
+		let newValue = baseValue + delta;
 
 		switch (fieldType) {
 			case 'hex':
@@ -145,18 +168,20 @@ export class PatternValueUpdates {
 				} else {
 					newValue = Math.max(0, Math.min(255, newValue));
 				}
+				if (newValue === 0 && allowZeroValue) {
+					newValue = -1;
+				}
 				break;
 			case 'symbol':
 				if (fieldLength) {
 					const maxValue = Math.pow(36, fieldLength) - 1;
-					newValue = Math.max(0, Math.min(maxValue, newValue)); // Skip -1 (OFF/"00"), start from 0
+					newValue = Math.max(0, Math.min(maxValue, newValue));
 				} else {
 					newValue = Math.max(0, newValue);
 				}
 
-				// Skip 0 value entirely - if result is 0, adjust based on direction
 				if (newValue === 0) {
-					newValue = delta > 0 ? 1 : 0; // For decrement, stay at 0 instead of going to -1
+					newValue = allowZeroValue === false ? 0 : -1;
 				}
 				break;
 			case 'dec':
@@ -167,15 +192,55 @@ export class PatternValueUpdates {
 		return newValue;
 	}
 
+	static incrementEffectParameterValue(
+		currentValue: unknown,
+		delta: number,
+		fieldInfo: FieldInfo
+	): EffectValue | null {
+		if (!EffectField.isEffectField(fieldInfo.fieldKey)) return null;
+		if (fieldInfo.charOffset < 2) return null;
+		if (typeof currentValue !== 'object' || currentValue === null) return null;
+
+		const effectValue = currentValue as Partial<EffectValue>;
+		if (typeof effectValue.effect !== 'number') return null;
+		const effect = effectValue.effect;
+		const currentTableIndex = effectValue.tableIndex;
+		const hasTableParameter =
+			currentTableIndex !== undefined &&
+			currentTableIndex >= 0 &&
+			effect !== 4 &&
+			effect !== 5;
+		if (hasTableParameter) {
+			const tableIndex = Math.max(
+				0,
+				Math.min(MAX_EFFECT_TABLE_INDEX, currentTableIndex + delta)
+			);
+			return {
+				effect,
+				delay: effectValue.delay ?? 0,
+				parameter: effectValue.parameter ?? 0,
+				tableIndex
+			};
+		}
+
+		const parameter = Math.max(0, Math.min(255, (effectValue.parameter ?? 0) + delta));
+		return {
+			effect,
+			delay: effectValue.delay ?? 0,
+			parameter,
+			...(effectValue.tableIndex === undefined ? {} : { tableIndex: effectValue.tableIndex })
+		};
+	}
+
 	static computeIncrementValue(
 		fieldInfo: FieldInfo,
-		currentValue: string | number | null,
+		currentValue: string | number | null | Record<string, unknown>,
 		delta: number,
 		isOctaveIncrement: boolean,
 		fieldDefinition: { length?: number; allowZeroValue?: boolean } | null,
 		tuningTable?: number[],
 		envelopeAsNote?: boolean
-	): string | number | null {
+	): string | number | null | Record<string, unknown> {
 		const adjustedDelta =
 			fieldInfo.fieldType === 'note' && isOctaveIncrement ? delta * 12 : delta;
 
@@ -213,12 +278,23 @@ export class PatternValueUpdates {
 			return noteToEnvelopePeriod(newNoteIndex, tuningTable);
 		}
 
+		if (EffectField.isEffectField(fieldInfo.fieldKey)) {
+			return PatternValueUpdates.incrementEffectParameterValue(
+				currentValue,
+				delta,
+				fieldInfo
+			);
+		}
+
 		if (
 			(fieldInfo.fieldType === 'hex' ||
 				fieldInfo.fieldType === 'dec' ||
 				fieldInfo.fieldType === 'symbol') &&
 			!EffectField.isEffectField(fieldInfo.fieldKey)
 		) {
+			if (typeof currentValue === 'object' && currentValue !== null) {
+				return null;
+			}
 			if (
 				PatternValueUpdates.isDisplayedAsEmpty(
 					currentValue,
@@ -233,7 +309,8 @@ export class PatternValueUpdates {
 				currentValue as number,
 				delta,
 				fieldInfo.fieldType,
-				fieldDefinition?.length
+				fieldDefinition?.length,
+				fieldDefinition?.allowZeroValue
 			);
 		}
 
