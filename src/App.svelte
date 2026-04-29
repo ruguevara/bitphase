@@ -107,6 +107,7 @@
 	});
 
 	let activeSongIndex = $state(0);
+	let songView: SongView | null = $state(null);
 
 	const menuItems = $derived.by(() => {
 		undoRedoStore.nextUndoLabel;
@@ -170,31 +171,6 @@
 		container.audioService.updateInstruments(projectStore.instruments);
 	});
 
-	let chipProcessorSyncToken = 0;
-	$effect(() => {
-		if (!projectStore.initialized) return;
-		const songs = projectStore.songs;
-		const desiredCount = songs.length;
-		const currentCount = container.audioService.chipProcessors.length;
-		if (currentCount === desiredCount) return;
-		const token = ++chipProcessorSyncToken;
-		(async () => {
-			if (container.audioService.chipProcessors.length > desiredCount) {
-				for (let i = container.audioService.chipProcessors.length - 1; i >= desiredCount; i--) {
-					if (token !== chipProcessorSyncToken) return;
-					container.audioService.removeChipProcessor(i);
-				}
-				return;
-			}
-			for (let i = container.audioService.chipProcessors.length; i < desiredCount; i++) {
-				if (token !== chipProcessorSyncToken) return;
-				const chipType = songs[i]?.chipType;
-				const chip = chipType ? getChipByType(chipType) : null;
-				await container.audioService.addChipProcessor(chip ?? AY_CHIP);
-			}
-		})();
-	});
-
 	$effect(() => {
 		if (projectStore.songs.length === 0) return;
 
@@ -256,7 +232,11 @@
 		handleFileImport,
 		handleFileExport,
 		clearAutobackup: () => autobackupService.clearAutobackup(),
-		resetPatternEditor: () => patternEditor?.resetToBeginning?.()
+		resetPatternEditor: () => {
+			activeSongIndex = 0;
+			songView?.resetEditorState?.();
+			patternEditor?.resetToBeginning?.();
+		}
 	};
 
 	const handleMenuAction = createMenuActionHandler(menuActionContext);
@@ -314,6 +294,7 @@
 	<MenuBar {menuItems} onAction={handleMenuAction} />
 	<div class="flex-1 overflow-hidden">
 		<SongView
+			bind:this={songView}
 			bind:patternEditor
 			bind:activeEditorIndex={activeSongIndex}
 			onaction={handleMenuAction}

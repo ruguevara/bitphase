@@ -278,9 +278,10 @@
 	let lastVisibleRowsCache: VisibleRowsCache | null = null;
 	let fontReady = $state(false);
 
-	let currentPattern = $derived.by(() => {
+	let currentPattern = $derived.by((): Pattern | null => {
 		const patternId = patternOrder[currentPatternOrderIndex];
-		return findOrCreatePattern(patternId);
+		if (patternId === undefined) return null;
+		return patterns.find((pattern) => pattern.id === patternId) ?? null;
 	});
 
 	function findOrCreatePattern(patternId: number): Pattern {
@@ -290,6 +291,12 @@
 		}
 		return pattern;
 	}
+
+	$effect(() => {
+		const patternId = patternOrder[currentPatternOrderIndex];
+		if (patternId === undefined || currentPattern) return;
+		findOrCreatePattern(patternId);
+	});
 
 	function clearAllCaches(): void {
 		PatternRowDataService.clearAllCaches(
@@ -324,7 +331,9 @@
 	});
 
 	function ensurePatternExists(): Pattern | null {
-		return currentPattern;
+		const patternId = patternOrder[currentPatternOrderIndex];
+		if (patternId === undefined) return null;
+		return findOrCreatePattern(patternId);
 	}
 
 	function getSelectionBounds() {
@@ -861,8 +870,10 @@
 	}
 
 	function initPlayback() {
+		const pattern = currentPattern ?? ensurePatternExists();
+		if (!pattern) return;
 		sendVirtualChannelConfigToProcessor();
-		chipProcessor.sendInitPattern(currentPattern, currentPatternOrderIndex);
+		chipProcessor.sendInitPattern(pattern, currentPatternOrderIndex);
 		chipProcessor.sendInitSpeed(speed);
 
 		const withTuningTables = chipProcessor as ChipProcessor & Partial<TuningTableSupport>;
@@ -2740,7 +2751,7 @@
 			return;
 		}
 
-		const patternChanged = currentPattern !== undefined;
+		const patternChanged = currentPattern !== null;
 		const patternLengthChanged = currentPatternLength !== lastDrawnPatternLength;
 		const channelCountChanged = currentChannelCount !== lastChannelCount;
 		const sizeChanged = canvasWidth !== lastCanvasWidth || canvasHeight !== lastCanvasHeight;
