@@ -1,4 +1,5 @@
 import type { MenuItem } from '../components/Menu/types';
+import { playbackStore } from '../stores/playback.svelte';
 import { undoRedoStore } from '../stores/undo-redo.svelte';
 
 export const ACTION_UNDO = 'undo';
@@ -132,8 +133,8 @@ export const PATTERN_EDITOR_ACTION_IDS = new Set(
 );
 
 const DISABLED_GETTERS: Partial<Record<string, () => boolean>> = {
-	[ACTION_UNDO]: () => !undoRedoStore.canUndo,
-	[ACTION_REDO]: () => !undoRedoStore.canRedo
+	[ACTION_UNDO]: () => playbackStore.isPlaying || !undoRedoStore.canUndo,
+	[ACTION_REDO]: () => playbackStore.isPlaying || !undoRedoStore.canRedo
 };
 
 const EDIT_MENU_ACTION_IDS = [
