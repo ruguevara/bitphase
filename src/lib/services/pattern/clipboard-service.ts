@@ -3,7 +3,11 @@ import { PatternFieldDetection } from './editing/pattern-field-detection';
 import { PatternValueUpdates } from './editing/pattern-value-updates';
 import { PatternDeleteHandler } from './editing/pattern-delete-handler';
 import type { EditingContext, FieldInfo } from './editing/editing-context';
-import { clipboardStore, type ClipboardCell } from '../../stores/clipboard.svelte';
+import {
+	clipboardStore,
+	type ClipboardCell,
+	type ClipboardData
+} from '../../stores/clipboard.svelte';
 import {
 	envelopePeriodToNoteString,
 	noteStringToEnvelopePeriod
@@ -82,7 +86,7 @@ export class ClipboardService {
 			}
 		}
 
-		clipboardStore.copy(cells, 0, 0, maxRow - minRow, maxCol - minCol);
+		this.copyToStoreAndSystem(cells, 0, 0, maxRow - minRow, maxCol - minCol);
 	}
 
 	private static copySingleCell(
@@ -107,7 +111,7 @@ export class ClipboardService {
 
 		const value = PatternValueUpdates.getValueFromGeneric(genericPattern, row, fieldInfo);
 
-		clipboardStore.copy(
+		this.copyToStoreAndSystem(
 			[
 				{
 					row: 0,
@@ -174,7 +178,7 @@ export class ClipboardService {
 			}
 		}
 
-		clipboardStore.copy(clipboardCells, 0, 0, maxRow - minRow, maxCol - minCol);
+		this.copyToStoreAndSystem(clipboardCells, 0, 0, maxRow - minRow, maxCol - minCol);
 
 		if (deletionOps.length > 0) {
 			for (const { row, fieldInfo, field } of deletionOps) {
@@ -288,11 +292,11 @@ export class ClipboardService {
 		);
 	}
 
-	static pasteSelection(
+	static async pasteSelection(
 		context: ClipboardContext,
 		onPatternUpdate: (pattern: Pattern) => void
-	): void {
-		const clipboardData = clipboardStore.clipboardData;
+	): Promise<void> {
+		const clipboardData = await this.getClipboardData();
 		if (!clipboardData) return;
 
 		const {
@@ -404,11 +408,11 @@ export class ClipboardService {
 		return false;
 	}
 
-	static pasteSelectionWithoutErasing(
+	static async pasteSelectionWithoutErasing(
 		context: ClipboardContext,
 		onPatternUpdate: (pattern: Pattern) => void
-	): void {
-		const clipboardData = clipboardStore.clipboardData;
+	): Promise<void> {
+		const clipboardData = await this.getClipboardData();
 		if (!clipboardData) return;
 
 		const {
@@ -459,6 +463,45 @@ export class ClipboardService {
 
 		if (pattern !== originalPattern) {
 			onPatternUpdate(pattern);
+		}
+	}
+
+	private static copyToStoreAndSystem(
+		cells: ClipboardCell[],
+		minRow: number,
+		minColumn: number,
+		maxRow: number,
+		maxColumn: number
+	): void {
+		const data = clipboardStore.copy(cells, minRow, minColumn, maxRow, maxColumn);
+		void this.writeSystemClipboard(data);
+	}
+
+	private static async writeSystemClipboard(data: ClipboardData): Promise<void> {
+		if (typeof navigator === 'undefined' || !navigator.clipboard) return;
+		try {
+			await navigator.clipboard.writeText(clipboardStore.serialize(data));
+		} catch {
+			return;
+		}
+	}
+
+	private static async getClipboardData(): Promise<ClipboardData | null> {
+		const systemData = await this.readSystemClipboard();
+		if (systemData) {
+			clipboardStore.set(systemData);
+			return systemData;
+		}
+		return clipboardStore.clipboardData;
+	}
+
+	private static async readSystemClipboard(): Promise<ClipboardData | null> {
+		if (typeof navigator === 'undefined' || !navigator.clipboard) return null;
+		try {
+			const text = await navigator.clipboard.readText();
+			return text ? clipboardStore.parse(text) : null;
+		} catch {
+			return null;
 		}
 	}
 }

@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { clipboardStore, type ClipboardCell } from '../../../src/lib/stores/clipboard.svelte';
+import {
+	BITPHASE_PATTERN_CLIPBOARD_HEADER,
+	clipboardStore,
+	type ClipboardCell
+} from '../../../src/lib/stores/clipboard.svelte';
 
 describe('ClipboardStore', () => {
 	beforeEach(() => {
@@ -170,6 +174,34 @@ describe('ClipboardStore', () => {
 
 		clipboardStore.copy(cells2, 0, 0, 0, 0);
 		expect(clipboardStore.clipboardData?.cells[0].value).toBe('D-4');
+	});
+
+	it('should serialize and parse versioned system clipboard text', () => {
+		const data = clipboardStore.copy(
+			[
+				{
+					row: 0,
+					column: 0,
+					fieldKey: 'effect',
+					fieldType: 'hex',
+					value: { effect: 1, delay: 2, parameter: 3 }
+				}
+			],
+			0,
+			0,
+			0,
+			0
+		);
+
+		const serialized = clipboardStore.serialize(data);
+		const parsed = clipboardStore.parse(serialized);
+
+		expect(serialized.startsWith(`${BITPHASE_PATTERN_CLIPBOARD_HEADER}\n`)).toBe(true);
+		expect(parsed).toEqual(data);
+	});
+
+	it('should reject unrelated system clipboard text', () => {
+		expect(clipboardStore.parse('C-4 01 F')).toBeNull();
 	});
 });
 

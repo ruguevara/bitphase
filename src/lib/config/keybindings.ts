@@ -1,6 +1,5 @@
 import type { MenuItem } from '../components/Menu/types';
 import { undoRedoStore } from '../stores/undo-redo.svelte';
-import { clipboardStore } from '../stores/clipboard.svelte';
 
 export const ACTION_UNDO = 'undo';
 export const ACTION_REDO = 'redo';
@@ -134,9 +133,7 @@ export const PATTERN_EDITOR_ACTION_IDS = new Set(
 
 const DISABLED_GETTERS: Partial<Record<string, () => boolean>> = {
 	[ACTION_UNDO]: () => !undoRedoStore.canUndo,
-	[ACTION_REDO]: () => !undoRedoStore.canRedo,
-	[ACTION_PASTE]: () => !clipboardStore.hasData,
-	[ACTION_PASTE_WITHOUT_ERASING]: () => !clipboardStore.hasData
+	[ACTION_REDO]: () => !undoRedoStore.canRedo
 };
 
 const EDIT_MENU_ACTION_IDS = [
