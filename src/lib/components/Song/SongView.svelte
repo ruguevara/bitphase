@@ -33,9 +33,10 @@
 	import { editorStateStore } from '../../stores/editor-state.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
+	import { undoRedoStore } from '../../stores/undo-redo.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
-	import { ACTION_TOGGLE_PLAYBACK } from '../../config/keybindings';
+	import { ACTION_REDO, ACTION_TOGGLE_PLAYBACK, ACTION_UNDO } from '../../config/keybindings';
 
 	let {
 		chipProcessors,
@@ -132,6 +133,36 @@
 		patternEditors.forEach((editor) => editor?.requestRedraw?.());
 	});
 
+	const undoRedoActionIds = new Set([ACTION_UNDO, ACTION_REDO]);
+	const previewPlaybackActionIds = new Set([ACTION_TOGGLE_PLAYBACK]);
+
+	function getScopedShortcutAction(
+		event: KeyboardEvent,
+		container: HTMLElement,
+		actionIds: ReadonlySet<string>
+	): string | null {
+		const shortcut = ShortcutString.fromEvent(event);
+		const action = keybindingsStore.getActionForShortcut(shortcut);
+		if (!action || !actionIds.has(action)) return null;
+		if (!container.contains(document.activeElement)) return null;
+		if (isEditableElement(document.activeElement)) return null;
+		return action;
+	}
+
+	function addScopedShortcutListener(
+		container: HTMLElement,
+		actionIds: ReadonlySet<string>,
+		onAction: (event: KeyboardEvent, action: string, container: HTMLElement) => void
+	): () => void {
+		function onKeyDownCapture(event: KeyboardEvent) {
+			const action = getScopedShortcutAction(event, container, actionIds);
+			if (!action) return;
+			onAction(event, action, container);
+		}
+		container.addEventListener('keydown', onKeyDownCapture, { capture: true });
+		return () => container.removeEventListener('keydown', onKeyDownCapture, { capture: true });
+	}
+
 	$effect(() => {
 		if (editorStateStore.selectInstrumentRequest) {
 			rightPanelActiveTabId = 'instruments';
@@ -145,20 +176,30 @@
 	});
 
 	$effect(() => {
+		const container = songViewContainer;
+		if (!container) return;
+		return addScopedShortcutListener(container, undoRedoActionIds, (event, action) => {
+			if (playbackStore.isPlaying) return;
+
+			event.preventDefault();
+			event.stopPropagation();
+			if (action === ACTION_UNDO) {
+				undoRedoStore.undo();
+			} else {
+				undoRedoStore.redo();
+			}
+		});
+	});
+
+	$effect(() => {
 		const el = rightPanelEl;
 		const handler = previewSpaceHandler;
 		if (!el) return;
-		const container = el;
-		function onKeyDownCapture(e: KeyboardEvent) {
-			if (e.repeat) return;
-			const shortcut = ShortcutString.fromEvent(e);
-			const action = keybindingsStore.getActionForShortcut(shortcut);
-			if (action !== ACTION_TOGGLE_PLAYBACK) return;
-			if (!container.contains(document.activeElement)) return;
-			if (isEditableElement(document.activeElement)) return;
+		return addScopedShortcutListener(el, previewPlaybackActionIds, (event, _action, container) => {
+			if (event.repeat) return;
 			if (handler) {
-				e.preventDefault();
-				e.stopPropagation();
+				event.preventDefault();
+				event.stopPropagation();
 				const active = document.activeElement as HTMLElement | null;
 				if (active && active !== container) {
 					active.blur?.();
@@ -166,9 +207,7 @@
 				}
 				handler();
 			}
-		}
-		container.addEventListener('keydown', onKeyDownCapture, { capture: true });
-		return () => container.removeEventListener('keydown', onKeyDownCapture, { capture: true });
+		});
 	});
 
 	const SPEED_EFFECT_TYPE = 'S'.charCodeAt(0);
