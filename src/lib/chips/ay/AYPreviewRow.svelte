@@ -26,6 +26,7 @@
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import { ACTION_TOGGLE_PLAYBACK } from '../../config/keybindings';
+	import { isValidTableDisplayChar, tableDisplayCharToId } from '../../utils/table-id';
 
 	let {
 		chip,
@@ -45,7 +46,7 @@
 	} catch {
 		registerPreviewSpaceHandler = undefined;
 	}
-	const schema = chip.schema;
+	const schema = $derived(chip.schema);
 
 	let envelopePeriod = $state(0);
 	let noiseValue = $state('00');
@@ -251,9 +252,9 @@
 	function parseTableChar(s: string): number {
 		if (!s || s.length === 0) return 0;
 		const c = s.toUpperCase().slice(0, 1);
-		if (c >= '0' && c <= '9') return parseInt(c, 10);
-		if (c >= 'A' && c <= 'Z') return c.charCodeAt(0) - 55;
-		return 0;
+		if (c === '0') return -1;
+		const tableId = tableDisplayCharToId(c);
+		return tableId >= 0 ? tableId + 1 : 0;
 	}
 
 	function buildPreviewPattern(noteStrings: string[]): Pattern {
@@ -363,7 +364,7 @@
 
 	function clampTable() {
 		const c = table.slice(-1).toUpperCase();
-		if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z')) table = c;
+		if (c === '0' || isValidTableDisplayChar(c)) table = c;
 		else table = '';
 	}
 
@@ -512,7 +513,7 @@
 				onblur={clampTable}
 				oninput={(e) => {
 					const v = (e.currentTarget.value || '').toUpperCase().slice(-1);
-					table = (v >= '0' && v <= '9') || (v >= 'A' && v <= 'Z') ? v : '';
+					table = v === '0' || isValidTableDisplayChar(v) ? v : '';
 				}} />
 		</label>
 		<label class="flex flex-col gap-0.5">
