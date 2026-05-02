@@ -370,8 +370,7 @@ class TrackerPatternProcessor {
 
 	_initChannelOnOff(channelIndex, effect, hasTableIndex) {
 		const param = hasTableIndex ? this._getEffectTableValue(channelIndex) : effect.parameter;
-		const delay = effect.delay ?? 0;
-		const onOffState = EffectAlgorithms.initOnOff(param, delay);
+		const onOffState = EffectAlgorithms.initOnOff(param);
 		this.state.channelOffDuration[channelIndex] = onOffState.offDuration;
 		this.state.channelOnDuration[channelIndex] = onOffState.onDuration;
 		this.state.channelOnOffCounter[channelIndex] = onOffState.counter;

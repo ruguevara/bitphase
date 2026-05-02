@@ -110,5 +110,23 @@ describe('PatternEffectHandling', () => {
 			const formatted = PatternEffectHandling.formatEffectAsString(parsed!);
 			expect(formatted).toBe('D.TG');
 		});
+
+		it('effect 6 (on/off) ignores delay digit and formats with dot', () => {
+			const parsed = PatternEffectHandling.parseEffectFromString('6124');
+			expect(parsed).not.toBeNull();
+			expect(parsed!.effect).toBe(6);
+			expect(parsed!.delay).toBe(0);
+			expect(parsed!.parameter).toBe(0x24);
+			expect(PatternEffectHandling.formatEffectAsString(parsed!)).toBe('6.24');
+		});
+
+		it('effect 6 with table parses 6.T3', () => {
+			const parsed = PatternEffectHandling.parseEffectFromString('6.T3');
+			expect(parsed).not.toBeNull();
+			expect(parsed!.effect).toBe(6);
+			expect(parsed!.delay).toBe(0);
+			expect(parsed!.tableIndex).toBe(2);
+			expect(PatternEffectHandling.formatEffectAsString(parsed!)).toBe('6.T3');
+		});
 	});
 });

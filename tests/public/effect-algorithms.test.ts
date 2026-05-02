@@ -93,19 +93,6 @@ describe('EffectAlgorithms', () => {
 			expect(r.enabled).toBe(true);
 		});
 
-		it('when last param (Y) is 0 and delay > 0, uses delay as on duration (6.X0 style)', () => {
-			const r = EffectAlgorithms.initOnOff(0x30, 3);
-			expect(r.onDuration).toBe(3);
-			expect(r.offDuration).toBe(0);
-			expect(r.counter).toBe(3);
-			expect(r.enabled).toBe(true);
-		});
-
-		it('when Y is 0 and delay 0, on duration from high nibble', () => {
-			const r = EffectAlgorithms.initOnOff(0x30, 0);
-			expect(r.onDuration).toBe(3);
-			expect(r.offDuration).toBe(0);
-		});
 	});
 
 	describe('processOnOffCounter', () => {

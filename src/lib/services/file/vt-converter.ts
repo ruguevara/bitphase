@@ -1016,7 +1016,8 @@ class VT2Converter {
 		const effectiveDelay =
 			effectType === EffectType.SamplePosition ||
 			effectType === EffectType.OrnamentPosition ||
-			effectType === EffectType.Speed
+			effectType === EffectType.Speed ||
+			effectType === EffectType.OnOff
 				? 0
 				: delay;
 

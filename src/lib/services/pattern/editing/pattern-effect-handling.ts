@@ -8,6 +8,16 @@ export type EffectLikeObject = {
 };
 
 export class PatternEffectHandling {
+	static effectIgnoresDelay(effect: number): boolean {
+		return (
+			effect === 'D'.charCodeAt(0) ||
+			effect === 'S'.charCodeAt(0) ||
+			effect === 4 ||
+			effect === 5 ||
+			effect === 6
+		);
+	}
+
 	static isEmptyEffect(effect: EffectLikeObject | null | undefined): boolean {
 		if (!effect) return true;
 		const noTable =
@@ -47,11 +57,7 @@ export class PatternEffectHandling {
 		} else {
 			type = effect.effect.toString(16).toUpperCase();
 		}
-		const noDelay =
-			effect.effect === 'D'.charCodeAt(0) ||
-			effect.effect === 'S'.charCodeAt(0) ||
-			effect.effect === 4 ||
-			effect.effect === 5;
+		const noDelay = PatternEffectHandling.effectIgnoresDelay(effect.effect);
 		const delay = noDelay ? '.' : formatHex(effect.delay, 1);
 
 		const noTableSyntax =
@@ -98,8 +104,7 @@ export class PatternEffectHandling {
 
 		const char2 = value[2] || '.';
 		const noTableSyntax = type === 4 || type === 5;
-		const noDelay =
-			type === 'D'.charCodeAt(0) || type === 'S'.charCodeAt(0) || type === 4 || type === 5;
+		const noDelay = PatternEffectHandling.effectIgnoresDelay(type);
 		const effectiveDelay = noDelay ? 0 : delay;
 		if (!noTableSyntax && (char2 === 'T' || char2 === 't')) {
 			const tableChar = value[3] || '.';

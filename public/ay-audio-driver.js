@@ -342,8 +342,7 @@ class AYAudioDriver {
 
 	_initEnvelopeOnOff(state, effect, hasTableIndex) {
 		const param = hasTableIndex ? this._getEnvelopeEffectTableValue(state) : effect.parameter;
-		const delay = effect.delay ?? 0;
-		const onOffState = EffectAlgorithms.initOnOff(param, delay);
+		const onOffState = EffectAlgorithms.initOnOff(param);
 		state.envelopeOffDuration = onOffState.offDuration;
 		state.envelopeOnDuration = onOffState.onDuration;
 		state.envelopeOnOffCounter = onOffState.counter;

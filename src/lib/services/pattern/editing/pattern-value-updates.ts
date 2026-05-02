@@ -9,6 +9,7 @@ import {
 import type { GenericPattern } from '../../../models/song/generic';
 import type { EditingContext, FieldInfo } from './editing-context';
 import { EffectField } from './effect-field';
+import { PatternEffectHandling } from './pattern-effect-handling';
 
 export interface GenericFieldUpdate {
 	row: number;
@@ -215,18 +216,24 @@ export class PatternValueUpdates {
 				0,
 				Math.min(MAX_EFFECT_TABLE_INDEX, currentTableIndex + delta)
 			);
+			const delay = PatternEffectHandling.effectIgnoresDelay(effect)
+				? 0
+				: (effectValue.delay ?? 0);
 			return {
 				effect,
-				delay: effectValue.delay ?? 0,
+				delay,
 				parameter: effectValue.parameter ?? 0,
 				tableIndex
 			};
 		}
 
 		const parameter = Math.max(0, Math.min(255, (effectValue.parameter ?? 0) + delta));
+		const delay = PatternEffectHandling.effectIgnoresDelay(effect)
+			? 0
+			: (effectValue.delay ?? 0);
 		return {
 			effect,
-			delay: effectValue.delay ?? 0,
+			delay,
 			parameter,
 			...(effectValue.tableIndex === undefined ? {} : { tableIndex: effectValue.tableIndex })
 		};

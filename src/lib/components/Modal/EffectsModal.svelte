@@ -128,11 +128,11 @@
 			description: 'Alternates between playing the note and muting it.',
 			tableDescription:
 				'where Y is table id (0-9, A-Z). Will replace on duration and off duration with table values proceding each tick.',
-			format: '6XYZ',
-			formatWithTable: '6XTY',
-			delay: 'X - delay before effect starts (0-F)',
+			format: '6.XY',
+			formatWithTable: '6.TY',
+			delay: 'N/A',
 			parameter: 'YZ - Y is on duration (0-F), Z is off duration (0-F)',
-			example: '6.24 - On/Off with delay 0, on duration 2, off duration 4'
+			example: '6.24 - On duration 2, off duration 4'
 		},
 		{
 			code: 'D',
