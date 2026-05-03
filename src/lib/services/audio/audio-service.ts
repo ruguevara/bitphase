@@ -103,6 +103,9 @@ export class AudioService {
 
 		this.applyMuteStateToAllChips();
 
+		const useGlobalTempoSync = this.chipProcessors.length > 1;
+		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(useGlobalTempoSync));
+
 		this.chipProcessors.forEach((chipProcessor, index) => {
 			const initialSpeed = initialSpeeds?.[index];
 			chipProcessor.play(initialSpeed);
@@ -121,6 +124,9 @@ export class AudioService {
 		this._previewChipIndices.clear();
 
 		this.applyMuteStateToAllChips();
+
+		const useGlobalTempoSync = this.chipProcessors.length > 1;
+		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(useGlobalTempoSync));
 
 		const catchUpSegments = options?.catchUpSegments;
 		const startPattern = options?.startPattern;
@@ -154,6 +160,7 @@ export class AudioService {
 
 		waveformStore.clear();
 
+		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(false));
 		this.chipProcessors.forEach((chipProcessor) => {
 			chipProcessor.stop();
 		});

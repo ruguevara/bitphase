@@ -36,6 +36,8 @@ type WorkletMessage =
 interface SpeedUpdateMessage {
 	type: 'speed_update';
 	speed: number;
+	patternOrderIndex?: number;
+	row?: number;
 }
 
 type PlayFromPositionCommand = {
@@ -57,6 +59,7 @@ type WorkletCommand =
 	| { type: 'init_pattern'; pattern: Pattern; patternOrderIndex: number }
 	| { type: 'init_tuning_table'; tuningTable: number[] }
 	| { type: 'init_speed'; speed: number }
+	| { type: 'set_global_tempo_sync'; enabled: boolean }
 	| { type: 'set_pattern_data'; pattern: Pattern; patternOrderIndex: number }
 	| { type: 'init_tables'; tables: Table[] }
 	| { type: 'init_instruments'; instruments: Instrument[] }
@@ -241,6 +244,10 @@ export class AYProcessor
 
 	sendInitSpeed(speed: number): void {
 		this.sendCommand({ type: 'init_speed', speed });
+	}
+
+	sendGlobalTempoSync(enabled: boolean): void {
+		this.sendCommand({ type: 'set_global_tempo_sync', enabled });
 	}
 
 	sendInitTables(tables: Table[]): void {

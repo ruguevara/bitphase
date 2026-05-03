@@ -28,6 +28,7 @@ export interface ChipProcessor {
 	): void;
 	isAudioNodeAvailable(): boolean;
 	sendInitSpeed(speed: number): void;
+	sendGlobalTempoSync?(enabled: boolean): void;
 	updateParameter(parameter: string, value: unknown): void;
 	changePatternDuringPlayback?(
 		row: number,

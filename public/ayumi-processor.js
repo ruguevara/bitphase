@@ -48,6 +48,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		this.channelWaveformWriteIndex = 0;
 		this.waveformPostCounter = 0;
 		this.waveformPostInterval = 6;
+		this.multiChipGlobalTempo = false;
 	}
 
 	async handleMessage(event) {
@@ -83,6 +84,9 @@ class AyumiProcessor extends AudioWorkletProcessor {
 				break;
 			case 'init_speed':
 				this.handleInitSpeed(data);
+				break;
+			case 'set_global_tempo_sync':
+				this.multiChipGlobalTempo = !!data.enabled;
 				break;
 			case 'init_tables':
 				this.handleInitTables(data);
@@ -421,6 +425,8 @@ class AyumiProcessor extends AudioWorkletProcessor {
 	}
 
 	_simulateRow(pattern, rowIndex) {
+		const prevDefer = this.patternProcessor.deferPlaybackTempo;
+		this.patternProcessor.deferPlaybackTempo = false;
 		this.patternProcessor.parsePatternRow(pattern, rowIndex, this.registerState);
 		this.patternProcessor.processSpeedTable();
 		const ticksPerRow = this.state.currentSpeed;
@@ -432,6 +438,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 			this.patternProcessor.processVibrato();
 			this.patternProcessor.processSlides();
 		}
+		this.patternProcessor.deferPlaybackTempo = prevDefer;
 		this._applyRegisterStateToEngine();
 	}
 
@@ -568,6 +575,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		for (let r = 0; r < rowIndex; r++) {
 			this._simulateRow(pattern, r);
 		}
+		this.patternProcessor.deferPlaybackTempo = false;
 		this.patternProcessor.parsePatternRow(pattern, rowIndex, this.registerState);
 		this.patternProcessor.processTables();
 		this.audioDriver.processInstruments(this.state, this.registerState);
@@ -632,6 +640,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 					this.state.currentPattern.length > 0 &&
 					this.state.tickAccumulator >= 1.0
 				) {
+					this.patternProcessor.deferPlaybackTempo = this.multiChipGlobalTempo;
 					if (this.state.currentTick === 0) {
 						const patternLength = this.state.currentPattern.length;
 						const rowsFromEnd = patternLength - 1 - this.state.currentRow;
@@ -690,6 +699,8 @@ class AyumiProcessor extends AudioWorkletProcessor {
 					this.audioDriver.processInstruments(this.state, this.registerState);
 					this.patternProcessor.processVibrato();
 					this.patternProcessor.processSlides();
+
+					this.patternProcessor.deferPlaybackTempo = false;
 
 				this.enforceMuteState();
 

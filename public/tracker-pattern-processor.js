@@ -5,6 +5,27 @@ class TrackerPatternProcessor {
 		this.state = state;
 		this.chipAudioDriver = chipAudioDriver;
 		this.port = port;
+		this.deferPlaybackTempo = false;
+	}
+
+	_applyPlaybackSpeed(speed) {
+		if (!(speed > 0)) return;
+		if (this.deferPlaybackTempo) {
+			this.port.postMessage({
+				type: 'speed_update',
+				speed,
+				patternOrderIndex: this.state.currentPatternOrderIndex,
+				row: this.state.currentRow
+			});
+			return;
+		}
+		this.state.setSpeed(speed);
+		this.port.postMessage({
+			type: 'speed_update',
+			speed,
+			patternOrderIndex: this.state.currentPatternOrderIndex,
+			row: this.state.currentRow
+		});
 	}
 
 	parsePatternRow(pattern, rowIndex, registerState) {
@@ -302,14 +323,11 @@ class TrackerPatternProcessor {
 			this.state.speedTable = effect.tableIndex;
 			this.state.speedTablePosition = 0;
 			const firstSpeed = this._getFirstNonZeroSpeedTableValue();
-			if (firstSpeed > 0) {
-				this.state.setSpeed(firstSpeed);
-			}
+			this._applyPlaybackSpeed(firstSpeed);
 		} else {
 			this.state.speedTable = -1;
 			if (effect.parameter > 0) {
-				this.state.setSpeed(effect.parameter);
-				this.port.postMessage({ type: 'speed_update', speed: effect.parameter });
+				this._applyPlaybackSpeed(effect.parameter);
 			}
 		}
 	}
@@ -460,10 +478,7 @@ class TrackerPatternProcessor {
 		if (this.state.speedTable < 0) return;
 
 		const newSpeed = this._getSpeedTableValue();
-		if (newSpeed > 0) {
-			this.state.setSpeed(newSpeed);
-			this.port.postMessage({ type: 'speed_update', speed: newSpeed });
-		}
+		this._applyPlaybackSpeed(newSpeed);
 		this._advanceSpeedTable();
 	}
 
@@ -530,10 +545,7 @@ class TrackerPatternProcessor {
 				break;
 			}
 			case EffectAlgorithms.SPEED:
-				if (param > 0) {
-					this.state.setSpeed(param);
-					this.port.postMessage({ type: 'speed_update', speed: param });
-				}
+				this._applyPlaybackSpeed(param);
 				break;
 			case EffectAlgorithms.DETUNE:
 				this.state.channelDetune[channelIndex] = (param & 0xff) - 0x80;
