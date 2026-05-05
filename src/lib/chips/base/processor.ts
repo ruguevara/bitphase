@@ -6,7 +6,11 @@ import type { CatchUpSegment } from '../../services/audio/play-from-position';
 
 export interface ChipProcessor {
 	chip: Chip;
-	initialize(wasmBuffer: ArrayBuffer, audioNode: AudioWorkletNode): void;
+	initialize(
+		wasmBuffer: ArrayBuffer,
+		audioNode: AudioWorkletNode,
+		playbackSpeedShared?: SharedArrayBuffer
+	): void;
 	play(initialSpeed?: number): void;
 	playFromRow(row: number, patternOrderIndex?: number, speed?: number | null): void;
 	playFromPosition?(
@@ -28,7 +32,8 @@ export interface ChipProcessor {
 	): void;
 	isAudioNodeAvailable(): boolean;
 	sendInitSpeed(speed: number): void;
-	sendGlobalTempoSync?(enabled: boolean): void;
+	attachPlaybackSpeedShared?(buffer: SharedArrayBuffer): void;
+	detachPlaybackSpeedShared?(): void;
 	updateParameter(parameter: string, value: unknown): void;
 	changePatternDuringPlayback?(
 		row: number,

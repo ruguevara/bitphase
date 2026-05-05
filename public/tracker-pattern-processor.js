@@ -5,21 +5,11 @@ class TrackerPatternProcessor {
 		this.state = state;
 		this.chipAudioDriver = chipAudioDriver;
 		this.port = port;
-		this.deferPlaybackTempo = false;
 	}
 
 	_applyPlaybackSpeed(speed) {
 		if (!(speed > 0)) return;
-		if (this.deferPlaybackTempo) {
-			this.port.postMessage({
-				type: 'speed_update',
-				speed,
-				patternOrderIndex: this.state.currentPatternOrderIndex,
-				row: this.state.currentRow
-			});
-			return;
-		}
-		this.state.setSpeed(speed);
+		this.state.publishPlaybackSpeed(speed);
 		this.port.postMessage({
 			type: 'speed_update',
 			speed,
@@ -613,8 +603,8 @@ class TrackerPatternProcessor {
 					tableIndex >= 0 &&
 					this.state.channelEffectTypes[channelIndex] === EffectAlgorithms.ARPEGGIO;
 
-			let result;
-			let semitoneOffset;
+				let result;
+				let semitoneOffset;
 
 				if (isArpeggioTable) {
 					const table = this.state.getTable(tableIndex);

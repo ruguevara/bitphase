@@ -105,6 +105,39 @@ describe('TrackerState', () => {
 		});
 	});
 
+	describe('multichip shared playback speed', () => {
+		it('publishPlaybackSpeed updates shared memory and pullSharedPlaybackSpeed on peer', () => {
+			let sab: SharedArrayBuffer;
+			try {
+				sab = new SharedArrayBuffer(4);
+			} catch {
+				return;
+			}
+			const leader = new TrackerState();
+			const follower = new TrackerState();
+			leader.setPlaybackSpeedSharedBuffer(sab);
+			follower.setPlaybackSpeedSharedBuffer(sab);
+			follower.setSpeed(2);
+			leader.publishPlaybackSpeed(8);
+			expect(leader.currentSpeed).toBe(8);
+			follower.pullSharedPlaybackSpeed();
+			expect(follower.currentSpeed).toBe(8);
+		});
+
+		it('setPlaybackSpeedSharedBuffer seeds slot from currentSpeed', () => {
+			let sab: SharedArrayBuffer;
+			try {
+				sab = new SharedArrayBuffer(4);
+			} catch {
+				return;
+			}
+			const state = new TrackerState();
+			state.setSpeed(5);
+			state.setPlaybackSpeedSharedBuffer(sab);
+			expect(new Int32Array(sab)[0]).toBe(5);
+		});
+	});
+
 	describe('setPatternOrder', () => {
 		it('sets patternOrder', () => {
 			const state = new TrackerState();

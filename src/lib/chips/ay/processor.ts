@@ -50,7 +50,9 @@ type PlayFromPositionCommand = {
 };
 
 type WorkletCommand =
-	| { type: 'init'; wasmBuffer: ArrayBuffer }
+	| { type: 'init'; wasmBuffer: ArrayBuffer; playbackSpeedShared?: SharedArrayBuffer }
+	| { type: 'attach_playback_speed_shared'; buffer: SharedArrayBuffer }
+	| { type: 'clear_playback_speed_shared' }
 	| { type: 'play'; initialSpeed?: number }
 	| { type: 'play_from_row'; row: number; patternOrderIndex?: number; speed?: number | null }
 	| PlayFromPositionCommand
@@ -59,7 +61,6 @@ type WorkletCommand =
 	| { type: 'init_pattern'; pattern: Pattern; patternOrderIndex: number }
 	| { type: 'init_tuning_table'; tuningTable: number[] }
 	| { type: 'init_speed'; speed: number }
-	| { type: 'set_global_tempo_sync'; enabled: boolean }
 	| { type: 'set_pattern_data'; pattern: Pattern; patternOrderIndex: number }
 	| { type: 'init_tables'; tables: Table[] }
 	| { type: 'init_instruments'; instruments: Instrument[] }
@@ -151,7 +152,11 @@ export class AYProcessor
 		this.settingsUnsubscribers = [];
 	}
 
-	initialize(wasmBuffer: ArrayBuffer, audioNode: AudioWorkletNode): void {
+	initialize(
+		wasmBuffer: ArrayBuffer,
+		audioNode: AudioWorkletNode,
+		playbackSpeedShared?: SharedArrayBuffer
+	): void {
 		if (!wasmBuffer || wasmBuffer.byteLength === 0) {
 			throw new Error('WASM buffer not available or empty');
 		}
@@ -161,7 +166,19 @@ export class AYProcessor
 			this.handleWorkletMessage(event);
 		};
 
-		this.sendCommand({ type: 'init', wasmBuffer });
+		this.sendCommand({
+			type: 'init',
+			wasmBuffer,
+			...(playbackSpeedShared ? { playbackSpeedShared } : {})
+		});
+	}
+
+	attachPlaybackSpeedShared(buffer: SharedArrayBuffer): void {
+		this.sendCommand({ type: 'attach_playback_speed_shared', buffer });
+	}
+
+	detachPlaybackSpeedShared(): void {
+		this.sendCommand({ type: 'clear_playback_speed_shared' });
 	}
 
 	private sendCommand(command: WorkletCommand): void {
@@ -181,7 +198,11 @@ export class AYProcessor
 	}
 
 	private toSerializableCommand(command: WorkletCommand): unknown {
-		if (command.type === 'init') {
+		if (
+			command.type === 'init' ||
+			command.type === 'attach_playback_speed_shared' ||
+			command.type === 'clear_playback_speed_shared'
+		) {
 			return command;
 		}
 		return JSON.parse(JSON.stringify(command));
@@ -244,10 +265,6 @@ export class AYProcessor
 
 	sendInitSpeed(speed: number): void {
 		this.sendCommand({ type: 'init_speed', speed });
-	}
-
-	sendGlobalTempoSync(enabled: boolean): void {
-		this.sendCommand({ type: 'set_global_tempo_sync', enabled });
 	}
 
 	sendInitTables(tables: Table[]): void {

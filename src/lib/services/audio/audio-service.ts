@@ -24,6 +24,7 @@ export class AudioService {
 	private _playPatternRestoreOrder: number[] | null = null;
 	private _playPatternRestoreLoopPointId = 0;
 	private _playPatternId: number | null = null;
+	private multichipPlaybackSpeed: SharedArrayBuffer | null = null;
 
 	//for example 1x FM chip processor, 2x AY chip processors for TSFM track
 	//they will all be mixed together in single audio context
@@ -52,6 +53,23 @@ export class AudioService {
 		}
 	}
 
+	private ensureMultichipPlaybackSpeed(): SharedArrayBuffer | null {
+		if (this.multichipPlaybackSpeed) {
+			return this.multichipPlaybackSpeed;
+		}
+		try {
+			this.multichipPlaybackSpeed = new SharedArrayBuffer(4);
+			return this.multichipPlaybackSpeed;
+		} catch {
+			return null;
+		}
+	}
+
+	private detachMultichipPlaybackSpeedFromProcessors(): void {
+		this.multichipPlaybackSpeed = null;
+		this.chipProcessors.forEach((p) => p.detachPlaybackSpeedShared?.());
+	}
+
 	async addChipProcessor(chip: Chip) {
 		if (!this._audioContext) {
 			throw new Error('Audio context not initialized');
@@ -74,7 +92,13 @@ export class AudioService {
 
 		const audioNode = this.createAudioNode();
 
-		processor.initialize(wasmBuffer, audioNode);
+		const playbackSpeedShared =
+			this.chipProcessors.length >= 2 ? this.ensureMultichipPlaybackSpeed() : null;
+		processor.initialize(wasmBuffer, audioNode, playbackSpeedShared ?? undefined);
+
+		if (playbackSpeedShared && this.chipProcessors.length === 2) {
+			this.chipProcessors[0].attachPlaybackSpeedShared?.(playbackSpeedShared);
+		}
 
 		const processorWithWaveform = processor as {
 			setWaveformCallback?: (cb: (channels: Float32Array[]) => void) => void;
@@ -103,9 +127,6 @@ export class AudioService {
 
 		this.applyMuteStateToAllChips();
 
-		const useGlobalTempoSync = this.chipProcessors.length > 1;
-		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(useGlobalTempoSync));
-
 		this.chipProcessors.forEach((chipProcessor, index) => {
 			const initialSpeed = initialSpeeds?.[index];
 			chipProcessor.play(initialSpeed);
@@ -124,9 +145,6 @@ export class AudioService {
 		this._previewChipIndices.clear();
 
 		this.applyMuteStateToAllChips();
-
-		const useGlobalTempoSync = this.chipProcessors.length > 1;
-		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(useGlobalTempoSync));
 
 		const catchUpSegments = options?.catchUpSegments;
 		const startPattern = options?.startPattern;
@@ -160,7 +178,6 @@ export class AudioService {
 
 		waveformStore.clear();
 
-		this.chipProcessors.forEach((p) => p.sendGlobalTempoSync?.(false));
 		this.chipProcessors.forEach((chipProcessor) => {
 			chipProcessor.stop();
 		});
@@ -215,12 +232,16 @@ export class AudioService {
 			this.stop();
 		}
 		this.chipProcessors = this.chipProcessors.filter((_, i) => i !== index);
+		if (this.chipProcessors.length < 2) {
+			this.detachMultichipPlaybackSpeedFromProcessors();
+		}
 	}
 
 	clearChipProcessors() {
 		if (this._isPlaying) {
 			this.stop();
 		}
+		this.detachMultichipPlaybackSpeedFromProcessors();
 		this.chipProcessors = [];
 	}
 
@@ -228,6 +249,8 @@ export class AudioService {
 		if (this._isPlaying) {
 			this.stop();
 		}
+
+		this.detachMultichipPlaybackSpeedFromProcessors();
 
 		if (this._audioContext) {
 			await this._audioContext.close();

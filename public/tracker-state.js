@@ -67,6 +67,8 @@ class TrackerState {
 
 		this.speedTable = -1;
 		this.speedTablePosition = 0;
+
+		this._playbackSpeedShared = null;
 	}
 
 	resizeChannels(newCount) {
@@ -90,6 +92,19 @@ class TrackerState {
 
 		this.speedTable = -1;
 		this.speedTablePosition = 0;
+
+		if (this._playbackSpeedShared) {
+			Atomics.store(this._playbackSpeedShared, 0, DEFAULT_SPEED);
+		}
+	}
+
+	setPlaybackSpeedSharedBuffer(buffer) {
+		this._playbackSpeedShared = new Int32Array(buffer);
+		Atomics.store(this._playbackSpeedShared, 0, this.currentSpeed | 0);
+	}
+
+	clearPlaybackSpeedSharedBuffer() {
+		this._playbackSpeedShared = null;
 	}
 
 	setTuningTable(table) {
@@ -113,6 +128,22 @@ class TrackerState {
 
 	setSpeed(speed) {
 		this.currentSpeed = speed;
+	}
+
+	publishPlaybackSpeed(speed) {
+		if (!(speed > 0)) return;
+		if (this._playbackSpeedShared) {
+			Atomics.store(this._playbackSpeedShared, 0, speed | 0);
+		}
+		this.setSpeed(speed);
+	}
+
+	pullSharedPlaybackSpeed() {
+		if (!this._playbackSpeedShared) return;
+		const s = Atomics.load(this._playbackSpeedShared, 0);
+		if (s > 0) {
+			this.setSpeed(s);
+		}
 	}
 
 	setPatternOrder(order, loopPointId = this.loopPointId) {

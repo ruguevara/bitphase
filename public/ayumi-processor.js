@@ -48,7 +48,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		this.channelWaveformWriteIndex = 0;
 		this.waveformPostCounter = 0;
 		this.waveformPostInterval = 6;
-		this.multiChipGlobalTempo = false;
 	}
 
 	async handleMessage(event) {
@@ -85,9 +84,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 			case 'init_speed':
 				this.handleInitSpeed(data);
 				break;
-			case 'set_global_tempo_sync':
-				this.multiChipGlobalTempo = !!data.enabled;
-				break;
 			case 'init_tables':
 				this.handleInitTables(data);
 				break;
@@ -121,10 +117,16 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		case 'set_virtual_channel_config':
 			this.handleSetVirtualChannelConfig(data);
 			break;
+		case 'attach_playback_speed_shared':
+			this.state.setPlaybackSpeedSharedBuffer(data.buffer);
+			break;
+		case 'clear_playback_speed_shared':
+			this.state.clearPlaybackSpeedSharedBuffer();
+			break;
 		}
 	}
 
-	async handleInit({ wasmBuffer }) {
+	async handleInit({ wasmBuffer, playbackSpeedShared }) {
 		if (!wasmBuffer) return;
 
 		try {
@@ -143,6 +145,9 @@ class AyumiProcessor extends AudioWorkletProcessor {
 
 			this.state.setWasmModule(wasmModule, ayumiPtr, wasmBuffer);
 			this.state.updateSamplesPerTick(sampleRate);
+			if (playbackSpeedShared) {
+				this.state.setPlaybackSpeedSharedBuffer(playbackSpeedShared);
+			}
 			this.audioDriver = new AYAudioDriver();
 			this.ayumiEngine = new AyumiEngine(wasmModule, ayumiPtr);
 			this.patternProcessor = new TrackerPatternProcessor(
@@ -162,7 +167,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 	}
 
 	handleInitSpeed(data) {
-		this.state.setSpeed(data.speed);
+		this.state.publishPlaybackSpeed(data.speed);
 	}
 
 	handleInitTables(data) {
@@ -324,7 +329,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		}
 
 		if (speed !== undefined && speed !== null && speed > 0) {
-			this.state.setSpeed(speed);
+			this.state.publishPlaybackSpeed(speed);
 		}
 
 		if (row !== undefined && (patternChanged || this.state.currentPattern)) {
@@ -350,7 +355,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 			this.state.currentPatternOrderIndex = startPatternOrderIndex;
 		}
 		if (initialSpeed !== undefined && initialSpeed > 0) {
-			this.state.setSpeed(initialSpeed);
+			this.state.publishPlaybackSpeed(initialSpeed);
 		}
 
 		this.postPositionUpdate();
@@ -376,7 +381,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		}
 		this.state.currentRow = row;
 		if (speed !== undefined && speed !== null && speed > 0) {
-			this.state.setSpeed(speed);
+			this.state.publishPlaybackSpeed(speed);
 		}
 
 		this.postPositionUpdate();
@@ -398,7 +403,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		this.startPlaybackCommon();
 
 		if (speed !== undefined && speed !== null && speed > 0) {
-			this.state.setSpeed(speed);
+			this.state.publishPlaybackSpeed(speed);
 		}
 
 		if (catchUpSegments?.length && this.patternProcessor && this.audioDriver && this.ayumiEngine) {
@@ -425,8 +430,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 	}
 
 	_simulateRow(pattern, rowIndex) {
-		const prevDefer = this.patternProcessor.deferPlaybackTempo;
-		this.patternProcessor.deferPlaybackTempo = false;
 		this.patternProcessor.parsePatternRow(pattern, rowIndex, this.registerState);
 		this.patternProcessor.processSpeedTable();
 		const ticksPerRow = this.state.currentSpeed;
@@ -438,7 +441,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 			this.patternProcessor.processVibrato();
 			this.patternProcessor.processSlides();
 		}
-		this.patternProcessor.deferPlaybackTempo = prevDefer;
 		this._applyRegisterStateToEngine();
 	}
 
@@ -575,7 +577,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 		for (let r = 0; r < rowIndex; r++) {
 			this._simulateRow(pattern, r);
 		}
-		this.patternProcessor.deferPlaybackTempo = false;
 		this.patternProcessor.parsePatternRow(pattern, rowIndex, this.registerState);
 		this.patternProcessor.processTables();
 		this.audioDriver.processInstruments(this.state, this.registerState);
@@ -623,6 +624,7 @@ class AyumiProcessor extends AudioWorkletProcessor {
 			}
 
 			for (let i = 0; i < numSamples; i++) {
+				this.state.pullSharedPlaybackSpeed();
 				this.state.tickAccumulator += this.state.tickStep;
 
 			if (this.previewActiveChannels.size > 0) {
@@ -640,7 +642,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 					this.state.currentPattern.length > 0 &&
 					this.state.tickAccumulator >= 1.0
 				) {
-					this.patternProcessor.deferPlaybackTempo = this.multiChipGlobalTempo;
 					if (this.state.currentTick === 0) {
 						const patternLength = this.state.currentPattern.length;
 						const rowsFromEnd = patternLength - 1 - this.state.currentRow;
@@ -699,8 +700,6 @@ class AyumiProcessor extends AudioWorkletProcessor {
 					this.audioDriver.processInstruments(this.state, this.registerState);
 					this.patternProcessor.processVibrato();
 					this.patternProcessor.processSlides();
-
-					this.patternProcessor.deferPlaybackTempo = false;
 
 				this.enforceMuteState();
 
