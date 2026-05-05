@@ -553,7 +553,7 @@
 												ondblclick={() => startEditingInstrumentId(index)}>
 												<span
 													class="font-mono text-xs font-semibold {isSelected
-														? 'text-[var(--color-app-text-secondary)]'
+														? 'text-[var(--color-app-on-primary)]'
 														: isUsed
 															? 'text-[var(--color-app-text-tertiary)] group-hover:text-[var(--color-app-text-primary)]'
 															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'}">
@@ -561,7 +561,7 @@
 												</span>
 												<span
 													class="text-xs {isSelected
-														? 'text-[var(--color-app-text-secondary)]'
+														? 'text-[var(--color-app-on-primary)]'
 														: isUsed
 															? 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'
 															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-muted)]'}">
@@ -581,7 +581,7 @@
 												</button>
 												{#if instruments.length > 1}
 													<button
-														class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-red-400"
+														class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-[var(--color-pattern-note-off)]"
 														onclick={(e) => {
 															e.stopPropagation();
 															removeInstrument(index);

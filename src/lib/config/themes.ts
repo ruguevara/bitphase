@@ -44,8 +44,57 @@ export const BUILTIN_THEMES: Theme[] = [
 			appBorderHover: '#45475a',
 			appPrimary: '#143b7f',
 			appPrimaryHover: '#224c9a',
+			appOnPrimary: '#eff1f5',
 			appSecondary: '#b4befe',
 			appSecondaryHover: '#cba6f7'
+		}
+	},
+	{
+		id: 'light',
+		name: 'Light',
+		colors: {
+			patternBg: '#eff1f5',
+			patternText: '#4c4f69',
+			patternEmpty: '#ccd0da',
+			patternEmptySelected: '#acb0be',
+			patternNote: '#1e66f5',
+			patternInstrument: '#7287fd',
+			patternEffect: '#df8e1d',
+			patternEnvelope: '#40a02b',
+			patternNoise: '#7c7f93',
+			patternSelected: '#d8e5fc',
+			patternCellSelected: '#9bb8ec',
+			patternRowNum: '#1e66f5',
+			patternAlternate: '#dce0e8',
+			patternAlternateEmpty: '#eff1f5',
+			patternTable: '#40a02b',
+			patternRowNumAlternate: '#8839ef',
+			patternNoteOff: '#d20f39',
+			patternTableOff: '#179299',
+			patternChannelSeparator: '#ccd0da',
+			orderBg: '#eff1f5',
+			orderText: '#4c4f69',
+			orderEmpty: '#ccd0da',
+			orderSelected: '#bcc0cc',
+			orderHovered: '#dce0e8',
+			orderAlternate: '#dce0e8',
+			orderBorder: '#acb0be',
+			appBackground: '#eff1f5',
+			appSurface: '#e6e9ef',
+			appSurfaceSecondary: '#dce0e8',
+			appSurfaceHover: '#ccd0da',
+			appSurfaceActive: '#bcc0cc',
+			appTextPrimary: '#4c4f69',
+			appTextSecondary: '#5c5f77',
+			appTextTertiary: '#6c6f85',
+			appTextMuted: '#8c8fa1',
+			appBorder: '#aeb4bf',
+			appBorderHover: '#959bab',
+			appPrimary: '#1e66f5',
+			appPrimaryHover: '#1a5ad6',
+			appOnPrimary: '#ffffff',
+			appSecondary: '#8839ef',
+			appSecondaryHover: '#7287fd'
 		}
 	},
 	{
@@ -91,6 +140,7 @@ export const BUILTIN_THEMES: Theme[] = [
 			appBorderHover: '#5A4A42',
 			appPrimary: '#9FA073',
 			appPrimaryHover: '#719d9e',
+			appOnPrimary: '#1e0d06',
 			appSecondary: '#9e719d',
 			appSecondaryHover: '#83709e'
 		}
@@ -138,6 +188,7 @@ export const BUILTIN_THEMES: Theme[] = [
 			appBorderHover: '#363646',
 			appPrimary: '#223249',
 			appPrimaryHover: '#2D4F67',
+			appOnPrimary: '#DCD7BA',
 			appSecondary: '#938AA9',
 			appSecondaryHover: '#9CABCA'
 		}
@@ -185,6 +236,7 @@ export const BUILTIN_THEMES: Theme[] = [
 			appBorderHover: '#0f380f',
 			appPrimary: '#306230',
 			appPrimaryHover: '#0f380f',
+			appOnPrimary: '#9bbc0f',
 			appSecondary: '#9bbc0f',
 			appSecondaryHover: '#9bbc0f'
 		}

@@ -40,6 +40,6 @@
 		autofocus
 		maxlength={maxLength} />
 	{#if error}
-		<span class="text-[0.6rem] text-red-400">{error}</span>
+		<span class="text-[0.6rem] text-[var(--color-pattern-note-off)]">{error}</span>
 	{/if}
 </div>

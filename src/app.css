@@ -101,8 +101,9 @@
 	--color-app-text-muted: #6c7086;
 	--color-app-border: #313244;
 	--color-app-border-hover: #45475a;
-	--color-app-primary: #89b4fa;
-	--color-app-primary-hover: #74c7ec;
+	--color-app-on-primary: #eff1f5;
+	--color-app-primary: #143b7f;
+	--color-app-primary-hover: #224c9a;
 	--color-app-secondary: #b4befe;
 	--color-app-secondary-hover: #cba6f7;
 }
@@ -148,4 +149,14 @@ html {
 
 .row-editor-table [tabindex]:focus {
 	outline: none;
+}
+
+.instrument-cell-boolean-on {
+	background: color-mix(in srgb, var(--color-pattern-table) 20%, var(--color-app-surface));
+	color: var(--color-pattern-table);
+}
+
+.instrument-cell-slide-negative {
+	background: color-mix(in srgb, var(--color-pattern-note-off) 22%, var(--color-app-surface));
+	color: var(--color-pattern-note-off);
 }

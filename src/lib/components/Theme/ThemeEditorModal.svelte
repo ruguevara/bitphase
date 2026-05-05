@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Theme, ThemeColors } from '../../types/theme';
 	import { themeStore } from '../../stores/theme.svelte';
-	import { themeService } from '../../services/theme/theme-service';
+	import { mergeThemeColors, themeService } from '../../services/theme/theme-service';
 	import Button from '../Button/Button.svelte';
 	import Input from '../Input/Input.svelte';
 	import HexColorInput from '../Input/HexColorInput.svelte';
@@ -22,7 +22,7 @@
 	}>();
 
 	let editedTheme = $state<Theme>({ ...theme });
-	let editedColors = $state<ThemeColors>({ ...theme.colors });
+	let editedColors = $state<ThemeColors>(mergeThemeColors({ ...theme.colors }));
 
 	const colorLabels: Record<string, string> = {
 		patternBg: 'Pattern Background',
@@ -64,6 +64,7 @@
 		appBorderHover: 'Border 2',
 		appPrimary: 'Primary 1',
 		appPrimaryHover: 'Primary 2',
+		appOnPrimary: 'On primary text',
 		appSecondary: 'Secondary 1',
 		appSecondaryHover: 'Secondary 2'
 	};
@@ -88,51 +89,7 @@
 	$effect(() => {
 		editedTheme.colors = editedColors;
 
-		const colors = editedColors;
-
-		const previewColors: ThemeColors = {
-			patternBg: colors.patternBg,
-			patternText: colors.patternText,
-			patternEmpty: colors.patternEmpty,
-			patternEmptySelected: colors.patternEmptySelected,
-			patternNote: colors.patternNote,
-			patternInstrument: colors.patternInstrument,
-			patternEffect: colors.patternEffect,
-			patternEnvelope: colors.patternEnvelope,
-			patternNoise: colors.patternNoise,
-			patternSelected: colors.patternSelected,
-			patternCellSelected: colors.patternCellSelected,
-			patternRowNum: colors.patternRowNum,
-			patternAlternate: colors.patternAlternate,
-			patternAlternateEmpty: colors.patternAlternateEmpty,
-			patternTable: colors.patternTable,
-			patternRowNumAlternate: colors.patternRowNumAlternate,
-			patternNoteOff: colors.patternNoteOff,
-			patternTableOff: colors.patternTableOff,
-			patternChannelSeparator: colors.patternChannelSeparator,
-			orderBg: colors.orderBg,
-			orderText: colors.orderText,
-			orderEmpty: colors.orderEmpty,
-			orderSelected: colors.orderSelected,
-			orderHovered: colors.orderHovered,
-			orderAlternate: colors.orderAlternate,
-			orderBorder: colors.orderBorder,
-			appBackground: colors.appBackground,
-			appSurface: colors.appSurface,
-			appSurfaceSecondary: colors.appSurfaceSecondary,
-			appSurfaceHover: colors.appSurfaceHover,
-			appSurfaceActive: colors.appSurfaceActive,
-			appTextPrimary: colors.appTextPrimary,
-			appTextSecondary: colors.appTextSecondary,
-			appTextTertiary: colors.appTextTertiary,
-			appTextMuted: colors.appTextMuted,
-			appBorder: colors.appBorder,
-			appBorderHover: colors.appBorderHover,
-			appPrimary: colors.appPrimary,
-			appPrimaryHover: colors.appPrimaryHover,
-			appSecondary: colors.appSecondary,
-			appSecondaryHover: colors.appSecondaryHover
-		};
+		const previewColors: ThemeColors = { ...editedColors };
 
 		if (rafId !== null) {
 			cancelAnimationFrame(rafId);

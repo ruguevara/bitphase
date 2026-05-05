@@ -18,7 +18,7 @@
 
 	const variantClasses = $derived(
 		variant === 'primary'
-			? 'border-[var(--color-app-primary)] bg-[var(--color-app-primary)] text-[var(--color-app-text-primary)] hover:bg-[var(--color-app-primary-hover)]'
+			? 'border-[var(--color-app-primary)] bg-[var(--color-app-primary)] text-[var(--color-app-on-primary)] hover:bg-[var(--color-app-primary-hover)]'
 			: variant === 'secondary'
 				? 'border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-secondary)] hover:bg-[var(--color-app-surface-hover)]'
 				: 'border-[var(--color-app-border)] bg-[var(--color-pattern-bg)] hover:bg-[var(--color-pattern-selected)]'

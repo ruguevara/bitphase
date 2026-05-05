@@ -125,8 +125,9 @@
 
 	<div class="min-h-0 flex-1 overflow-y-auto">
 		{#if !hasSelection}
-			<div class="shrink-0 border-b border-[var(--color-app-border)] bg-amber-900/20 px-4 py-2">
-				<p class="text-xs text-amber-400">
+			<div
+				class="shrink-0 border-b border-l-4 border-[var(--color-app-border)] border-l-[var(--color-pattern-effect)] bg-[color-mix(in_srgb,var(--color-pattern-effect)_14%,var(--color-app-surface))] px-4 py-2 pl-3">
+				<p class="text-xs text-[var(--color-app-text-primary)]">
 					Select a region in the pattern editor first to apply a script.
 				</p>
 			</div>
@@ -138,7 +139,7 @@
 				type="text"
 				bind:value={searchQuery}
 				placeholder="Search scripts..."
-				class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-accent)] focus:outline-none" />
+				class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-primary)] focus:outline-none" />
 		</div>
 
 		<div
@@ -188,7 +189,7 @@
 					Export
 				</button>
 				<button
-					class="cursor-pointer rounded px-2 py-1 text-xs text-red-400 hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+					class="cursor-pointer rounded px-2 py-1 text-xs text-[var(--color-pattern-note-off)] hover:bg-[color-mix(in_srgb,var(--color-pattern-note-off)_14%,var(--color-app-surface))] disabled:opacity-50 disabled:cursor-not-allowed"
 					onclick={handleDeleteScript}
 					disabled={isBuiltIn}
 					title={isBuiltIn ? 'Cannot delete built-in scripts' : 'Delete script'}>

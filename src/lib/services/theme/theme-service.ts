@@ -1,5 +1,12 @@
 import type { Theme, ThemeColors } from '../../types/theme';
+import { BUILTIN_THEMES } from '../../config/themes';
 import { CSS_VAR_MAP } from '../../config/theme-colors';
+
+function mergeThemeColors(colors: ThemeColors): ThemeColors {
+	return { ...BUILTIN_THEMES[0].colors, ...colors };
+}
+
+export { mergeThemeColors };
 
 export class ThemeService {
 	private colorChangeListeners: Set<() => void> = new Set();
@@ -8,7 +15,7 @@ export class ThemeService {
 		if (!theme) return;
 
 		const root = document.documentElement;
-		const colors = theme.colors;
+		const colors = mergeThemeColors(theme.colors);
 
 		for (const [key, cssVar] of Object.entries(CSS_VAR_MAP)) {
 			const colorKey = key as keyof ThemeColors;
@@ -24,10 +31,11 @@ export class ThemeService {
 		}
 
 		const root = document.documentElement;
+		const merged = mergeThemeColors(colors);
 
 		for (const [key, cssVar] of Object.entries(CSS_VAR_MAP)) {
 			const colorKey = key as keyof ThemeColors;
-			root.style.setProperty(cssVar, colors[colorKey]);
+			root.style.setProperty(cssVar, merged[colorKey]);
 		}
 
 		this.notifyColorChange();

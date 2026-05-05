@@ -44,6 +44,7 @@ export const APP_COLOR_KEYS = [
 	'appBorderHover',
 	'appPrimary',
 	'appPrimaryHover',
+	'appOnPrimary',
 	'appSecondary',
 	'appSecondaryHover'
 ] as const;

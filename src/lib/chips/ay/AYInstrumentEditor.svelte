@@ -745,7 +745,7 @@
 											? 'gap-1'
 											: 'gap-0.5'}">
 										<button
-											class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-red-400"
+											class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 											onclick={(e) => {
 												e.stopPropagation();
 												removeRow(index);
@@ -756,7 +756,7 @@
 										</button>
 										{#if index < rows.length - 1}
 											<button
-												class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-red-500"
+												class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 												onclick={(e) => {
 													e.stopPropagation();
 													removeRowsFromBottom(index);
@@ -785,7 +785,7 @@
 										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
 										? ROW_SELECTION_STYLES.cell
 										: row.tone
-											? 'bg-green-900/30 text-green-400'
+											? 'instrument-cell-boolean-on'
 											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 									tabindex="-1"
 									onmousedown={() => beginDragBoolean(index, 'tone')}
@@ -800,7 +800,7 @@
 										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
 										? ROW_SELECTION_STYLES.cell
 										: row.noise
-											? 'bg-green-900/30 text-green-400'
+											? 'instrument-cell-boolean-on'
 											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 									tabindex="-1"
 									onmousedown={() => beginDragBoolean(index, 'noise')}
@@ -815,7 +815,7 @@
 										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
 										? ROW_SELECTION_STYLES.cell
 										: row.envelope
-											? 'bg-green-900/30 text-green-400'
+											? 'instrument-cell-boolean-on'
 											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 									tabindex="-1"
 									onmousedown={() => beginDragBoolean(index, 'envelope')}
@@ -830,7 +830,7 @@
 										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
 										? ROW_SELECTION_STYLES.cell
 										: (row.retriggerEnvelope ?? false)
-											? 'bg-green-900/30 text-green-400'
+											? 'instrument-cell-boolean-on'
 											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 									tabindex="-1"
 									title="Retrigger envelope when this row is played"
@@ -956,9 +956,9 @@
 										: 'px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
 										? ROW_SELECTION_STYLES.cell
 										: row.amplitudeSliding && row.amplitudeSlideUp
-											? 'bg-green-900/30 text-green-400'
+											? 'instrument-cell-boolean-on'
 											: row.amplitudeSliding
-												? 'bg-red-900/30 text-red-400'
+												? 'instrument-cell-slide-negative'
 												: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 									onclick={() => cycleAmplitudeSlide(index)}
 									title={row.amplitudeSliding
@@ -981,7 +981,7 @@
 							<td colspan="16" class="px-2 py-1">
 								<div class="flex items-center justify-center">
 									<button
-										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-green-400"
+										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
 										onclick={addRow}
 										title="Add new row">
 										<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />

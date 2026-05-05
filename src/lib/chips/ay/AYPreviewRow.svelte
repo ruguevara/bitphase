@@ -399,7 +399,7 @@
 		aria-label="Preview playground">
 		<button
 			type="button"
-			class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border border-[var(--color-app-border)] bg-[var(--color-app-primary)] text-[var(--color-app-secondary)] transition-colors hover:bg-[var(--color-app-primary-hover)] disabled:pointer-events-none disabled:opacity-50"
+			class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border border-[var(--color-app-border)] bg-[var(--color-app-primary)] text-[var(--color-app-on-primary)] transition-colors hover:bg-[var(--color-app-primary-hover)] disabled:pointer-events-none disabled:opacity-50"
 			disabled={isDisabled || lastPlayedNotes.length === 0}
 			title={isPreviewPlaying
 				? `Stop preview (${ShortcutString.toDisplay(keybindingsStore.getShortcut(ACTION_TOGGLE_PLAYBACK))})`

@@ -512,7 +512,7 @@
 									: 'bg-[var(--color-app-surface-secondary)]'} px-1.5">
 								<div class="flex items-center justify-center gap-1">
 									<button
-										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-red-400"
+										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 										onclick={(e) => {
 											e.stopPropagation();
 											removeRow(index);
@@ -572,7 +572,7 @@
 							<td colspan="25" class="px-2 py-1">
 								<div class="flex items-center justify-center">
 									<button
-										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-green-400"
+										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
 										onclick={addRow}
 										title="Add new row">
 										<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
@@ -584,7 +584,7 @@
 							<td colspan="4" class="px-2 py-1">
 								<div class="flex items-center justify-center">
 									<button
-										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-green-400"
+										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
 										onclick={addRow}
 										title="Add new row">
 										<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
