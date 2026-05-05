@@ -27,8 +27,7 @@ export interface ChipProcessor {
 	sendInitTables(tables: Table[]): void;
 	setCallbacks(
 		onPositionUpdate: (currentRow: number, currentPatternOrderIndex?: number) => void,
-		onPatternRequest: (patternOrderIndex: number) => void,
-		onSpeedUpdate?: (speed: number) => void
+		onPatternRequest: (patternOrderIndex: number) => void
 	): void;
 	isAudioNodeAvailable(): boolean;
 	sendInitSpeed(speed: number): void;

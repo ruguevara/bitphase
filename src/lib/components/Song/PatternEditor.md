@@ -266,7 +266,6 @@ Performance optimization through memoization:
     - Throttled to 33ms (30fps) to avoid excessive UI updates
     - Respects manual pattern changes during timeout period
 - **handlePatternRequest(orderIndex)** - Callback when audio needs pattern data
-- **handleSpeedUpdate(speed)** - Callback when speed effect changes playback rate
 
 ## Shortcuts Context
 

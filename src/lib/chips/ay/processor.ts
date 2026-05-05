@@ -30,15 +30,7 @@ type ChannelWaveformMessage = {
 type WorkletMessage =
 	| PositionUpdateMessage
 	| RequestPatternMessage
-	| SpeedUpdateMessage
 	| ChannelWaveformMessage;
-
-interface SpeedUpdateMessage {
-	type: 'speed_update';
-	speed: number;
-	patternOrderIndex?: number;
-	row?: number;
-}
 
 type PlayFromPositionCommand = {
 	type: 'play_from_position';
@@ -96,7 +88,6 @@ export class AYProcessor
 	audioNode: AudioWorkletNode | null = null;
 	private onPositionUpdate?: (currentRow: number, currentPatternOrderIndex?: number) => void;
 	private onPatternRequest?: (patternOrderIndex: number) => void;
-	private onSpeedUpdate?: (speed: number) => void;
 	private waveformCallback?: (channels: Float32Array[]) => void;
 	private commandQueue: WorkletCommand[] = [];
 	private settingsUnsubscribers: (() => void)[] = [];
@@ -210,12 +201,10 @@ export class AYProcessor
 
 	setCallbacks(
 		onPositionUpdate: (currentRow: number, currentPatternOrderIndex?: number) => void,
-		onPatternRequest: (patternOrderIndex: number) => void,
-		onSpeedUpdate?: (speed: number) => void
+		onPatternRequest: (patternOrderIndex: number) => void
 	): void {
 		this.onPositionUpdate = onPositionUpdate;
 		this.onPatternRequest = onPatternRequest;
-		this.onSpeedUpdate = onSpeedUpdate;
 	}
 
 	setWaveformCallback(callback: (channels: Float32Array[]) => void): void {
@@ -358,9 +347,6 @@ export class AYProcessor
 				break;
 			case 'request_pattern':
 				this.onPatternRequest?.(message.patternOrderIndex);
-				break;
-			case 'speed_update':
-				this.onSpeedUpdate?.(message.speed);
 				break;
 			case 'channel_waveform':
 				this.waveformCallback?.(message.channels);

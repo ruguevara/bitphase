@@ -10,12 +10,6 @@ class TrackerPatternProcessor {
 	_applyPlaybackSpeed(speed) {
 		if (!(speed > 0)) return;
 		this.state.publishPlaybackSpeed(speed);
-		this.port.postMessage({
-			type: 'speed_update',
-			speed,
-			patternOrderIndex: this.state.currentPatternOrderIndex,
-			row: this.state.currentRow
-		});
 	}
 
 	parsePatternRow(pattern, rowIndex, registerState) {

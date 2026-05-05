@@ -2953,11 +2953,7 @@
 			}
 		};
 
-		const handleSpeedUpdate = (newSpeed: number) => {
-			services.audioService.updateSpeed(newSpeed);
-		};
-
-		chipProcessor.setCallbacks(handlePatternUpdate, handlePatternRequest, handleSpeedUpdate);
+		chipProcessor.setCallbacks(handlePatternUpdate, handlePatternRequest);
 	});
 </script>
 
