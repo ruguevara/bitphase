@@ -1,6 +1,14 @@
 import type { Project } from '../../models/project';
 import type { Pattern } from '../../models/song';
-import type { ChipRenderer, RenderOptions } from '../base/renderer';
+import {
+	assertSharedTimelineSlotsForChip,
+	type ChipRenderer,
+	type ChipRendererBinding,
+	type RenderOptions,
+	type SharedTimelineExportResult,
+	type SharedTimelineExportSlot
+} from '../base/renderer';
+import { AYUMI_AUDIO_SLOT_KIND } from './audio-slot-kind';
 import type { ResourceLoader } from '../base/resource-loader';
 import { BrowserResourceLoader } from '../base/resource-loader';
 import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
@@ -17,11 +25,29 @@ const DEFAULT_AYM_FREQUENCY = 1773400;
 type PanSetting = { channel: number; pan: number; isEqp: number };
 type GetPanSettingsForLayout = (layout: string) => PanSetting[];
 
+type AyumiSlotLane = {
+	songIndex: number;
+	song: any;
+	state: any;
+	patternProcessor: any;
+	audioDriver: any;
+	ayumiEngine: any;
+	registerState: any;
+	mixer: any;
+	ayumiPtr: number;
+	patterns: Pattern[];
+};
+
 export class AYChipRenderer implements ChipRenderer {
 	private loader: ResourceLoader;
+	private readonly binding: ChipRendererBinding;
 
-	constructor(loader?: ResourceLoader) {
+	constructor(loader?: ResourceLoader, binding?: ChipRendererBinding) {
 		this.loader = loader ?? new BrowserResourceLoader();
+		this.binding = binding ?? {
+			chipType: 'ay',
+			audioSlotKind: AYUMI_AUDIO_SLOT_KIND
+		};
 	}
 
 	private async loadWasmModule(
@@ -110,17 +136,31 @@ export class AYChipRenderer implements ChipRenderer {
 		ayumiPtr: number,
 		wasmBuffer: ArrayBuffer
 	): void {
+		this.applyAyExportLaneSetup(state, song, project, wasm, ayumiPtr, wasmBuffer, true);
+	}
+
+	private applyAyExportLaneSetup(
+		state: any,
+		song: any,
+		project: Project,
+		wasm: any,
+		ayumiPtr: number,
+		wasmBuffer: ArrayBuffer,
+		ownsSharedPlaybackTimeline: boolean
+	): void {
 		const chipFrequency = song.chipFrequency || DEFAULT_AYM_FREQUENCY;
 		const interruptFrequency = song.interruptFrequency || 50;
 		state.setWasmModule(wasm, ayumiPtr, wasmBuffer);
 		state.setAymFrequency(chipFrequency);
-		state.setIntFrequency(interruptFrequency, SAMPLE_RATE);
 		state.setTuningTable(song.tuningTable);
 		state.setInstruments(project.instruments);
 		state.setTables(project.tables);
-		state.setPatternOrder(project.patternOrder || [0], project.loopPointId || 0);
-		state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
-		state.updateSamplesPerTick(SAMPLE_RATE);
+		if (ownsSharedPlaybackTimeline) {
+			state.setIntFrequency(interruptFrequency, SAMPLE_RATE);
+			state.setPatternOrder(project.patternOrder || [0], project.loopPointId || 0);
+			state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
+			state.updateSamplesPerTick(SAMPLE_RATE);
+		}
 	}
 
 	private getPatterns(song: any, patternOrder: number[]): Pattern[] {
@@ -147,15 +187,15 @@ export class AYChipRenderer implements ChipRenderer {
 
 	private calculateCurrentRow(state: any, song: any): number {
 		let currentRow = 0;
-		for (let i = 0; i < state.currentPatternOrderIndex; i++) {
-			const patternId = state.patternOrder[i];
+		for (let i = 0; i < state.timeline.currentPatternOrderIndex; i++) {
+			const patternId = state.timeline.patternOrder[i];
 			const pattern = song.patterns.find((p: Pattern) => p.id === patternId);
 			if (pattern) {
 				currentRow += pattern.length;
 			}
 		}
 		if (state.currentPattern) {
-			currentRow += state.currentRow;
+			currentRow += state.timeline.currentRow;
 		}
 		return currentRow;
 	}
@@ -209,13 +249,13 @@ export class AYChipRenderer implements ChipRenderer {
 				await new Promise((resolve) => setTimeout(resolve, 0));
 			}
 
-			state.tickAccumulator += state.tickStep;
+			state.timeline.tickAccumulator += state.timeline.tickStep;
 
-			if (state.tickAccumulator >= 1.0) {
-				if (state.currentTick === 0 && state.currentPattern) {
+			if (state.timeline.tickAccumulator >= 1.0) {
+				if (state.timeline.currentTick === 0 && state.currentPattern) {
 					patternProcessor.parsePatternRow(
 						state.currentPattern,
-						state.currentRow,
+						state.timeline.currentRow,
 						registerState
 					);
 					patternProcessor.processSpeedTable();
@@ -236,9 +276,9 @@ export class AYChipRenderer implements ChipRenderer {
 					ayumiEngine.applyRegisterState(registerState);
 				}
 
-				const isLastPattern = state.currentPatternOrderIndex >= state.patternOrder.length - 1;
-				const isLastRow = state.currentRow >= state.currentPattern.length - 1;
-				const isLastTick = state.currentTick >= state.currentSpeed - 1;
+				const isLastPattern = state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
+				const isLastRow = state.timeline.currentRow >= state.currentPattern.length - 1;
+				const isLastTick = state.timeline.currentTick >= state.timeline.currentSpeed - 1;
 
 				if (isLastPattern && isLastRow && isLastTick) {
 					completedLoops++;
@@ -249,17 +289,17 @@ export class AYChipRenderer implements ChipRenderer {
 
 				const needsPatternChange = state.advancePosition();
 				if (needsPatternChange) {
-					if (state.currentPatternOrderIndex >= state.patternOrder.length) {
+					if (state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length) {
 						break;
 					}
-					if (state.currentPatternOrderIndex < patterns.length) {
-						state.currentPattern = patterns[state.currentPatternOrderIndex];
+					if (state.timeline.currentPatternOrderIndex < patterns.length) {
+						state.currentPattern = patterns[state.timeline.currentPatternOrderIndex];
 					} else {
 						break;
 					}
 				}
 
-				state.tickAccumulator -= 1.0;
+				state.timeline.tickAccumulator -= 1.0;
 			}
 
 			ayumiEngine.process();
@@ -286,6 +326,300 @@ export class AYChipRenderer implements ChipRenderer {
 			return channelSamples.map((s) => new Float32Array(s));
 		}
 		return [new Float32Array(leftSamples), new Float32Array(rightSamples)];
+	}
+
+	private leaderPatternRowCountSharedTimelineExport(contexts: AyumiSlotLane[]): number {
+		const rowCount = (c: AyumiSlotLane) =>
+			c.state.currentPattern != null && c.state.currentPattern.length > 0
+				? c.state.currentPattern.length
+				: 0;
+		const n0 = rowCount(contexts[0]!);
+		if (n0 > 0) return n0;
+		for (const c of contexts) {
+			const n = rowCount(c);
+			if (n > 0) return n;
+		}
+		return 1;
+	}
+
+	private async renderAudioLoopAySharedTimelineExport(
+		contexts: AyumiSlotLane[],
+		wasm: any,
+		leaderSong: any,
+		totalRows: number,
+		patternOrder: number[],
+		loopCount: number,
+		onProgress?: (progress: number, message: string) => void,
+		separateChannels?: boolean
+	): Promise<Float32Array[][]> {
+		const leftByChip: number[][] = contexts.map(() => []);
+		const rightByChip: number[][] = contexts.map(() => []);
+		const chanByChip: number[][][] | null = separateChannels
+			? contexts.map(() => Array.from({ length: TONE_CHANNELS }, () => [] as number[]))
+			: null;
+
+		let totalSamples = 0;
+		const maxSamples = SAMPLE_RATE * 300 * Math.max(1, loopCount);
+		let completedLoops = 0;
+		let lastProgressUpdate = 0;
+		const progressUpdateInterval = SAMPLE_RATE * 0.1;
+		let lastProgressTime = Date.now();
+		const minProgressUpdateMs = 100;
+
+		const leader = contexts[0]!;
+
+		while (totalSamples < maxSamples) {
+			const now = Date.now();
+			if (
+				(totalSamples - lastProgressUpdate >= progressUpdateInterval ||
+					now - lastProgressTime >= minProgressUpdateMs) &&
+				totalSamples > 0
+			) {
+				const renderProgress = (totalSamples / maxSamples) * 50;
+				const progress = 50 + renderProgress;
+				const currentRow = this.calculateCurrentRow(leader.state, leaderSong);
+				const message = `Rendering... ${currentRow}/${totalRows} rows`;
+				onProgress?.(progress, message);
+				lastProgressUpdate = totalSamples;
+				lastProgressTime = now;
+				await new Promise((resolve) => setTimeout(resolve, 0));
+			}
+
+			const tl = leader.state.timeline;
+			tl.tickAccumulator += tl.tickStep;
+
+			if (tl.tickAccumulator >= 1.0) {
+				for (const ctx of contexts) {
+					if (tl.currentTick === 0 && ctx.state.currentPattern) {
+						ctx.patternProcessor.parsePatternRow(
+							ctx.state.currentPattern,
+							tl.currentRow,
+							ctx.registerState
+						);
+						ctx.patternProcessor.processSpeedTable();
+					}
+				}
+
+				for (const ctx of contexts) {
+					ctx.patternProcessor.processTables();
+					ctx.patternProcessor.processArpeggio();
+					ctx.patternProcessor.processEffectTables();
+					ctx.audioDriver.processInstruments(ctx.state, ctx.registerState);
+					ctx.patternProcessor.processVibrato();
+					ctx.patternProcessor.processSlides();
+
+					if (ctx.mixer.hasVirtualChannels()) {
+						const hwState = ctx.mixer.merge(ctx.registerState, ctx.state);
+						ctx.ayumiEngine.applyRegisterState(hwState);
+						ctx.registerState.forceEnvelopeShapeWrite = false;
+					} else {
+						ctx.ayumiEngine.applyRegisterState(ctx.registerState);
+					}
+				}
+
+				const leaderLen = this.leaderPatternRowCountSharedTimelineExport(contexts);
+				const isLastPattern = tl.currentPatternOrderIndex >= tl.patternOrder.length - 1;
+				const isLastRow =
+					leader.state.currentPattern != null
+						? tl.currentRow >= leader.state.currentPattern.length - 1
+						: false;
+				const isLastTick = tl.currentTick >= tl.currentSpeed - 1;
+
+				if (isLastPattern && isLastRow && isLastTick) {
+					completedLoops++;
+					if (completedLoops >= loopCount) {
+						break;
+					}
+				}
+
+				const needsPatternChange = leader.state.advancePosition(leaderLen);
+				if (needsPatternChange) {
+					if (tl.currentPatternOrderIndex >= tl.patternOrder.length) {
+						break;
+					}
+					for (const ctx of contexts) {
+						if (tl.currentPatternOrderIndex < ctx.patterns.length) {
+							ctx.state.currentPattern = ctx.patterns[tl.currentPatternOrderIndex]!;
+						} else {
+							break;
+						}
+					}
+				}
+
+				tl.tickAccumulator -= 1.0;
+			}
+
+			for (const ctx of contexts) {
+				ctx.ayumiEngine.process();
+				ctx.ayumiEngine.removeDC();
+			}
+
+			for (let ci = 0; ci < contexts.length; ci++) {
+				const ptr = contexts[ci]!.ayumiPtr;
+				if (separateChannels && chanByChip) {
+					for (let ch = 0; ch < TONE_CHANNELS; ch++) {
+						const offset = ptr + AYUMI_STRUCT_CHANNEL_OUT_OFFSET + ch * 8;
+						const value = new Float64Array(wasm.memory.buffer, offset, 1)[0];
+						chanByChip[ci][ch].push(value);
+					}
+				} else {
+					const leftOffset = ptr + AYUMI_STRUCT_LEFT_OFFSET;
+					const rightOffset = ptr + AYUMI_STRUCT_RIGHT_OFFSET;
+					const leftValue = new Float64Array(wasm.memory.buffer, leftOffset, 1)[0];
+					const rightValue = new Float64Array(wasm.memory.buffer, rightOffset, 1)[0];
+					leftByChip[ci].push(leftValue);
+					rightByChip[ci].push(rightValue);
+				}
+			}
+			totalSamples++;
+		}
+
+		return contexts.map((_, ci) =>
+			separateChannels && chanByChip
+				? chanByChip[ci].map((arr) => new Float32Array(arr))
+				: [new Float32Array(leftByChip[ci]), new Float32Array(rightByChip[ci])]
+		);
+	}
+
+	async renderSharedTimelineSlots(
+		project: Project,
+		slots: readonly SharedTimelineExportSlot[],
+		onProgress?: (progress: number, message: string) => void,
+		options?: RenderOptions
+	): Promise<SharedTimelineExportResult[]> {
+		assertSharedTimelineSlotsForChip(slots, this.binding);
+		const songIndices = slots.map((s) => s.songIndex);
+
+		const separateChannels = options?.separateChannels ?? false;
+		const loopCount = Math.max(1, options?.loopCount ?? 1);
+		const patternOrder = project.patternOrder || [0];
+		const requestedStartOrderIndex = options?.startPatternOrderIndex ?? 0;
+		const startOrderIndex =
+			requestedStartOrderIndex >= 0 && requestedStartOrderIndex < patternOrder.length
+				? requestedStartOrderIndex
+				: 0;
+
+		const { wasm, wasmBuffer } = await this.loadWasmModule(onProgress);
+		const { getPanSettingsForLayout } =
+			await this.loader.loadModule<{ getPanSettingsForLayout: GetPanSettingsForLayout }>(
+				'ayumi-constants.js'
+			);
+		const {
+			AyumiState,
+			TrackerPatternProcessor,
+			AYAudioDriver,
+			AyumiEngine,
+			AYChipRegisterState,
+			VirtualChannelMixer
+		} = await this.loadProcessorModules(onProgress);
+
+		const contexts: AyumiSlotLane[] = [];
+		const ptrs: number[] = [];
+
+		try {
+			for (const songIndex of songIndices) {
+				const song = project.songs[songIndex];
+				if (!song?.patterns?.length) {
+					throw new Error('Song is empty');
+				}
+
+				const ayumiPtr = this.initializeAyumi(wasm, song, getPanSettingsForLayout);
+				ptrs.push(ayumiPtr);
+
+				const virtualChannelMap: Record<number, number> = song.virtualChannelMap ?? {};
+				const hasVirtual = Object.values(virtualChannelMap).some((c: number) => c > 1);
+				const totalChannelCount = hasVirtual
+					? getTotalVirtualChannelCount(TONE_CHANNELS, virtualChannelMap)
+					: TONE_CHANNELS;
+
+				const state =
+					contexts.length === 0
+						? new AyumiState(totalChannelCount)
+						: new AyumiState(totalChannelCount, contexts[0]!.state.timeline);
+
+				this.applyAyExportLaneSetup(
+					state,
+					song,
+					project,
+					wasm,
+					ayumiPtr,
+					wasmBuffer,
+					contexts.length === 0
+				);
+
+				const audioDriver = new AYAudioDriver(totalChannelCount);
+				const ayumiEngine = new AyumiEngine(wasm, ayumiPtr);
+				const registerState = new AYChipRegisterState(totalChannelCount);
+				const mixer = new VirtualChannelMixer();
+				if (hasVirtual) {
+					mixer.configure(virtualChannelMap, TONE_CHANNELS);
+				}
+				const patternProcessor = new TrackerPatternProcessor(state, audioDriver, {
+					postMessage: () => {}
+				});
+
+				const patterns = this.getPatterns(song, patternOrder);
+				if (patterns.length === 0) {
+					throw new Error('No patterns found');
+				}
+
+				state.currentPattern = patterns[startOrderIndex]!;
+				state.timeline.currentPatternOrderIndex = startOrderIndex;
+
+				contexts.push({
+					songIndex,
+					song,
+					state,
+					patternProcessor,
+					audioDriver,
+					ayumiEngine,
+					registerState,
+					mixer,
+					ayumiPtr,
+					patterns
+				});
+			}
+
+			const leaderSong = contexts[0]!.song;
+			const firstPassRows = this.calculateTotalRows(leaderSong, patternOrder);
+			const validLoopPointId =
+				project.loopPointId >= 0 && project.loopPointId < patternOrder.length
+					? project.loopPointId
+					: 0;
+			const loopOrderSegment = patternOrder.slice(validLoopPointId);
+			const loopSegmentRows = this.calculateTotalRows(leaderSong, loopOrderSegment);
+			const totalRows =
+				loopCount <= 1 ? firstPassRows : firstPassRows + loopSegmentRows * (loopCount - 1);
+
+			const buffers = await this.renderAudioLoopAySharedTimelineExport(
+				contexts,
+				wasm,
+				leaderSong,
+				totalRows,
+				patternOrder,
+				loopCount,
+				onProgress,
+				separateChannels
+			);
+
+			for (const p of ptrs) {
+				wasm.free(p);
+			}
+
+			return contexts.map((ctx, i) => ({
+				songIndex: ctx.songIndex,
+				channels: buffers[i]!
+			}));
+		} catch (error) {
+			for (const p of ptrs) {
+				try {
+					wasm.free(p);
+				} catch {
+					/* ignore */
+				}
+			}
+			throw error;
+		}
 	}
 
 	async render(
@@ -351,7 +685,7 @@ export class AYChipRenderer implements ChipRenderer {
 		}
 
 		state.currentPattern = patterns[startOrderIndex];
-		state.currentPatternOrderIndex = startOrderIndex;
+		state.timeline.currentPatternOrderIndex = startOrderIndex;
 
 		onProgress?.(50, 'Initializing renderer...');
 		const firstPassRows = this.calculateTotalRows(song, patternOrder);

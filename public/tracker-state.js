@@ -1,5 +1,4 @@
-const DEFAULT_SONG_HZ = 50;
-const DEFAULT_SPEED = 3;
+import SongTimeline from './song-timeline.js';
 
 const CHANNEL_ARRAY_SPECS = [
 	['channelPatternVolumes', 15],
@@ -41,22 +40,10 @@ const CHANNEL_ARRAY_SPECS = [
 ];
 
 class TrackerState {
-	constructor(channelCount = 3) {
+	constructor(channelCount = 3, sharedTimeline = null) {
 		this.currentPattern = null;
 		this.currentTuningTable = [];
-
-		this.patternOrder = [];
-		this.currentPatternOrderIndex = 0;
-		this.loopPointId = 0;
-
-		this.intFrequency = DEFAULT_SONG_HZ;
-		this.samplesPerTick = 0;
-		this.sampleCounter = 0;
-		this.tickAccumulator = 0.0;
-		this.tickStep = 0.0;
-		this.currentRow = 0;
-		this.currentTick = 0;
-		this.currentSpeed = DEFAULT_SPEED;
+		this.timeline = sharedTimeline ?? new SongTimeline();
 
 		for (const [name, defaultVal] of CHANNEL_ARRAY_SPECS) {
 			this[name] = Array(channelCount).fill(defaultVal);
@@ -67,8 +54,6 @@ class TrackerState {
 
 		this.speedTable = -1;
 		this.speedTablePosition = 0;
-
-		this._playbackSpeedShared = null;
 	}
 
 	resizeChannels(newCount) {
@@ -79,12 +64,11 @@ class TrackerState {
 		}
 	}
 
-	reset() {
-		this.sampleCounter = 0;
-		this.tickAccumulator = 0.0;
-		this.currentRow = 0;
-		this.currentTick = 0;
-		this.currentSpeed = DEFAULT_SPEED;
+	reset(opts = {}) {
+		const resetTimeline = opts.resetTimeline !== false;
+		if (resetTimeline) {
+			this.timeline.reset();
+		}
 
 		for (const [name, defaultVal] of CHANNEL_ARRAY_SPECS) {
 			this[name].fill(defaultVal);
@@ -92,19 +76,6 @@ class TrackerState {
 
 		this.speedTable = -1;
 		this.speedTablePosition = 0;
-
-		if (this._playbackSpeedShared) {
-			Atomics.store(this._playbackSpeedShared, 0, DEFAULT_SPEED);
-		}
-	}
-
-	setPlaybackSpeedSharedBuffer(buffer) {
-		this._playbackSpeedShared = new Int32Array(buffer);
-		Atomics.store(this._playbackSpeedShared, 0, this.currentSpeed | 0);
-	}
-
-	clearPlaybackSpeedSharedBuffer() {
-		this._playbackSpeedShared = null;
 	}
 
 	setTuningTable(table) {
@@ -112,66 +83,41 @@ class TrackerState {
 	}
 
 	updateSamplesPerTick(sampleRate) {
-		this.samplesPerTick = Math.floor(sampleRate / this.intFrequency);
-		this.tickStep = this.intFrequency / sampleRate;
+		this.timeline.updateSamplesPerTick(sampleRate);
 	}
 
 	setPattern(pattern, orderIndex) {
 		this.currentPattern = pattern;
 		if (orderIndex !== undefined) {
-			this.currentPatternOrderIndex = orderIndex;
+			this.timeline.currentPatternOrderIndex = orderIndex;
 		}
-		if (this.currentPattern && this.currentRow >= this.currentPattern.length) {
-			this.currentRow = Math.max(0, this.currentPattern.length - 1);
+		if (this.currentPattern && this.timeline.currentRow >= this.currentPattern.length) {
+			this.timeline.currentRow = Math.max(0, this.currentPattern.length - 1);
 		}
 	}
 
 	setSpeed(speed) {
-		this.currentSpeed = speed;
+		this.timeline.setSpeed(speed);
 	}
 
 	publishPlaybackSpeed(speed) {
-		if (!(speed > 0)) return;
-		if (this._playbackSpeedShared) {
-			Atomics.store(this._playbackSpeedShared, 0, speed | 0);
-		}
-		this.setSpeed(speed);
+		this.timeline.publishPlaybackSpeed(speed);
 	}
 
-	pullSharedPlaybackSpeed() {
-		if (!this._playbackSpeedShared) return;
-		const s = Atomics.load(this._playbackSpeedShared, 0);
-		if (s > 0) {
-			this.setSpeed(s);
-		}
-	}
-
-	setPatternOrder(order, loopPointId = this.loopPointId) {
-		this.patternOrder = order;
-		this.setLoopPointId(loopPointId);
+	setPatternOrder(order, loopPointId = this.timeline.loopPointId) {
+		this.timeline.setPatternOrder(order, loopPointId);
 	}
 
 	setLoopPointId(loopPointId) {
-		this.loopPointId = Number.isInteger(loopPointId) ? loopPointId : 0;
+		this.timeline.setLoopPointId(loopPointId);
 	}
 
 	getLoopPointIndex() {
-		const orderLength = this.patternOrder.length;
-		if (orderLength <= 0) return 0;
-		if (this.loopPointId >= 0 && this.loopPointId < orderLength) {
-			return this.loopPointId;
-		}
-		return 0;
+		return this.timeline.getLoopPointIndex();
 	}
 
-	getNextPatternOrderIndex(currentPatternOrderIndex = this.currentPatternOrderIndex) {
-		const orderLength = this.patternOrder.length;
-		if (orderLength <= 0) return 0;
-		const nextPatternOrderIndex = currentPatternOrderIndex + 1;
-		if (nextPatternOrderIndex < orderLength) {
-			return nextPatternOrderIndex;
-		}
-		return this.getLoopPointIndex();
+	getNextPatternOrderIndex(currentPatternOrderIndex = this.timeline.currentPatternOrderIndex) {
+		return this.timeline.getNextPatternOrderIndex(currentPatternOrderIndex);
 	}
 
 	setTables(tables) {
@@ -192,25 +138,17 @@ class TrackerState {
 	}
 
 	setIntFrequency(frequency, sampleRate) {
-		this.intFrequency = frequency;
-		this.updateSamplesPerTick(sampleRate);
+		this.timeline.setIntFrequency(frequency, sampleRate);
 	}
 
-	advancePosition() {
-		this.currentTick++;
-		if (this.currentTick >= this.currentSpeed) {
-			this.currentTick = 0;
-			this.currentRow++;
-			if (this.currentRow >= this.currentPattern.length) {
-				this.currentRow = 0;
-				this.currentPatternOrderIndex++;
-				if (this.currentPatternOrderIndex >= this.patternOrder.length) {
-					this.currentPatternOrderIndex = this.getLoopPointIndex();
-				}
-				return true;
-			}
-		}
-		return false;
+	advancePosition(leaderPatternLength) {
+		const len =
+			leaderPatternLength !== undefined && leaderPatternLength > 0
+				? leaderPatternLength
+				: this.currentPattern != null && this.currentPattern.length > 0
+					? this.currentPattern.length
+					: 1;
+		return this.timeline.advancePosition(len);
 	}
 }
 

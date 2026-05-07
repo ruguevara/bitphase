@@ -24,6 +24,7 @@ describe('chip registry', () => {
 			expect(core).not.toBeNull();
 			expect(full!.type).toBe(core!.type);
 			expect(full!.name).toBe(core!.name);
+			expect(full!.audioSlotKind).toBe(core!.audioSlotKind);
 		}
 	});
 });

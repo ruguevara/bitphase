@@ -30,10 +30,7 @@ function serviceWorkerCacheVersion() {
 		closeBundle() {
 			const swPath = join(outDir, 'sw.js');
 			const content = readFileSync(swPath, 'utf-8');
-			writeFileSync(
-				swPath,
-				content.replace('__BUILD_VERSION__', getGitCommitHash())
-			);
+			writeFileSync(swPath, content.replace('__BUILD_VERSION__', getGitCommitHash()));
 		}
 	};
 }
@@ -42,18 +39,6 @@ function serviceWorkerCacheVersion() {
 export default defineConfig({
 	base: '/',
 	assetsInclude: ['**/*.wasm'],
-	server: {
-		headers: {
-			'Cross-Origin-Opener-Policy': 'same-origin',
-			'Cross-Origin-Embedder-Policy': 'require-corp'
-		}
-	},
-	preview: {
-		headers: {
-			'Cross-Origin-Opener-Policy': 'same-origin',
-			'Cross-Origin-Embedder-Policy': 'require-corp'
-		}
-	},
 	build: {
 		target: 'esnext',
 		rollupOptions: {
@@ -63,16 +48,16 @@ export default defineConfig({
 				id === '/ayumi-constants.js'
 		}
 	},
-		plugins: [
-			svelte(),
-			tailwindcss(),
-			Icons({
-				compiler: 'svelte'
-			}),
-			serviceWorkerCacheVersion()
-		],
-		define: {
-			'import.meta.env.VITE_COMMIT_HASH': JSON.stringify(getGitCommitHash()),
-			'import.meta.env.VITE_BUILD_DATE': JSON.stringify(getBuildDate())
-		}
+	plugins: [
+		svelte(),
+		tailwindcss(),
+		Icons({
+			compiler: 'svelte'
+		}),
+		serviceWorkerCacheVersion()
+	],
+	define: {
+		'import.meta.env.VITE_COMMIT_HASH': JSON.stringify(getGitCommitHash()),
+		'import.meta.env.VITE_BUILD_DATE': JSON.stringify(getBuildDate())
+	}
 });

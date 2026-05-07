@@ -32,5 +32,5 @@ export function getChipByType(chipType: string): Chip | null {
 }
 
 export function createRenderer(chip: Chip, loader?: ResourceLoader) {
-	return chip.createRenderer(loader);
+	return chip.createRenderer(loader, { chipType: chip.type, audioSlotKind: chip.audioSlotKind });
 }

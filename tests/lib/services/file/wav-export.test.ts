@@ -25,7 +25,7 @@ describe('wav export loop behavior', () => {
 			type: 'fake-chip',
 			name: 'Fake',
 			wasmUrl: '',
-			processorName: '',
+			audioSlotKind: 'fake',
 			processorMap: () => {
 				throw new Error('Not used in test');
 			},

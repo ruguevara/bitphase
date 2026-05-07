@@ -15,8 +15,8 @@ const AY_CHANNEL_ARRAY_SPECS = [
 ];
 
 class AyumiState extends TrackerState {
-	constructor(channelCount = 3) {
-		super(channelCount);
+	constructor(channelCount = 3, sharedTimeline = null) {
+		super(channelCount, sharedTimeline);
 		this.wasmModule = null;
 		this.ayumiPtr = null;
 		this.aymFrequency = DEFAULT_AYM_FREQUENCY;
@@ -113,8 +113,8 @@ class AyumiState extends TrackerState {
 		}
 	}
 
-	reset() {
-		super.reset();
+	reset(opts = {}) {
+		super.reset(opts);
 
 		for (const [name, defaultVal] of AY_CHANNEL_ARRAY_SPECS) {
 			if (name === 'channelMuted') continue;

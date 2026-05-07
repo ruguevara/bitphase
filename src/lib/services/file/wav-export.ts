@@ -1,5 +1,6 @@
 import type { Project } from '../../models/project';
 import type { Chip } from '../../chips/types';
+import type { ChipRendererBinding, SharedTimelineExportSlot } from '../../chips/base/renderer';
 import type { ResourceLoader } from '../../chips/base/resource-loader';
 import { mixAudioChannels } from '../../utils/audio-mixer';
 
@@ -186,6 +187,36 @@ function encodeWAV(
 export type { ChipRenderer } from '../../chips/base/renderer';
 
 class WavExportService {
+	private async tryRenderSharedTimelineSlots(
+		project: Project,
+		nonempty: number[],
+		separateChannels: boolean,
+		loops: number,
+		resourceLoader: ResourceLoader | undefined,
+		getChip: ((chipType: string) => Chip | null) | undefined,
+		onProgress: ((progress: number, message: string) => void) | undefined,
+		abortSignal: AbortSignal | undefined
+	): Promise<Map<number, Float32Array[]> | null> {
+		const sharedSlots = await this.buildSharedTimelineExportSlots(project, nonempty, getChip);
+		if (!sharedSlots) {
+			return null;
+		}
+		const chip = await this.getChipForSong(project, nonempty[0]!, getChip);
+		const renderer = chip.createRenderer(resourceLoader, this.chipRendererBinding(chip));
+		const renderShared = renderer?.renderSharedTimelineSlots;
+		if (!renderer || typeof renderShared !== 'function') {
+			return null;
+		}
+		if (abortSignal?.aborted) {
+			throw new Error('Export cancelled');
+		}
+		onProgress?.(2, 'Rendering songs with shared project playback timeline...');
+		const parts = await renderShared.call(renderer, project, sharedSlots, onProgress, {
+			separateChannels,
+			loopCount: loops
+		});
+		return new Map(parts.map((p) => [p.songIndex, p.channels] as const));
+	}
 
 	private async getChipForSong(
 		project: Project,
@@ -208,6 +239,43 @@ class WavExportService {
 			throw new Error('No chip available');
 		}
 		return defaultChip;
+	}
+
+	private chipRendererBinding(chip: Chip): ChipRendererBinding {
+		return { chipType: chip.type, audioSlotKind: chip.audioSlotKind };
+	}
+
+	private nonemptySongIndices(project: Project): number[] {
+		const out: number[] = [];
+		for (let i = 0; i < project.songs.length; i++) {
+			const song = project.songs[i];
+			if (song?.patterns?.length) {
+				out.push(i);
+			}
+		}
+		return out;
+	}
+
+	private async buildSharedTimelineExportSlots(
+		project: Project,
+		indices: number[],
+		getChipOverride?: (chipType: string) => Chip | null
+	): Promise<SharedTimelineExportSlot[] | null> {
+		if (indices.length < 2) {
+			return null;
+		}
+		const slots: SharedTimelineExportSlot[] = [];
+		let kind: string | null = null;
+		for (const i of indices) {
+			const chip = await this.getChipForSong(project, i, getChipOverride);
+			if (kind === null) {
+				kind = chip.audioSlotKind;
+			} else if (chip.audioSlotKind !== kind) {
+				return null;
+			}
+			slots.push({ songIndex: i, audioSlotKind: chip.audioSlotKind });
+		}
+		return slots;
 	}
 
 	private calculateSongProgressRange(
@@ -253,7 +321,7 @@ class WavExportService {
 			`Loading ${chip.name} renderer for song ${songIndex + 1}...`
 		);
 
-		const renderer = chip.createRenderer(resourceLoader);
+		const renderer = chip.createRenderer(resourceLoader, this.chipRendererBinding(chip));
 		if (!renderer) {
 			throw new Error(`No renderer available for chip: ${chip.name} (song ${songIndex + 1})`);
 		}
@@ -342,27 +410,49 @@ class WavExportService {
 
 		if (separateFiles) {
 			const renderedBySongIndex = new Map<number, Float32Array[]>();
-			for (let i = 0; i < project.songs.length; i++) {
-				if (abortSignal?.aborted) {
-					throw new Error('Export cancelled');
+			const nonempty = this.nonemptySongIndices(project);
+
+			const sharedBySong = await this.tryRenderSharedTimelineSlots(
+				project,
+				nonempty,
+				true,
+				settings.loops,
+				resourceLoader,
+				getChip,
+				onProgress,
+				abortSignal
+			);
+			let didSharedTimelineSlotsExport = false;
+			if (sharedBySong) {
+				for (const [songIndex, channels] of sharedBySong) {
+					renderedBySongIndex.set(songIndex, channels);
 				}
-				try {
-					const channels = await this.renderSong(
-						project,
-						i,
-						totalSongs,
-						settings.loops,
-						onProgress,
-						true,
-						resourceLoader,
-						getChip
-					);
-					renderedBySongIndex.set(i, channels);
-				} catch (error) {
-					if (error instanceof Error && error.message === 'Song is empty') {
-						continue;
+				didSharedTimelineSlotsExport = true;
+			}
+
+			if (!didSharedTimelineSlotsExport) {
+				for (let i = 0; i < project.songs.length; i++) {
+					if (abortSignal?.aborted) {
+						throw new Error('Export cancelled');
 					}
-					throw error;
+					try {
+						const channels = await this.renderSong(
+							project,
+							i,
+							totalSongs,
+							settings.loops,
+							onProgress,
+							true,
+							resourceLoader,
+							getChip
+						);
+						renderedBySongIndex.set(i, channels);
+					} catch (error) {
+						if (error instanceof Error && error.message === 'Song is empty') {
+							continue;
+						}
+						throw error;
+					}
 				}
 			}
 
@@ -427,27 +517,52 @@ class WavExportService {
 		}
 
 		const renderedSongs: Float32Array[][] = [];
-		for (let i = 0; i < project.songs.length; i++) {
-			if (abortSignal?.aborted) {
-				throw new Error('Export cancelled');
-			}
-			try {
-				const channels = await this.renderSong(
-					project,
-					i,
-					totalSongs,
-					settings.loops,
-					onProgress,
-					false,
-					resourceLoader,
-					getChip
-				);
-				renderedSongs.push(channels);
-			} catch (error) {
-				if (error instanceof Error && error.message === 'Song is empty') {
-					continue;
+		const nonempty = this.nonemptySongIndices(project);
+
+		const sharedBySong = await this.tryRenderSharedTimelineSlots(
+			project,
+			nonempty,
+			false,
+			settings.loops,
+			resourceLoader,
+			getChip,
+			onProgress,
+			abortSignal
+		);
+		let didSharedTimelineSlotsExport = false;
+		if (sharedBySong) {
+			for (const idx of nonempty) {
+				const ch = sharedBySong.get(idx);
+				if (ch) {
+					renderedSongs.push(ch);
 				}
-				throw error;
+			}
+			didSharedTimelineSlotsExport = true;
+		}
+
+		if (!didSharedTimelineSlotsExport) {
+			for (let i = 0; i < project.songs.length; i++) {
+				if (abortSignal?.aborted) {
+					throw new Error('Export cancelled');
+				}
+				try {
+					const channels = await this.renderSong(
+						project,
+						i,
+						totalSongs,
+						settings.loops,
+						onProgress,
+						false,
+						resourceLoader,
+						getChip
+					);
+					renderedSongs.push(channels);
+				} catch (error) {
+					if (error instanceof Error && error.message === 'Song is empty') {
+						continue;
+					}
+					throw error;
+				}
 			}
 		}
 

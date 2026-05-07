@@ -1,4 +1,8 @@
-import type { ChipProcessor, SettingsSubscriber } from '../../chips/base/processor';
+import {
+	isMixerWorkletSlotProcessor,
+	type ChipProcessor,
+	type SettingsSubscriber
+} from '../../chips/base/processor';
 import type { Chip } from '../../chips/types';
 import type { Table } from '../../models/project';
 import { ChipSettings } from './chip-settings';
@@ -7,6 +11,9 @@ import { channelMuteStore } from '../../stores/channel-mute.svelte';
 import { waveformStore } from '../../stores/waveform.svelte';
 
 import type { Pattern } from '../../models/song';
+
+const BITPHASE_AUDIO_PROCESSOR = 'bitphase-audio-processor';
+const BITPHASE_AUDIO_MODULE = `${BITPHASE_AUDIO_PROCESSOR}.js`;
 
 export interface PlayFromRowOptions {
 	catchUpSegments?: CatchUpSegment[];
@@ -24,15 +31,12 @@ export class AudioService {
 	private _playPatternRestoreOrder: number[] | null = null;
 	private _playPatternRestoreLoopPointId = 0;
 	private _playPatternId: number | null = null;
-	private multichipPlaybackSpeed: SharedArrayBuffer | null = null;
+	private _mixerNode: AudioWorkletNode | null = null;
+	private readonly _wasmByUrl = new Map<string, ArrayBuffer>();
 
-	//for example 1x FM chip processor, 2x AY chip processors for TSFM track
-	//they will all be mixed together in single audio context
 	chipProcessors: ChipProcessor[] = [];
 
 	constructor() {
-		// Web browsers like to disable audio contexts when they first exist to prevent auto-play video/audio ads.
-		// We explicitly re-enable it whenever the user does something on the page.
 		if (this._audioContext) {
 			this._masterGainNode = this._audioContext.createGain();
 			this._masterGainNode.connect(this._audioContext.destination);
@@ -53,21 +57,51 @@ export class AudioService {
 		}
 	}
 
-	private ensureMultichipPlaybackSpeed(): SharedArrayBuffer | null {
-		if (this.multichipPlaybackSpeed) {
-			return this.multichipPlaybackSpeed;
+	private _dispatchWorkletFromMixer(event: MessageEvent): void {
+		const data = event.data as { chipIndex?: number };
+		const chipIndex = data.chipIndex;
+		if (typeof chipIndex !== 'number' || chipIndex < 0 || chipIndex >= this.chipProcessors.length) {
+			return;
 		}
-		try {
-			this.multichipPlaybackSpeed = new SharedArrayBuffer(4);
-			return this.multichipPlaybackSpeed;
-		} catch {
-			return null;
-		}
+		const proc = this.chipProcessors[chipIndex];
+		proc.acceptWorkletPayload?.(event.data);
 	}
 
-	private detachMultichipPlaybackSpeedFromProcessors(): void {
-		this.multichipPlaybackSpeed = null;
-		this.chipProcessors.forEach((p) => p.detachPlaybackSpeedShared?.());
+	private async _loadWasm(url: string): Promise<ArrayBuffer> {
+		let buf = this._wasmByUrl.get(url);
+		if (!buf) {
+			const res = await fetch(import.meta.env.BASE_URL + url);
+			buf = await res.arrayBuffer();
+			this._wasmByUrl.set(url, buf);
+		}
+		return buf.slice(0);
+	}
+
+	private async _rebuildMixerAfterChipListChange(): Promise<void> {
+		if (!this._audioContext || !this._masterGainNode) return;
+
+		this._mixerNode?.port.postMessage({ type: 'dispose_mixer' });
+		this._mixerNode?.disconnect();
+		this._mixerNode = null;
+
+		if (this.chipProcessors.length === 0) return;
+
+		const base = import.meta.env.BASE_URL;
+		await this._audioContext.audioWorklet.addModule(base + BITPHASE_AUDIO_MODULE);
+		this._mixerNode = new AudioWorkletNode(this._audioContext, BITPHASE_AUDIO_PROCESSOR, {
+			outputChannelCount: [2]
+		});
+		this._mixerNode.connect(this._masterGainNode);
+		this._mixerNode.port.onmessage = (e) => this._dispatchWorkletFromMixer(e);
+
+		for (let i = 0; i < this.chipProcessors.length; i++) {
+			const processor = this.chipProcessors[i];
+			if (isMixerWorkletSlotProcessor(processor)) {
+				processor.bindChipIndex(i);
+				const wasmBuffer = await this._loadWasm(processor.chip.wasmUrl);
+				processor.initialize(wasmBuffer, this._mixerNode);
+			}
+		}
 	}
 
 	async addChipProcessor(chip: Chip) {
@@ -76,6 +110,9 @@ export class AudioService {
 		}
 
 		const processor = this.createChipProcessor(chip);
+		if (!isMixerWorkletSlotProcessor(processor)) {
+			throw new Error(`Chip "${chip.type}" does not implement the bitphase mixer worklet slot`);
+		}
 		const chipIndex = this.chipProcessors.length;
 		this.chipProcessors.push(processor);
 
@@ -83,22 +120,20 @@ export class AudioService {
 			processor.subscribeToSettings(this.chipSettings);
 		}
 
-		const response = await fetch(import.meta.env.BASE_URL + chip.wasmUrl);
-		const wasmBuffer = await response.arrayBuffer();
+		const wasmBuffer = await this._loadWasm(chip.wasmUrl);
+		const base = import.meta.env.BASE_URL;
 
-		await this._audioContext.audioWorklet.addModule(
-			import.meta.env.BASE_URL + chip.processorName + '.js'
-		);
-
-		const audioNode = this.createAudioNode();
-
-		const playbackSpeedShared =
-			this.chipProcessors.length >= 2 ? this.ensureMultichipPlaybackSpeed() : null;
-		processor.initialize(wasmBuffer, audioNode, playbackSpeedShared ?? undefined);
-
-		if (playbackSpeedShared && this.chipProcessors.length === 2) {
-			this.chipProcessors[0].attachPlaybackSpeedShared?.(playbackSpeedShared);
+		if (!this._mixerNode) {
+			await this._audioContext.audioWorklet.addModule(base + BITPHASE_AUDIO_MODULE);
+			this._mixerNode = new AudioWorkletNode(this._audioContext, BITPHASE_AUDIO_PROCESSOR, {
+				outputChannelCount: [2]
+			});
+			this._mixerNode.connect(this._masterGainNode!);
+			this._mixerNode.port.onmessage = (e) => this._dispatchWorkletFromMixer(e);
 		}
+
+		processor.bindChipIndex(chipIndex);
+		processor.initialize(wasmBuffer, this._mixerNode);
 
 		const processorWithWaveform = processor as {
 			setWaveformCallback?: (cb: (channels: Float32Array[]) => void) => void;
@@ -215,7 +250,9 @@ export class AudioService {
 	updateInstruments(instruments: import('../../models/song').Instrument[]) {
 		this.chipProcessors.forEach((chipProcessor) => {
 			if ('sendInitInstruments' in chipProcessor) {
-				(chipProcessor as any).sendInitInstruments(instruments);
+				(chipProcessor as { sendInitInstruments: (i: typeof instruments) => void }).sendInitInstruments(
+					instruments
+				);
 			}
 		});
 	}
@@ -226,16 +263,16 @@ export class AudioService {
 			this.stop();
 		}
 		this.chipProcessors = this.chipProcessors.filter((_, i) => i !== index);
-		if (this.chipProcessors.length < 2) {
-			this.detachMultichipPlaybackSpeedFromProcessors();
-		}
+		void this._rebuildMixerAfterChipListChange();
 	}
 
 	clearChipProcessors() {
 		if (this._isPlaying) {
 			this.stop();
 		}
-		this.detachMultichipPlaybackSpeedFromProcessors();
+		this._mixerNode?.port.postMessage({ type: 'dispose_mixer' });
+		this._mixerNode?.disconnect();
+		this._mixerNode = null;
 		this.chipProcessors = [];
 	}
 
@@ -244,36 +281,17 @@ export class AudioService {
 			this.stop();
 		}
 
-		this.detachMultichipPlaybackSpeedFromProcessors();
-
 		if (this._audioContext) {
 			await this._audioContext.close();
 			this._audioContext = null;
 		}
 
+		this._mixerNode = null;
 		this.chipProcessors = [];
 	}
 
 	get playing() {
 		return this._isPlaying;
-	}
-
-	private createAudioNode() {
-		if (!this._audioContext || !this._masterGainNode) {
-			throw new Error('Audio context not initialized');
-		}
-
-		const audioNode = new AudioWorkletNode(
-			this._audioContext,
-			this.chipProcessors[0].chip.processorName,
-			{
-				outputChannelCount: [2]
-			}
-		);
-
-		audioNode.connect(this._masterGainNode);
-
-		return audioNode;
 	}
 
 	setVolume(volume: number) {
@@ -297,10 +315,8 @@ export class AudioService {
 		return (
 			'subscribeToSettings' in processor &&
 			'unsubscribeFromSettings' in processor &&
-			typeof (processor as unknown as SettingsSubscriber).subscribeToSettings ===
-				'function' &&
-			typeof (processor as unknown as SettingsSubscriber).unsubscribeFromSettings ===
-				'function'
+			typeof (processor as unknown as SettingsSubscriber).subscribeToSettings === 'function' &&
+			typeof (processor as unknown as SettingsSubscriber).unsubscribeFromSettings === 'function'
 		);
 	}
 

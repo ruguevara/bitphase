@@ -17,7 +17,7 @@ describe('ProjectService', () => {
 		type: CHIP_TYPE_AY,
 		name: 'AY-8910',
 		wasmUrl: '',
-		processorName: '',
+		audioSlotKind: 'ayumi',
 		processorMap: () => ({}) as any,
 		schema: {
 			chipType: CHIP_TYPE_AY,

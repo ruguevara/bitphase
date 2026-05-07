@@ -19,13 +19,27 @@
 		chip: Chip;
 	} = $props();
 
+	const TIMELINE_SONG_INDEX = 0;
+
+	const patternLists = $derived(projectStore.patterns);
 	const patternOrder = $derived(projectStore.patternOrder);
-	const patterns = $derived(projectStore.patterns[songIndex] ?? []);
+	const activePatterns = $derived(patternLists[songIndex] ?? []);
+	const timelinePatterns = $derived(patternLists[TIMELINE_SONG_INDEX] ?? []);
 	const tables = $derived(projectStore.tables ?? []);
-	const speed = $derived(projectStore.songs[songIndex]?.initialSpeed ?? 3);
-	const interruptFrequency = $derived(projectStore.songs[songIndex]?.interruptFrequency ?? 50);
+	const speed = $derived(projectStore.songs[TIMELINE_SONG_INDEX]?.initialSpeed ?? 3);
+	const interruptFrequency = $derived(
+		projectStore.songs[TIMELINE_SONG_INDEX]?.interruptFrequency ?? 50
+	);
 	const pattern = $derived(
-		patterns.find((p) => p.id === patternOrder[currentPatternOrderIndex]) ?? null
+		activePatterns.find((p) => p.id === patternOrder[currentPatternOrderIndex]) ?? null
+	);
+	const timelinePatternAtOrder = $derived(
+		timelinePatterns.find((p) => p.id === patternOrder[currentPatternOrderIndex]) ?? null
+	);
+	const timelineRowForDisplay = $derived(
+		timelinePatternAtOrder && timelinePatternAtOrder.length > 0
+			? Math.min(selectedRow, timelinePatternAtOrder.length - 1)
+			: 0
 	);
 
 	const schema = chip.schema;
@@ -110,21 +124,48 @@
 		return '';
 	});
 
-	function getRowSpeedWithTables(
+	function patternsAtOrderIndex(
+		lists: Pattern[][],
+		order: number[],
+		orderIdx: number
+	): Pattern[] {
+		const out: Pattern[] = [];
+		if (orderIdx >= order.length) return out;
+		const id = order[orderIdx];
+		for (const songPatterns of lists) {
+			const p = songPatterns.find((x) => x.id === id);
+			if (p) out.push(p);
+		}
+		return out;
+	}
+
+	function findSpeedEffectOnRow(
 		pattern: Pattern,
+		rowIdx: number
+	): { parameter: number; tableIndex?: number } | null {
+		const SPEED_EFFECT_TYPE = 'S'.charCodeAt(0);
+		let effect: { parameter: number; tableIndex?: number } | null = null;
+		for (const channel of pattern.channels) {
+			const row = channel.rows[rowIdx];
+			if (!row?.effects?.[0] || row.effects[0].effect !== SPEED_EFFECT_TYPE) continue;
+			effect = row.effects[0];
+		}
+		return effect;
+	}
+
+	function getRowSpeedWithTables(
+		patternsAtOrder: Pattern[],
 		rowIdx: number,
 		currentSpeed: number,
 		speedTableId: number,
 		speedTablePosition: number,
 		tables: Table[]
 	): { speed: number; nextTableId: number; nextTablePosition: number } {
-		const SPEED_EFFECT_TYPE = 'S'.charCodeAt(0);
 		let effect: { parameter: number; tableIndex?: number } | null = null;
-
-		for (const channel of pattern.channels) {
-			const row = channel.rows[rowIdx];
-			if (!row?.effects?.[0] || row.effects[0].effect !== SPEED_EFFECT_TYPE) continue;
-			effect = row.effects[0];
+		for (const pattern of patternsAtOrder) {
+			if (rowIdx < 0 || rowIdx >= pattern.length) continue;
+			const e = findSpeedEffectOnRow(pattern, rowIdx);
+			if (e) effect = e;
 		}
 
 		if (effect?.tableIndex !== undefined && effect.tableIndex >= 0) {
@@ -176,7 +217,7 @@
 
 	function calculateTimeToPosition(
 		patternOrder: number[],
-		patterns: Pattern[],
+		patternLists: Pattern[][],
 		tables: Table[],
 		targetPatternOrderIndex: number,
 		targetRow: number,
@@ -191,15 +232,16 @@
 		for (let orderIdx = 0; orderIdx <= targetPatternOrderIndex; orderIdx++) {
 			if (orderIdx >= patternOrder.length) break;
 
-			const patternId = patternOrder[orderIdx];
-			const pattern = patterns.find((p) => p.id === patternId);
-			if (!pattern) continue;
+			const patternsAtOrder = patternsAtOrderIndex(patternLists, patternOrder, orderIdx);
+			const leader =
+				patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
+			if (!leader) continue;
 
-			const maxRow = orderIdx === targetPatternOrderIndex ? targetRow : pattern.length - 1;
+			const maxRow = orderIdx === targetPatternOrderIndex ? targetRow : leader.length - 1;
 
 			for (let rowIdx = 0; rowIdx <= maxRow; rowIdx++) {
 				const result = getRowSpeedWithTables(
-					pattern,
+					patternsAtOrder,
 					rowIdx,
 					currentSpeed,
 					speedTableId,
@@ -219,16 +261,16 @@
 	}
 
 	const currentTime = $derived.by(() => {
-		if (!pattern || patternOrder.length === 0) {
+		if (!timelinePatternAtOrder || patternOrder.length === 0) {
 			return 0;
 		}
 
 		return calculateTimeToPosition(
 			patternOrder,
-			patterns,
+			patternLists,
 			tables,
 			currentPatternOrderIndex,
-			selectedRow,
+			timelineRowForDisplay,
 			speed,
 			interruptFrequency
 		);
@@ -238,7 +280,7 @@
 	let baseTimestamp = $state(0);
 
 	$effect(() => {
-		selectedRow;
+		timelineRowForDisplay;
 		currentPatternOrderIndex;
 		playbackStore.isPlaying;
 		baseTime = currentTime;
@@ -253,7 +295,7 @@
 
 	function calculateSampleCounter(
 		patternOrder: number[],
-		patterns: Pattern[],
+		patternLists: Pattern[][],
 		tables: Table[],
 		targetPatternOrderIndex: number,
 		targetRow: number,
@@ -267,16 +309,17 @@
 		for (let orderIdx = 0; orderIdx <= targetPatternOrderIndex; orderIdx++) {
 			if (orderIdx >= patternOrder.length) break;
 
-			const patternId = patternOrder[orderIdx];
-			const pattern = patterns.find((p) => p.id === patternId);
-			if (!pattern) continue;
+			const patternsAtOrder = patternsAtOrderIndex(patternLists, patternOrder, orderIdx);
+			const leader =
+				patternsAtOrder[TIMELINE_SONG_INDEX] ?? patternsAtOrder[0] ?? null;
+			if (!leader) continue;
 
 			const maxRow =
-				orderIdx === targetPatternOrderIndex ? targetRow : pattern.length - 1;
+				orderIdx === targetPatternOrderIndex ? targetRow : leader.length - 1;
 
 			for (let rowIdx = 0; rowIdx <= maxRow; rowIdx++) {
 				const result = getRowSpeedWithTables(
-					pattern,
+					patternsAtOrder,
 					rowIdx,
 					currentSpeed,
 					speedTableId,
@@ -294,16 +337,16 @@
 	}
 
 	const sampleCounter = $derived.by(() => {
-		if (!pattern || patternOrder.length === 0) {
+		if (!timelinePatternAtOrder || patternOrder.length === 0) {
 			return 0;
 		}
 
 		return calculateSampleCounter(
 			patternOrder,
-			patterns,
+			patternLists,
 			tables,
 			currentPatternOrderIndex,
-			selectedRow,
+			timelineRowForDisplay,
 			speed
 		);
 	});
@@ -315,14 +358,14 @@
 
 		const lastPatternIndex = patternOrder.length - 1;
 		const lastPatternId = patternOrder[lastPatternIndex];
-		const lastPattern = patterns.find((p) => p.id === lastPatternId);
+		const lastPattern = timelinePatterns.find((p) => p.id === lastPatternId);
 		if (!lastPattern) {
 			return 0;
 		}
 
 		return calculateSampleCounter(
 			patternOrder,
-			patterns,
+			patternLists,
 			tables,
 			lastPatternIndex,
 			lastPattern.length - 1,
@@ -338,14 +381,14 @@
 
 		const lastPatternIndex = patternOrder.length - 1;
 		const lastPatternId = patternOrder[lastPatternIndex];
-		const lastPattern = patterns.find((p) => p.id === lastPatternId);
+		const lastPattern = timelinePatterns.find((p) => p.id === lastPatternId);
 		if (!lastPattern) {
 			return 0;
 		}
 
 		return calculateTimeToPosition(
 			patternOrder,
-			patterns,
+			patternLists,
 			tables,
 			lastPatternIndex,
 			lastPattern.length - 1,

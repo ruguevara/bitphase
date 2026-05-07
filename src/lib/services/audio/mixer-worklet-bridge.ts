@@ -1,0 +1,165 @@
+import type { Pattern, Instrument } from '../../models/song';
+import type { Table } from '../../models/project';
+import type { Chip } from '../../chips/types';
+import type { CatchUpSegment } from './play-from-position';
+
+export type MixerWorkletIncomingMessage =
+	| {
+			type: 'position_update';
+			chipIndex?: number;
+			currentRow: number;
+			currentPatternOrderIndex?: number;
+	  }
+	| {
+			type: 'request_pattern';
+			chipIndex?: number;
+			patternOrderIndex: number;
+	  }
+	| {
+			type: 'channel_waveform';
+			chipIndex?: number;
+			channels: Float32Array[];
+	  };
+
+export type PlayFromPositionMixerCommand = {
+	type: 'play_from_position';
+	catchUpSegments: CatchUpSegment[];
+	startPattern: Pattern;
+	startPatternOrderIndex: number;
+	startRow: number;
+	speed: number | null;
+};
+
+export type MixerSlotCommand =
+	| { type: 'init'; wasmBuffer: ArrayBuffer }
+	| { type: 'play'; initialSpeed?: number }
+	| { type: 'play_from_row'; row: number; patternOrderIndex?: number; speed?: number | null }
+	| PlayFromPositionMixerCommand
+	| { type: 'stop' }
+	| { type: 'update_order'; order: number[]; loopPointId: number }
+	| { type: 'init_pattern'; pattern: Pattern; patternOrderIndex: number }
+	| { type: 'init_tuning_table'; tuningTable: number[] }
+	| { type: 'init_speed'; speed: number }
+	| { type: 'set_pattern_data'; pattern: Pattern; patternOrderIndex: number }
+	| { type: 'init_tables'; tables: Table[] }
+	| { type: 'init_instruments'; instruments: Instrument[] }
+	| { type: 'update_ay_frequency'; aymFrequency: number }
+	| { type: 'update_int_frequency'; intFrequency: number }
+	| { type: 'update_chip_variant'; chipVariant: string }
+	| { type: 'update_stereo_layout'; stereoLayout: string }
+	| { type: 'set_channel_mute'; channelIndex: number; muted: boolean }
+	| {
+			type: 'change_pattern_during_playback';
+			row: number;
+			patternOrderIndex?: number;
+			pattern?: Pattern;
+			speed?: number | null;
+	  }
+	| { type: 'preview_row'; pattern: Pattern; rowIndex: number; instrument?: Instrument }
+	| { type: 'stop_preview'; channel?: number }
+	| {
+			type: 'set_virtual_channel_config';
+			virtualChannelMap: Record<number, number>;
+			hwChannelCount: number;
+	  };
+
+export class MixerWorkletBridge {
+	audioNode: AudioWorkletNode | null = null;
+	private _chipIndex = 0;
+	private onPositionUpdate?: (currentRow: number, currentPatternOrderIndex?: number) => void;
+	private onPatternRequest?: (patternOrderIndex: number) => void;
+	private waveformCallback?: (channels: Float32Array[]) => void;
+	private readonly commandQueue: MixerSlotCommand[] = [];
+
+	constructor(private readonly slotKindSource: Pick<Chip, 'audioSlotKind'>) {}
+
+	bindChipIndex(index: number): void {
+		this._chipIndex = index;
+	}
+
+	setCallbacks(
+		onPositionUpdate: (currentRow: number, currentPatternOrderIndex?: number) => void,
+		onPatternRequest: (patternOrderIndex: number) => void
+	): void {
+		this.onPositionUpdate = onPositionUpdate;
+		this.onPatternRequest = onPatternRequest;
+	}
+
+	setWaveformCallback(callback: (channels: Float32Array[]) => void): void {
+		this.waveformCallback = callback;
+	}
+
+	acceptWorkletPayload(data: unknown): void {
+		if (typeof data !== 'object' || data === null || !('type' in data)) {
+			return;
+		}
+		const msgType = (data as { type: unknown }).type;
+		if (
+			msgType !== 'position_update' &&
+			msgType !== 'request_pattern' &&
+			msgType !== 'channel_waveform'
+		) {
+			return;
+		}
+		const message = data as MixerWorkletIncomingMessage;
+		switch (message.type) {
+			case 'position_update':
+				this.onPositionUpdate?.(message.currentRow, message.currentPatternOrderIndex);
+				break;
+			case 'request_pattern':
+				this.onPatternRequest?.(message.patternOrderIndex);
+				break;
+			case 'channel_waveform':
+				this.waveformCallback?.(message.channels);
+				break;
+		}
+	}
+
+	wrapOutgoing(command: MixerSlotCommand): unknown {
+		if (command.type === 'init') {
+			return {
+				chipIndex: this._chipIndex,
+				slotKind: this.slotKindSource.audioSlotKind,
+				type: 'init',
+				wasmBuffer: command.wasmBuffer
+			};
+		}
+		const serial = JSON.parse(JSON.stringify(command)) as Record<string, unknown>;
+		return { chipIndex: this._chipIndex, ...serial };
+	}
+
+	sendCommand(command: MixerSlotCommand): void {
+		if (!this.audioNode) {
+			this.commandQueue.push(command);
+			return;
+		}
+		this.audioNode.port.postMessage(this.wrapOutgoing(command));
+	}
+
+	attachNode(audioNode: AudioWorkletNode): void {
+		this.audioNode = audioNode;
+	}
+
+	postInitCommand(init: Extract<MixerSlotCommand, { type: 'init' }>): void {
+		if (!this.audioNode) {
+			return;
+		}
+		this.audioNode.port.postMessage(this.wrapOutgoing(init));
+	}
+
+	flushCommandQueue(): void {
+		if (!this.audioNode) {
+			return;
+		}
+		while (this.commandQueue.length > 0) {
+			const queued = this.commandQueue.shift();
+			if (queued) {
+				this.audioNode.port.postMessage(this.wrapOutgoing(queued));
+			}
+		}
+	}
+
+	isAudioNodeAvailable(): boolean {
+		return this.audioNode !== null;
+	}
+}

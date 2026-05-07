@@ -8,7 +8,11 @@ const TONE_CHANNELS = 3;
 
 export interface PsgExportModules {
 	AyumiState: new (channelCount?: number) => any;
-	TrackerPatternProcessor: new (state: any, driver: any, opts: { postMessage: () => void }) => any;
+	TrackerPatternProcessor: new (
+		state: any,
+		driver: any,
+		port: { postMessage?: (...args: unknown[]) => void }
+	) => any;
 	AYAudioDriver: new (channelCount?: number) => any;
 	AYChipRegisterState: new (channelCount?: number) => any;
 	VirtualChannelMixer: new () => any;
@@ -163,15 +167,15 @@ class PsgExportService {
 				totalTicks > 0
 			) {
 				let currentRow = 0;
-				for (let i = 0; i < state.currentPatternOrderIndex; i++) {
-					const patternId = state.patternOrder[i];
+				for (let i = 0; i < state.timeline.currentPatternOrderIndex; i++) {
+					const patternId = state.timeline.patternOrder[i];
 					const pattern = song.patterns.find((p: any) => p.id === patternId);
 					if (pattern) {
 						currentRow += pattern.length;
 					}
 				}
 				if (state.currentPattern) {
-					currentRow += state.currentRow;
+					currentRow += state.timeline.currentRow;
 				}
 				const captureProgress = (currentRow / totalRows) * 50;
 				const progress = 50 + captureProgress;
@@ -182,10 +186,10 @@ class PsgExportService {
 				await new Promise((resolve) => setTimeout(resolve, 0));
 			}
 
-			if (state.currentTick === 0 && state.currentPattern) {
+			if (state.timeline.currentTick === 0 && state.currentPattern) {
 				patternProcessor.parsePatternRow(
 					state.currentPattern,
-					state.currentRow,
+					state.timeline.currentRow,
 					registerState
 				);
 				patternProcessor.processSpeedTable();
@@ -207,9 +211,9 @@ class PsgExportService {
 				registerState.forceEnvelopeShapeWrite = false;
 			}
 
-			const isLastPattern = state.currentPatternOrderIndex >= state.patternOrder.length - 1;
-			const isLastRow = state.currentRow >= state.currentPattern.length - 1;
-			const isLastTick = state.currentTick >= state.currentSpeed - 1;
+			const isLastPattern = state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
+			const isLastRow = state.timeline.currentRow >= state.currentPattern.length - 1;
+			const isLastTick = state.timeline.currentTick >= state.timeline.currentSpeed - 1;
 
 			if (isLastPattern && isLastRow && isLastTick) {
 				break;
@@ -217,11 +221,11 @@ class PsgExportService {
 
 			const needsPatternChange = state.advancePosition();
 			if (needsPatternChange) {
-				if (state.currentPatternOrderIndex >= state.patternOrder.length) {
+				if (state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length) {
 					break;
 				}
-				if (state.currentPatternOrderIndex < patterns.length) {
-					state.currentPattern = patterns[state.currentPatternOrderIndex];
+				if (state.timeline.currentPatternOrderIndex < patterns.length) {
+					state.currentPattern = patterns[state.timeline.currentPatternOrderIndex];
 				} else {
 					break;
 				}
@@ -265,7 +269,7 @@ class PsgExportService {
 		state.setPatternOrder(project.patternOrder || [0]);
 		state.setSpeed(song.initialSpeed || DEFAULT_SPEED);
 		if (song.interruptFrequency) {
-			state.intFrequency = song.interruptFrequency;
+			state.timeline.intFrequency = song.interruptFrequency;
 		}
 
 		const audioDriver = new AYAudioDriver(totalChannelCount);
@@ -286,7 +290,7 @@ class PsgExportService {
 		}
 
 		state.currentPattern = patterns[0];
-		state.currentPatternOrderIndex = 0;
+		state.timeline.currentPatternOrderIndex = 0;
 
 		const totalRows = this.calculateTotalRows(song, patternOrder);
 		const registerFrames = await this.captureRegisterStates(

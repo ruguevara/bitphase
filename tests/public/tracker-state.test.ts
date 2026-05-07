@@ -24,16 +24,16 @@ describe('TrackerState', () => {
 
 		it('patternOrder and currentPatternOrderIndex start at [] and 0', () => {
 			const state = new TrackerState();
-			expect(state.patternOrder).toEqual([]);
-			expect(state.currentPatternOrderIndex).toBe(0);
+			expect(state.timeline.patternOrder).toEqual([]);
+			expect(state.timeline.currentPatternOrderIndex).toBe(0);
 		});
 
 		it('intFrequency 50, currentSpeed 3, currentRow 0, currentTick 0', () => {
 			const state = new TrackerState();
-			expect(state.intFrequency).toBe(50);
-			expect(state.currentSpeed).toBe(3);
-			expect(state.currentRow).toBe(0);
-			expect(state.currentTick).toBe(0);
+			expect(state.timeline.intFrequency).toBe(50);
+			expect(state.timeline.currentSpeed).toBe(3);
+			expect(state.timeline.currentRow).toBe(0);
+			expect(state.timeline.currentTick).toBe(0);
 		});
 
 		it('channelPatternVolumes filled with 15', () => {
@@ -59,16 +59,16 @@ describe('TrackerState', () => {
 	describe('updateSamplesPerTick', () => {
 		it('sets samplesPerTick from sampleRate / intFrequency', () => {
 			const state = new TrackerState();
-			state.intFrequency = 50;
+			state.timeline.intFrequency = 50;
 			state.updateSamplesPerTick(44100);
-			expect(state.samplesPerTick).toBe(882);
+			expect(state.timeline.samplesPerTick).toBe(882);
 		});
 
 		it('sets tickStep to intFrequency / sampleRate', () => {
 			const state = new TrackerState();
-			state.intFrequency = 50;
+			state.timeline.intFrequency = 50;
 			state.updateSamplesPerTick(1000);
-			expect(state.tickStep).toBe(0.05);
+			expect(state.timeline.tickStep).toBe(0.05);
 		});
 	});
 
@@ -78,22 +78,22 @@ describe('TrackerState', () => {
 			const pattern = { id: 0, length: 64, channels: [] };
 			state.setPattern(pattern, 2);
 			expect(state.currentPattern).toBe(pattern);
-			expect(state.currentPatternOrderIndex).toBe(2);
+			expect(state.timeline.currentPatternOrderIndex).toBe(2);
 		});
 
 		it('clamps currentRow when pattern is shorter', () => {
 			const state = new TrackerState();
-			state.currentRow = 100;
+			state.timeline.currentRow = 100;
 			const pattern = { id: 0, length: 32, channels: [] };
 			state.setPattern(pattern);
-			expect(state.currentRow).toBe(31);
+			expect(state.timeline.currentRow).toBe(31);
 		});
 
 		it('when orderIndex undefined, does not change currentPatternOrderIndex', () => {
 			const state = new TrackerState();
-			state.currentPatternOrderIndex = 5;
+			state.timeline.currentPatternOrderIndex = 5;
 			state.setPattern({ id: 0, length: 64, channels: [] });
-			expect(state.currentPatternOrderIndex).toBe(5);
+			expect(state.timeline.currentPatternOrderIndex).toBe(5);
 		});
 	});
 
@@ -101,40 +101,21 @@ describe('TrackerState', () => {
 		it('sets currentSpeed', () => {
 			const state = new TrackerState();
 			state.setSpeed(6);
-			expect(state.currentSpeed).toBe(6);
+			expect(state.timeline.currentSpeed).toBe(6);
 		});
 	});
 
-	describe('multichip shared playback speed', () => {
-		it('publishPlaybackSpeed updates shared memory and pullSharedPlaybackSpeed on peer', () => {
-			let sab: SharedArrayBuffer;
-			try {
-				sab = new SharedArrayBuffer(4);
-			} catch {
-				return;
-			}
-			const leader = new TrackerState();
-			const follower = new TrackerState();
-			leader.setPlaybackSpeedSharedBuffer(sab);
-			follower.setPlaybackSpeedSharedBuffer(sab);
-			follower.setSpeed(2);
-			leader.publishPlaybackSpeed(8);
-			expect(leader.currentSpeed).toBe(8);
-			follower.pullSharedPlaybackSpeed();
-			expect(follower.currentSpeed).toBe(8);
+	describe('publishPlaybackSpeed', () => {
+		it('sets currentSpeed when speed is positive', () => {
+			const state = new TrackerState();
+			state.publishPlaybackSpeed(8);
+			expect(state.timeline.currentSpeed).toBe(8);
 		});
 
-		it('setPlaybackSpeedSharedBuffer seeds slot from currentSpeed', () => {
-			let sab: SharedArrayBuffer;
-			try {
-				sab = new SharedArrayBuffer(4);
-			} catch {
-				return;
-			}
+		it('ignores non-positive speed', () => {
 			const state = new TrackerState();
-			state.setSpeed(5);
-			state.setPlaybackSpeedSharedBuffer(sab);
-			expect(new Int32Array(sab)[0]).toBe(5);
+			state.publishPlaybackSpeed(0);
+			expect(state.timeline.currentSpeed).toBe(3);
 		});
 	});
 
@@ -142,13 +123,13 @@ describe('TrackerState', () => {
 		it('sets patternOrder', () => {
 			const state = new TrackerState();
 			state.setPatternOrder([0, 1, 0]);
-			expect(state.patternOrder).toEqual([0, 1, 0]);
+			expect(state.timeline.patternOrder).toEqual([0, 1, 0]);
 		});
 
 		it('sets loopPointId when provided', () => {
 			const state = new TrackerState();
 			state.setPatternOrder([0, 1, 2], 2);
-			expect(state.loopPointId).toBe(2);
+			expect(state.timeline.loopPointId).toBe(2);
 		});
 	});
 
@@ -177,86 +158,86 @@ describe('TrackerState', () => {
 			const state = new TrackerState();
 			state.updateSamplesPerTick(1000);
 			state.setIntFrequency(100, 1000);
-			expect(state.intFrequency).toBe(100);
-			expect(state.samplesPerTick).toBe(10);
+			expect(state.timeline.intFrequency).toBe(100);
+			expect(state.timeline.samplesPerTick).toBe(10);
 		});
 	});
 
 	describe('advancePosition', () => {
 		it('increments currentTick', () => {
 			const state = new TrackerState();
-			state.currentSpeed = 2;
+			state.timeline.currentSpeed = 2;
 			state.currentPattern = { length: 64, channels: [] };
-			state.patternOrder = [0];
-			state.currentTick = 0;
+			state.timeline.patternOrder = [0];
+			state.timeline.currentTick = 0;
 			const wrapped = state.advancePosition();
-			expect(state.currentTick).toBe(1);
+			expect(state.timeline.currentTick).toBe(1);
 			expect(wrapped).toBe(false);
 		});
 
 		it('when tick reaches speed, resets tick and increments row', () => {
 			const state = new TrackerState();
-			state.currentSpeed = 2;
+			state.timeline.currentSpeed = 2;
 			state.currentPattern = { length: 64, channels: [] };
-			state.patternOrder = [0];
-			state.currentTick = 1;
+			state.timeline.patternOrder = [0];
+			state.timeline.currentTick = 1;
 			state.advancePosition();
-			expect(state.currentTick).toBe(0);
-			expect(state.currentRow).toBe(1);
+			expect(state.timeline.currentTick).toBe(0);
+			expect(state.timeline.currentRow).toBe(1);
 		});
 
 		it('when row reaches pattern length, wraps row and increments pattern order', () => {
 			const state = new TrackerState();
-			state.currentSpeed = 1;
+			state.timeline.currentSpeed = 1;
 			state.currentPattern = { length: 2, channels: [] };
-			state.patternOrder = [0, 1];
-			state.currentRow = 1;
-			state.currentTick = 1;
+			state.timeline.patternOrder = [0, 1];
+			state.timeline.currentRow = 1;
+			state.timeline.currentTick = 1;
 			const wrapped = state.advancePosition();
-			expect(state.currentRow).toBe(0);
-			expect(state.currentPatternOrderIndex).toBe(1);
+			expect(state.timeline.currentRow).toBe(0);
+			expect(state.timeline.currentPatternOrderIndex).toBe(1);
 			expect(wrapped).toBe(true);
 		});
 
 		it('when pattern order reaches end, wraps to loopPointId', () => {
 			const state = new TrackerState();
-			state.currentSpeed = 1;
+			state.timeline.currentSpeed = 1;
 			state.currentPattern = { length: 2, channels: [] };
-			state.patternOrder = [0, 1, 2];
-			state.loopPointId = 1;
-			state.currentPatternOrderIndex = 2;
-			state.currentRow = 1;
-			state.currentTick = 1;
+			state.timeline.patternOrder = [0, 1, 2];
+			state.timeline.loopPointId = 1;
+			state.timeline.currentPatternOrderIndex = 2;
+			state.timeline.currentRow = 1;
+			state.timeline.currentTick = 1;
 			state.advancePosition();
-			expect(state.currentPatternOrderIndex).toBe(1);
+			expect(state.timeline.currentPatternOrderIndex).toBe(1);
 		});
 
 		it('falls back to 0 when loopPointId is invalid', () => {
 			const state = new TrackerState();
-			state.currentSpeed = 1;
+			state.timeline.currentSpeed = 1;
 			state.currentPattern = { length: 2, channels: [] };
-			state.patternOrder = [0, 1, 2];
-			state.loopPointId = 99;
-			state.currentPatternOrderIndex = 2;
-			state.currentRow = 1;
-			state.currentTick = 1;
+			state.timeline.patternOrder = [0, 1, 2];
+			state.timeline.loopPointId = 99;
+			state.timeline.currentPatternOrderIndex = 2;
+			state.timeline.currentRow = 1;
+			state.timeline.currentTick = 1;
 			state.advancePosition();
-			expect(state.currentPatternOrderIndex).toBe(0);
+			expect(state.timeline.currentPatternOrderIndex).toBe(0);
 		});
 	});
 
 	describe('reset', () => {
 		it('resets playback state but not pattern/tables', () => {
 			const state = new TrackerState();
-			state.currentRow = 10;
-			state.currentTick = 2;
+			state.timeline.currentRow = 10;
+			state.timeline.currentTick = 2;
 			state.channelPatternVolumes[0] = 0;
 			state.channelTables[0] = 1;
 			state.setPattern({ id: 0, length: 64, channels: [] });
 			state.setTables([{ id: 0, rows: [], loop: 0, name: 'T' }]);
 			state.reset();
-			expect(state.currentRow).toBe(0);
-			expect(state.currentTick).toBe(0);
+			expect(state.timeline.currentRow).toBe(0);
+			expect(state.timeline.currentTick).toBe(0);
 			expect(state.channelPatternVolumes).toEqual([15, 15, 15]);
 			expect(state.channelTables).toEqual([-1, -1, -1]);
 			expect(state.currentPattern).not.toBeNull();

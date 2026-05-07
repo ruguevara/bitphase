@@ -24,7 +24,7 @@ describe('PatternNavigationService', () => {
 		type: 'ay',
 		name: 'AY-8910',
 		wasmUrl: '',
-		processorName: '',
+		audioSlotKind: 'ayumi',
 		processorMap: () => ({}) as any,
 		schema: {
 			chipType: 'ay',
