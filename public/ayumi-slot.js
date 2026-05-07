@@ -124,6 +124,31 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		}
 	}
 
+	resetChannelWaveformCapture() {
+		for (const buf of this.channelWaveformBuf) {
+			buf.fill(0);
+		}
+		this.channelWaveformWriteIndex = 0;
+		this.waveformPostCounter = 0;
+	}
+
+	handleStop() {
+		this.resetChannelWaveformCapture();
+		super.handleStop();
+	}
+
+	handlePreviewRow(data) {
+		this.resetChannelWaveformCapture();
+		super.handlePreviewRow(data);
+	}
+
+	handleStopPreview(channel) {
+		if (channel === undefined) {
+			this.resetChannelWaveformCapture();
+		}
+		super.handleStopPreview(channel);
+	}
+
 	accumulateStereoOutput(sampleIndex, mix) {
 		this.ayumiEngine.process();
 		this.ayumiEngine.removeDC();
@@ -155,6 +180,10 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	}
 
 	finishAudioBlock(numSamples) {
+		if (this.paused && !this.isPreviewActive()) {
+			this.finishAudioBlockFlushTransport(numSamples, this.paused);
+			return;
+		}
 		this.channelWaveformWriteIndex = (this.channelWaveformWriteIndex + numSamples) % 512;
 		this.waveformPostCounter++;
 		if (this.waveformPostCounter >= this.waveformPostInterval) {

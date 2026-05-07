@@ -7,7 +7,7 @@
 		resolve?: (value?: unknown) => void;
 	}>();
 
-	const version = 'alpha-0.0.1';
+	const version = '0.1.0';
 	const commitHash = import.meta.env.VITE_COMMIT_HASH || 'dev';
 	const buildDate = import.meta.env.VITE_BUILD_DATE || new Date().toISOString().split('T')[0];
 

@@ -151,6 +151,9 @@ export class AudioService {
 			return;
 		}
 		const arr = Array.isArray(indices) ? indices : [indices];
+		if (!this._isPlaying) {
+			waveformStore.clear();
+		}
 		this._previewChipIndices = new Set(arr);
 	}
 
