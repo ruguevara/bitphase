@@ -139,6 +139,7 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	handlePreviewRow(data) {
 		this.resetChannelWaveformCapture();
+		this.fadeInSamples = 0;
 		super.handlePreviewRow(data);
 	}
 

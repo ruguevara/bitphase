@@ -269,9 +269,10 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 	}
 
 	handlePreviewRow({ pattern, rowIndex, instrument }) {
-		if (!this.paused || !this.initialized || !this.state.wasmModule) {
+		if (!this.initialized || !this.state.wasmModule) {
 			return;
 		}
+		this.paused = true;
 		if (!pattern || !pattern.channels || !pattern.patternRows || rowIndex < 0) {
 			return;
 		}
