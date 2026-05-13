@@ -153,6 +153,7 @@
 				!row.tone &&
 				!row.noise &&
 				!row.envelope &&
+				!(row.softwarePwm ?? false) &&
 				row.toneAdd === 0 &&
 				row.noiseAdd === 0 &&
 				row.volume === 0;

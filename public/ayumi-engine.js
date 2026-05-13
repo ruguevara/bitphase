@@ -70,6 +70,37 @@ class AyumiEngine {
 		this.wasmModule.ayumi_process(this.ayumiPtr);
 	}
 
+	beginOutputFrame() {
+		if (!this.wasmModule || !this.ayumiPtr || !this.wasmModule.ayumi_begin_output_frame) {
+			return;
+		}
+		this.wasmModule.ayumi_begin_output_frame(this.ayumiPtr);
+	}
+
+	outputInnerSlot(slotIndex) {
+		if (!this.wasmModule || !this.ayumiPtr || !this.wasmModule.ayumi_output_inner_slot) {
+			return;
+		}
+		this.wasmModule.ayumi_output_inner_slot(this.ayumiPtr, slotIndex);
+	}
+
+	finishOutputFrame() {
+		if (!this.wasmModule || !this.ayumiPtr || !this.wasmModule.ayumi_finish_output_frame) {
+			return;
+		}
+		this.wasmModule.ayumi_finish_output_frame(this.ayumiPtr);
+	}
+
+	hasPcmSlotExports() {
+		const w = this.wasmModule;
+		return (
+			!!w &&
+			typeof w.ayumi_begin_output_frame === 'function' &&
+			typeof w.ayumi_output_inner_slot === 'function' &&
+			typeof w.ayumi_finish_output_frame === 'function'
+		);
+	}
+
 	removeDC() {
 		if (!this.wasmModule || !this.ayumiPtr) {
 			return;

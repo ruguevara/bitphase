@@ -27,6 +27,7 @@
 		ACTION_TRANSPOSE_OCTAVE_DOWN
 	} from '../../config/keybindings';
 	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
+	import { TabView } from '../../components/TabView';
 
 	let {
 		instrument,
@@ -43,6 +44,12 @@
 	} = $props();
 
 	let selectionAnchor = $state<number | null>(null);
+
+	const instrumentTabs = [
+		{ id: 'registers', label: 'Registers' },
+		{ id: 'timer', label: 'Timer effects' }
+	];
+	let instrumentActiveTabId = $state(instrumentTabs[0].id);
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded);
@@ -61,7 +68,8 @@
 		amplitudeSlideUp: false,
 		toneAccumulation: false,
 		noiseAccumulation: false,
-		envelopeAccumulation: false
+		envelopeAccumulation: false,
+		softwarePwm: false
 	};
 
 	const MAX_ROWS = 512;
@@ -72,7 +80,8 @@
 		| 'retriggerEnvelope'
 		| 'toneAccumulation'
 		| 'noiseAccumulation'
-		| 'envelopeAccumulation';
+		| 'envelopeAccumulation'
+		| 'softwarePwm';
 
 	let isDragging = $state(false);
 	let dragType:
@@ -145,7 +154,8 @@
 						amplitudeSlideUp: false,
 						toneAccumulation: false,
 						noiseAccumulation: false,
-						envelopeAccumulation: false
+						envelopeAccumulation: false,
+						softwarePwm: false
 					}
 				]
 			: rowsArray;
@@ -535,8 +545,12 @@
 		<Input class="w-48 text-xs" bind:value={name} />
 	</div>
 
-	<div class="mt-3 flex items-start gap-2 overflow-x-auto">
-		{#key isExpanded}
+	<div class="mt-3 min-h-0 flex flex-1 flex-col">
+		<TabView tabs={instrumentTabs} bind:activeTabId={instrumentActiveTabId}>
+			{#snippet children(activeTabId)}
+				{#if activeTabId === 'registers'}
+					<div class="flex min-h-0 flex-1 items-start gap-2 overflow-x-auto">
+						{#key isExpanded}
 			<div class="relative flex flex-col">
 				{#if loopRow >= 0 && loopRow < rows.length && loopColumnRef && tableRef}
 					{@const tbody = tableRef.querySelector('tbody')}
@@ -1041,5 +1055,90 @@
 				</table>
 			{/if}
 		{/key}
+					</div>
+				{:else}
+					<div class="flex min-h-0 flex-1 items-start gap-2 overflow-x-auto py-2">
+						{#key isExpanded}
+							<table
+								class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none">
+								<thead>
+									<tr>
+										<th class={isExpanded ? 'w-14 min-w-14 px-2 py-1.5' : 'px-1 py-1'}
+											>row</th>
+										<th class={isExpanded ? 'w-8 px-1.5' : 'w-6 px-0.5'}></th>
+										<th
+											class={isExpanded ? 'w-10 px-1.5' : 'w-10 px-0.5 text-[0.65rem]'}
+											title="Software PWM: tone generator off, amplitude toggled at chip rate (25% duty; speed editable via command later)">
+											PWM</th>
+									</tr>
+								</thead>
+								<tbody>
+									{#each rows as row, index}
+										{@const selected = isRowSelected(index)}
+										<tr
+											class="{isExpanded ? 'h-8' : 'h-7'} {selected
+												? ROW_SELECTION_STYLES.row
+												: ''}">
+											<SelectableRowNumberCell
+												{index}
+												{selected}
+												sizeClass={isExpanded
+													? 'w-14 min-w-14 px-2 py-1.5'
+													: 'px-1 py-1 text-[0.65rem]'}
+												onmousedown={(e) => handleRowSelect(index, e)} />
+											<td
+												class="border border-[var(--color-app-border)] {selected
+													? ROW_SELECTION_STYLES.cell
+													: 'bg-[var(--color-app-surface-secondary)]'} {isExpanded
+													? 'px-1.5'
+													: 'px-0.5'}"></td>
+											<td
+												class="{isExpanded
+													? 'w-10 min-w-10 px-1'
+													: 'w-10 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+													? ROW_SELECTION_STYLES.cell
+													: (row.softwarePwm ?? false)
+														? 'instrument-cell-boolean-on'
+														: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+												tabindex="-1"
+												title="Software PWM for this instrument macro row"
+												onmousedown={() => beginDragBoolean(index, 'softwarePwm')}
+												onmouseover={() => dragOverBoolean(index, 'softwarePwm')}
+												onfocus={() => dragOverBoolean(index, 'softwarePwm')}>
+												{(row.softwarePwm ?? false) ? '✓' : ''}
+											</td>
+										</tr>
+									{/each}
+								</tbody>
+								<tfoot>
+									<tr>
+										<td colspan="3" class="px-2 py-1">
+											<div class="flex items-center justify-center">
+												<button
+													class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
+													onclick={addRow}
+													title="Add new row">
+													<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
+													<span class="mr-1 text-xs">Add new row</span>
+												</button>
+											</div>
+										</td>
+									</tr>
+									<tr>
+										<td colspan="3" class="border-t border-[var(--color-app-border)] p-0">
+											<RowResizeHandle
+												rowCount={rows.length}
+												onRowCountChange={setRowCount}
+												rowHeightPx={isExpanded ? 32 : 28}
+												maxRows={MAX_ROWS} />
+										</td>
+									</tr>
+								</tfoot>
+							</table>
+						{/key}
+					</div>
+				{/if}
+			{/snippet}
+		</TabView>
 	</div>
 </div>

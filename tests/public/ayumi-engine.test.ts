@@ -104,6 +104,31 @@ describe('AyumiEngine', () => {
 		});
 	});
 
+	describe('PCM slot exports', () => {
+		it('hasPcmSlotExports is true when begin/output/finish exist', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			mockWasm.ayumi_begin_output_frame = vi.fn();
+			mockWasm.ayumi_output_inner_slot = vi.fn();
+			mockWasm.ayumi_finish_output_frame = vi.fn();
+			expect(engine.hasPcmSlotExports()).toBe(true);
+		});
+
+		it('hasPcmSlotExports is false when begin is missing', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			mockWasm.ayumi_begin_output_frame = undefined as any;
+			mockWasm.ayumi_output_inner_slot = vi.fn();
+			mockWasm.ayumi_finish_output_frame = vi.fn();
+			expect(engine.hasPcmSlotExports()).toBe(false);
+		});
+
+		it('calls ayumi_begin_output_frame when defined', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			mockWasm.ayumi_begin_output_frame = vi.fn();
+			engine.beginOutputFrame();
+			expect(mockWasm.ayumi_begin_output_frame).toHaveBeenCalledWith(mockPtr);
+		});
+	});
+
 	describe('process', () => {
 		it('calls ayumi_process when wasm and ptr set', () => {
 			const engine = new AyumiEngine(mockWasm as any, mockPtr);

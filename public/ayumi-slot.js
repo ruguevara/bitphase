@@ -151,7 +151,7 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	}
 
 	accumulateStereoOutput(sampleIndex, mix) {
-		this.ayumiEngine.process();
+		this._processAyumiOneOutputSample();
 		this.ayumiEngine.removeDC();
 
 		const { wasmModule, ayumiPtr } = this.state;

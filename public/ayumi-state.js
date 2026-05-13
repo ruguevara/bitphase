@@ -11,7 +11,11 @@ const AY_CHANNEL_ARRAY_SPECS = [
 	['channelAmplitudeSliding', 0],
 	['channelEnvelopeEnabled', false],
 	['channelMuted', false],
-	['channelSoundEnabled', false]
+	['channelSoundEnabled', false],
+	['channelPwmActive', false],
+	['channelPwmVolumeHigh', 0],
+	['channelPwmPhase', 0],
+	['channelPwmPeriodReg', -1]
 ];
 
 class AyumiState extends TrackerState {

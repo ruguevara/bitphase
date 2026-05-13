@@ -5,6 +5,7 @@ import AyumiEngine from './ayumi-engine.js';
 import AYChipRegisterState from './ay-chip-register-state.js';
 import VirtualChannelMixer from './virtual-channel-mixer.js';
 import { WorkletSlotBase } from './worklet-slot-base.js';
+import { processAyumiOneOutputSample } from './ayumi-render-sample.js';
 
 export class Ay8910WorkletSlot extends WorkletSlotBase {
 	constructor(port, chipIndex, sharedTimeline) {
@@ -223,6 +224,18 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		} else {
 			this.ayumiEngine.applyRegisterState(this.registerState);
 		}
+	}
+
+	_processAyumiOneOutputSample() {
+		processAyumiOneOutputSample(
+			this.ayumiEngine?.wasmModule,
+			this.state?.ayumiPtr,
+			this.ayumiEngine,
+			this.registerState,
+			this.state,
+			this.virtualChannelMixer,
+			sampleRate
+		);
 	}
 
 	_applyVirtualChannelResize() {

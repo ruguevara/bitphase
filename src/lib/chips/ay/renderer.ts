@@ -25,6 +25,17 @@ const DEFAULT_AYM_FREQUENCY = 1773400;
 type PanSetting = { channel: number; pan: number; isEqp: number };
 type GetPanSettingsForLayout = (layout: string) => PanSetting[];
 
+type ProcessAyumiOneSampleFn = (
+	wasm: unknown,
+	ayumiPtr: number,
+	ayumiEngine: unknown,
+	registerState: unknown,
+	state: unknown,
+	mixer: unknown,
+	sampleRate: number,
+	defaultAyFreq?: number
+) => void;
+
 type AyumiSlotLane = {
 	songIndex: number;
 	song: any;
@@ -96,6 +107,7 @@ export class AYChipRenderer implements ChipRenderer {
 		AyumiEngine: any;
 		AYChipRegisterState: any;
 		VirtualChannelMixer: any;
+		processAyumiOneOutputSample: ProcessAyumiOneSampleFn;
 	}> {
 		onProgress?.(20, 'Loading processor modules...');
 		const { default: AyumiState } = await this.loader.loadModule<{ default: new () => unknown }>(
@@ -117,6 +129,10 @@ export class AYChipRenderer implements ChipRenderer {
 			await this.loader.loadModule<{ default: new () => unknown }>('ay-chip-register-state.js');
 		const { default: VirtualChannelMixer } =
 			await this.loader.loadModule<{ default: new () => unknown }>('virtual-channel-mixer.js');
+		onProgress?.(44, 'Loading Ayumi sample helper...');
+		const { processAyumiOneOutputSample } = await this.loader.loadModule<{
+			processAyumiOneOutputSample: ProcessAyumiOneSampleFn;
+		}>('ayumi-render-sample.js');
 
 		return {
 			AyumiState,
@@ -124,7 +140,8 @@ export class AYChipRenderer implements ChipRenderer {
 			AYAudioDriver,
 			AyumiEngine,
 			AYChipRegisterState,
-			VirtualChannelMixer
+			VirtualChannelMixer,
+			processAyumiOneOutputSample
 		};
 	}
 
@@ -201,6 +218,7 @@ export class AYChipRenderer implements ChipRenderer {
 	}
 
 	private async renderAudioLoop(
+		processAyumiOneOutputSample: ProcessAyumiOneSampleFn,
 		state: any,
 		patternProcessor: any,
 		audioDriver: any,
@@ -302,7 +320,16 @@ export class AYChipRenderer implements ChipRenderer {
 				state.timeline.tickAccumulator -= 1.0;
 			}
 
-			ayumiEngine.process();
+			processAyumiOneOutputSample(
+				wasm,
+				ayumiPtr,
+				ayumiEngine,
+				registerState,
+				state,
+				mixer,
+				SAMPLE_RATE,
+				DEFAULT_AYM_FREQUENCY
+			);
 			ayumiEngine.removeDC();
 
 			if (separateChannels) {
@@ -343,6 +370,7 @@ export class AYChipRenderer implements ChipRenderer {
 	}
 
 	private async renderAudioLoopAySharedTimelineExport(
+		processAyumiOneOutputSample: ProcessAyumiOneSampleFn,
 		contexts: AyumiSlotLane[],
 		wasm: any,
 		leaderSong: any,
@@ -450,7 +478,16 @@ export class AYChipRenderer implements ChipRenderer {
 			}
 
 			for (const ctx of contexts) {
-				ctx.ayumiEngine.process();
+				processAyumiOneOutputSample(
+					wasm,
+					ctx.ayumiPtr,
+					ctx.ayumiEngine,
+					ctx.registerState,
+					ctx.state,
+					ctx.mixer,
+					SAMPLE_RATE,
+					DEFAULT_AYM_FREQUENCY
+				);
 				ctx.ayumiEngine.removeDC();
 			}
 
@@ -510,7 +547,8 @@ export class AYChipRenderer implements ChipRenderer {
 			AYAudioDriver,
 			AyumiEngine,
 			AYChipRegisterState,
-			VirtualChannelMixer
+			VirtualChannelMixer,
+			processAyumiOneOutputSample
 		} = await this.loadProcessorModules(onProgress);
 
 		const contexts: AyumiSlotLane[] = [];
@@ -592,6 +630,7 @@ export class AYChipRenderer implements ChipRenderer {
 				loopCount <= 1 ? firstPassRows : firstPassRows + loopSegmentRows * (loopCount - 1);
 
 			const buffers = await this.renderAudioLoopAySharedTimelineExport(
+				processAyumiOneOutputSample,
 				contexts,
 				wasm,
 				leaderSong,
@@ -654,7 +693,8 @@ export class AYChipRenderer implements ChipRenderer {
 			AYAudioDriver,
 			AyumiEngine,
 			AYChipRegisterState,
-			VirtualChannelMixer
+			VirtualChannelMixer,
+			processAyumiOneOutputSample
 		} = await this.loadProcessorModules(onProgress);
 
 		const virtualChannelMap: Record<number, number> = song.virtualChannelMap ?? {};
@@ -700,6 +740,7 @@ export class AYChipRenderer implements ChipRenderer {
 
 		try {
 			const channels = await this.renderAudioLoop(
+				processAyumiOneOutputSample,
 				state,
 				patternProcessor,
 				audioDriver,

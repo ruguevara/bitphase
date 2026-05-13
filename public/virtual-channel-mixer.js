@@ -61,7 +61,7 @@ class VirtualChannelMixer {
 
 			let selectedVch = -1;
 			for (const vch of virtualIndices) {
-				if (this._isChannelActive(vch, virtualRegisterState)) {
+				if (this._isChannelActive(vch, virtualRegisterState, state)) {
 					selectedVch = vch;
 					break;
 				}
@@ -77,7 +77,10 @@ class VirtualChannelMixer {
 		return this.hardwareRegisterState;
 	}
 
-	_isChannelActive(vch, registerState) {
+	_isChannelActive(vch, registerState, state) {
+		if (state?.channelPwmActive?.[vch]) {
+			return true;
+		}
 		const vol = registerState.channels[vch]?.volume ?? 0;
 		return (vol & 0x0f) > 0 || (vol & 0x10) !== 0;
 	}

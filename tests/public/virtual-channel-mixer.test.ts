@@ -4,7 +4,8 @@ import AYChipRegisterState from '../../public/ay-chip-register-state.js';
 
 function createState(channelCount: number) {
 	return {
-		channelSoundEnabled: Array(channelCount).fill(true)
+		channelSoundEnabled: Array(channelCount).fill(true),
+		channelPwmActive: Array(channelCount).fill(false)
 	};
 }
 
@@ -118,6 +119,23 @@ describe('VirtualChannelMixer', () => {
 			const result = mixer.merge(registerState, state);
 
 			expect(result.channels[0].tone).toBe(100);
+		});
+
+		it('should treat PWM channel as active even when volume is 0', () => {
+			mixer.configure({ 1: 2 }, 3);
+			const registerState = new AYChipRegisterState(4);
+			registerState.channels[1].tone = 200;
+			registerState.channels[1].volume = 0;
+			registerState.channels[2].tone = 300;
+			registerState.channels[2].volume = 8;
+			registerState.channels[3].tone = 400;
+
+			const state = createState(4);
+			state.channelPwmActive = [false, true, false, false];
+
+			const result = mixer.merge(registerState, state);
+
+			expect(result.channels[1].tone).toBe(200);
 		});
 
 		it('should copy mixer flags (tone, noise, envelope)', () => {

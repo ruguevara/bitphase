@@ -453,6 +453,7 @@ class AYAudioDriver {
 		this.processEnvelopeVibrato(state);
 
 		for (let channelIndex = 0; channelIndex < state.channelInstruments.length; channelIndex++) {
+			state.channelPwmActive[channelIndex] = false;
 			const isMuted = state.channelMuted[channelIndex];
 			const isSoundEnabled = state.channelSoundEnabled[channelIndex];
 			const onOffHalted =
@@ -467,6 +468,7 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
 				state.channelEnvelopeEnabled[channelIndex] = false;
+				state.channelPwmPeriodReg[channelIndex] = -1;
 				continue;
 			}
 
@@ -482,6 +484,7 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
 				state.channelEnvelopeEnabled[channelIndex] = false;
+				state.channelPwmPeriodReg[channelIndex] = -1;
 				continue;
 			}
 
@@ -499,7 +502,8 @@ class AYAudioDriver {
 				amplitudeSlideUp: false,
 				toneAccumulation: false,
 				noiseAccumulation: false,
-				envelopeAccumulation: false
+				envelopeAccumulation: false,
+				softwarePwm: false
 			};
 			const effectiveRows = hasRows ? instrument.rows : [defaultInstrumentRow];
 			const effectiveRowsLength = effectiveRows.length;
@@ -523,6 +527,7 @@ class AYAudioDriver {
 						}
 					}
 				}
+				state.channelPwmPeriodReg[channelIndex] = -1;
 				continue;
 			}
 
@@ -538,6 +543,7 @@ class AYAudioDriver {
 						}
 					}
 				}
+				state.channelPwmPeriodReg[channelIndex] = -1;
 				continue;
 			}
 
@@ -606,6 +612,11 @@ class AYAudioDriver {
 				envelopeDisabledByOnOff
 			);
 
+			const useSoftwarePwm =
+				instrumentRow.softwarePwm === true &&
+				(finalVolume & 0x10) === 0 &&
+				!instrumentRow.envelope;
+
 			if (!isSoundEnabled) {
 				registerState.channels[channelIndex].volume = 0;
 				registerState.channels[channelIndex].mixer.tone = false;
@@ -614,6 +625,17 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].tone = false;
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
+				state.channelPwmPeriodReg[channelIndex] = -1;
+			} else if (useSoftwarePwm) {
+				state.channelPwmActive[channelIndex] = true;
+				state.channelPwmVolumeHigh[channelIndex] = finalVolume;
+				registerState.channels[channelIndex].mixer.tone = instrumentRow.tone;
+				registerState.channels[channelIndex].mixer.noise = instrumentRow.noise;
+				registerState.channels[channelIndex].mixer.envelope = false;
+				this.channelMixerState[channelIndex].tone = instrumentRow.tone;
+				this.channelMixerState[channelIndex].noise = instrumentRow.noise;
+				this.channelMixerState[channelIndex].envelope = false;
+				registerState.channels[channelIndex].volume = 0;
 			} else {
 				registerState.channels[channelIndex].mixer.tone = instrumentRow.tone;
 				registerState.channels[channelIndex].mixer.noise = instrumentRow.noise;
@@ -636,6 +658,7 @@ class AYAudioDriver {
 				}
 
 				registerState.channels[channelIndex].volume = finalVolume;
+				state.channelPwmPeriodReg[channelIndex] = -1;
 			}
 
 			if (!onOffHalted) {

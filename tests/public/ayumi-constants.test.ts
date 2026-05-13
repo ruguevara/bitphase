@@ -7,6 +7,10 @@ import {
 	DEFAULT_SPEED,
 	DEFAULT_CHANNEL_VOLUMES,
 	DEFAULT_AYM_FREQUENCY,
+	AYUMI_DECIMATE_FACTOR,
+	SOFTWARE_PWM_DUTY_CYCLE,
+	SOFTWARE_PWM_OFF_VOLUME,
+	SOFTWARE_PWM_TIMER_DENOMINATOR_BIAS,
 	getPanSettingsForLayout
 } from '../../public/ayumi-constants.js';
 
@@ -38,6 +42,22 @@ describe('ayumi-constants', () => {
 
 		it('DEFAULT_AYM_FREQUENCY is 1773400', () => {
 			expect(DEFAULT_AYM_FREQUENCY).toBe(1773400);
+		});
+
+		it('AYUMI_DECIMATE_FACTOR is 8', () => {
+			expect(AYUMI_DECIMATE_FACTOR).toBe(8);
+		});
+
+		it('SOFTWARE_PWM_DUTY_CYCLE is 0.5', () => {
+			expect(SOFTWARE_PWM_DUTY_CYCLE).toBe(0.5);
+		});
+
+		it('SOFTWARE_PWM_OFF_VOLUME is 1', () => {
+			expect(SOFTWARE_PWM_OFF_VOLUME).toBe(1);
+		});
+
+		it('SOFTWARE_PWM_TIMER_DENOMINATOR_BIAS is golden-ratio conjugate', () => {
+			expect(SOFTWARE_PWM_TIMER_DENOMINATOR_BIAS).toBeCloseTo((Math.sqrt(5) - 1) / 2, 12);
 		});
 	});
 

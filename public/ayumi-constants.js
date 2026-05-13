@@ -8,6 +8,14 @@ export const DEFAULT_SPEED = 3;
 export const DEFAULT_CHANNEL_VOLUMES = [15, 15, 15];
 export const DEFAULT_AYM_FREQUENCY = 1773400;
 
+export const AYUMI_DECIMATE_FACTOR = 8;
+
+export const SOFTWARE_PWM_DUTY_CYCLE = 0.5;
+
+export const SOFTWARE_PWM_OFF_VOLUME = 1;
+
+export const SOFTWARE_PWM_TIMER_DENOMINATOR_BIAS = 0.6180339887498949;
+
 const STEREO_SEPARATION = 60 / 200;
 
 export function getPanSettingsForLayout(layout) {
