@@ -116,6 +116,19 @@ describe('PatternFieldInput', () => {
 		expect(result?.updatedPattern.channels[0].rows[0].table).toBe(-1);
 	});
 
+	it('enters table A when typing A on the table field', () => {
+		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
+
+		const result = PatternFieldInput.handleSymbolInput(
+			createContext(pattern),
+			createFieldInfo('table', 'symbol'),
+			'A'
+		);
+
+		expect(result).not.toBeNull();
+		expect(result?.updatedPattern.channels[0].rows[0].table).toBe(10);
+	});
+
 	it('does not commit zero for empty volume values', () => {
 		const pattern = new Pattern(0, 1, AY_CHIP_SCHEMA);
 

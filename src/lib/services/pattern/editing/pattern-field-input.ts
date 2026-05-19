@@ -119,15 +119,6 @@ export class PatternFieldInput {
 		key: string
 	): PatternEditingResult | null {
 		const upperKey = key.toUpperCase();
-		const isTableField = fieldInfo.fieldKey === 'table';
-
-		if (isTableField && (upperKey === 'A' || upperKey === 'O')) {
-			const currentValue = PatternValueUpdates.getFieldValue(context, fieldInfo);
-			if (currentValue === -1)
-				return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
-			const updatedPattern = PatternValueUpdates.updateFieldValue(context, fieldInfo, -1);
-			return { updatedPattern, shouldMoveNext: false };
-		}
 		if (!/^[A-Z0-9]$/i.test(key)) {
 			return null;
 		}
