@@ -188,8 +188,39 @@ function reconstructInstrument(data: any): Instrument {
 		instrument.rows = data.rows.map((rowData: any) => reconstructInstrumentRow(rowData));
 	}
 	if (data.timerRows) {
-		(instrument as Instrument & { timerRows?: { sid: boolean }[] }).timerRows =
-			data.timerRows.map((row: { sid?: boolean }) => ({ sid: row.sid ?? false }));
+		(
+			instrument as Instrument & {
+				timerRows?: {
+					sid: boolean;
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+				}[];
+			}
+		).timerRows = data.timerRows.map(
+			(row: {
+				sid?: boolean;
+				sidPeriodMode?: 'auto' | 'manual';
+				detune?: number;
+				period?: number;
+			}) => {
+				const timerRow: {
+					sid: boolean;
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+				} = {
+					sid: row.sid ?? false,
+					sidPeriodMode:
+						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
+							? row.sidPeriodMode
+							: 'auto'
+				};
+				if (row.detune !== undefined) timerRow.detune = row.detune;
+				if (row.period !== undefined) timerRow.period = row.period;
+				return timerRow;
+			}
+		);
 	}
 	if (data.timerWaveform) {
 		(instrument as Instrument & { timerWaveform?: number[] }).timerWaveform = [

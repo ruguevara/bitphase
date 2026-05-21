@@ -273,16 +273,24 @@
 		);
 		copyAyInstrumentFields(
 			instrument as Instrument & {
-				timerRows?: { sid: boolean }[];
+				timerRows?: {
+					sid: boolean;
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+				}[];
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
-				sidPeriod?: number;
 			},
 			copy as Instrument & {
-				timerRows?: { sid: boolean }[];
+				timerRows?: {
+					sid: boolean;
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+				}[];
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
-				sidPeriod?: number;
 			}
 		);
 

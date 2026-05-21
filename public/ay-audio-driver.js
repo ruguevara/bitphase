@@ -650,7 +650,7 @@ class AYAudioDriver {
 				const sidBaseVolume = getAySidBaseVolume(finalVolume);
 				registerState.channels[channelIndex].sid = {
 					enabled: sidActive,
-					period: computeSidPeriod(finalTone, ayFields),
+					period: computeSidPeriod(finalTone, timerRow),
 					baseVolume: sidBaseVolume,
 					waveform: ayFields.timerWaveform,
 					waveformLoop: ayFields.timerWaveformLoop,

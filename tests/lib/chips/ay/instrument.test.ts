@@ -3,7 +3,7 @@ import {
 	normalizeAyInstrumentFields,
 	syncAyInstrumentTimerRows,
 	computeSidPeriod,
-	resolveAySidPeriodMode,
+	resolveAyTimerRowSidPeriodMode,
 	DEFAULT_AY_SID_PERIOD,
 	DEFAULT_AY_SID_PERIOD_DETUNE,
 	DEFAULT_AY_TIMER_WAVEFORM
@@ -16,18 +16,21 @@ describe('ay instrument timer fields', () => {
 			{ tone: true, noise: false, envelope: false, volume: 15 }
 		]);
 		const fields = normalizeAyInstrumentFields(instrument);
-		expect(fields.sidPeriodMode).toBe('auto');
-		expect(fields.sidPeriod).toBe(DEFAULT_AY_SID_PERIOD);
-		expect(fields.sidPeriodDetune).toBe(DEFAULT_AY_SID_PERIOD_DETUNE);
 		expect(fields.timerWaveform).toEqual(DEFAULT_AY_TIMER_WAVEFORM);
 		expect(fields.timerRows).toHaveLength(1);
 		expect(fields.timerRows[0].sid).toBe(false);
+		expect(resolveAyTimerRowSidPeriodMode(fields.timerRows[0])).toBe('auto');
 	});
 
-	it('uses manual mode when sidPeriod was saved without mode', () => {
+	it('migrates legacy instrument-level manual period to timer rows', () => {
 		const instrument = new Instrument('01', [{ tone: true, volume: 15 }]);
-		(instrument as Instrument & { sidPeriod?: number }).sidPeriod = 200;
-		expect(resolveAySidPeriodMode(instrument)).toBe('manual');
+		(instrument as Instrument & { sidPeriodMode?: 'manual'; sidPeriod?: number }).sidPeriodMode =
+			'manual';
+		(instrument as Instrument & { sidPeriod?: number }).sidPeriod = 42;
+		const fields = normalizeAyInstrumentFields(instrument);
+		expect(fields.timerRows[0].sidPeriodMode).toBe('manual');
+		expect(fields.timerRows[0].period).toBe(42);
+		expect(computeSidPeriod(200, fields.timerRows[0])).toBe(42);
 	});
 
 	it('syncs timer rows when mixer rows are added', () => {
@@ -37,17 +40,14 @@ describe('ay instrument timer fields', () => {
 		expect(timerRows.every((row) => row.sid === false)).toBe(true);
 	});
 
-	it('computes auto sid period from tone period plus detune', () => {
-		const fields = normalizeAyInstrumentFields(new Instrument('01', []));
-		expect(computeSidPeriod(200, fields)).toBe(200 + DEFAULT_AY_SID_PERIOD_DETUNE);
+	it('computes auto sid period from tone period plus row detune', () => {
+		const row = { sid: true, sidPeriodMode: 'auto' as const, detune: 7 };
+		expect(computeSidPeriod(200, row)).toBe(207);
+		expect(computeSidPeriod(200)).toBe(200 + DEFAULT_AY_SID_PERIOD_DETUNE);
 	});
 
-	it('uses manual sid period when mode is manual', () => {
-		const instrument = new Instrument('01', []);
-		(instrument as Instrument & { sidPeriodMode?: 'manual'; sidPeriod?: number }).sidPeriodMode =
-			'manual';
-		(instrument as Instrument & { sidPeriod?: number }).sidPeriod = 42;
-		const fields = normalizeAyInstrumentFields(instrument);
-		expect(computeSidPeriod(200, fields)).toBe(42);
+	it('uses manual sid period from the row', () => {
+		const row = { sid: true, sidPeriodMode: 'manual' as const, period: 42 };
+		expect(computeSidPeriod(200, row)).toBe(42);
 	});
 });

@@ -175,10 +175,7 @@ export class AYProcessor
 			timerWaveform: (o as Instrument & { timerWaveform?: number[] }).timerWaveform
 				? [...((o as Instrument & { timerWaveform?: number[] }).timerWaveform as number[])]
 				: undefined,
-			timerWaveformLoop: (o as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop,
-			sidPeriodMode: (o as Instrument & { sidPeriodMode?: 'auto' | 'manual' }).sidPeriodMode,
-			sidPeriod: (o as Instrument & { sidPeriod?: number }).sidPeriod,
-			sidPeriodDetune: (o as Instrument & { sidPeriodDetune?: number }).sidPeriodDetune
+			timerWaveformLoop: (o as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop
 		}));
 		this.bridge.sendCommand({ type: 'init_instruments', instruments: sanitized });
 	}
@@ -269,12 +266,7 @@ export class AYProcessor
 							]
 						: undefined,
 					timerWaveformLoop: (instrument as Instrument & { timerWaveformLoop?: number })
-						.timerWaveformLoop,
-					sidPeriodMode: (instrument as Instrument & { sidPeriodMode?: 'auto' | 'manual' })
-						.sidPeriodMode,
-					sidPeriod: (instrument as Instrument & { sidPeriod?: number }).sidPeriod,
-					sidPeriodDetune: (instrument as Instrument & { sidPeriodDetune?: number })
-						.sidPeriodDetune
+						.timerWaveformLoop
 				}
 			: undefined;
 		this.bridge.sendCommand({

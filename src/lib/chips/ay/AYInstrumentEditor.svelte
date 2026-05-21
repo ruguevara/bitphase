@@ -27,7 +27,11 @@
 		ACTION_TRANSPOSE_OCTAVE_DOWN
 	} from '../../config/keybindings';
 	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
-	import AYTimerEffectsEditor from './AYTimerEffectsEditor.svelte';
+	import AYTimerWaveformEditor from './AYTimerWaveformEditor.svelte';
+	import AYTimerEffectsHeaderCells from './AYTimerEffectsHeaderCells.svelte';
+	import AYTimerEffectsRowCells from './AYTimerEffectsRowCells.svelte';
+	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.ts';
+	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
 	import { syncAyInstrumentTimerRows } from './instrument';
 
 	type InstrumentTab = 'mixer' | 'timer';
@@ -50,7 +54,15 @@
 	let activeTab = $state<InstrumentTab>('mixer');
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
-	const showVolumeGrid = $derived(isExpanded);
+	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
+	const tableColSpan = $derived(activeTab === 'mixer' ? 16 : 7);
+
+	const timerEffects = new AyTimerEffectsController(
+		() => instrument,
+		onInstrumentChange,
+		() => asHex
+	);
+	setAyTimerEffectsContext(timerEffects);
 
 	const EMPTY_ROW = {
 		tone: false,
@@ -440,10 +452,15 @@
 	});
 
 	$effect(() => {
+		timerEffects.handleInstrumentChange(instrument);
+	});
+
+	$effect(() => {
 		const stop = () => {
 			isDragging = false;
 			dragType = null;
 			dragValue = null;
+			timerEffects.stopDrag();
 		};
 		window.addEventListener('mouseup', stop);
 		return () => window.removeEventListener('mouseup', stop);
@@ -561,13 +578,9 @@
 	</div>
 
 	{#if activeTab === 'timer'}
-		<AYTimerEffectsEditor
-			{instrument}
-			{asHex}
-			{isExpanded}
-			{onInstrumentChange}
-			bind:selectedRowIndices />
-	{:else}
+		<AYTimerWaveformEditor {isExpanded} />
+	{/if}
+
 	<div class="mt-3 flex items-start gap-2 overflow-x-auto">
 		{#key isExpanded}
 			<div class="relative flex flex-col">
@@ -605,6 +618,7 @@
 							<th
 								class={isExpanded ? 'w-6 px-1.5' : 'w-4 px-0.5'}
 								bind:this={loopColumnRef}>{isExpanded ? 'loop' : 'lp'}</th>
+							{#if activeTab === 'mixer'}
 							<th
 								class={isExpanded
 									? 'w-8 min-w-8 px-1'
@@ -731,6 +745,9 @@
 										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
 								</div>
 							</th>
+							{:else}
+								<AYTimerEffectsHeaderCells {isExpanded} />
+							{/if}
 						</tr>
 						{#if showVolumeGrid}
 							<tr>
@@ -811,6 +828,7 @@
 										: ''}"
 									onclick={() => setLoop(index)}>
 								</td>
+								{#if activeTab === 'mixer'}
 								<!-- Tone -->
 								<td
 									class="{isExpanded
@@ -1006,12 +1024,15 @@
 												: '↓'
 											: ''}</span>
 								</td>
+								{:else}
+									<AYTimerEffectsRowCells {index} {selected} {isExpanded} />
+								{/if}
 							</tr>
 						{/each}
 					</tbody>
 					<tfoot>
 						<tr>
-							<td colspan="16" class="px-2 py-1">
+							<td colspan={tableColSpan} class="px-2 py-1">
 								<div class="flex items-center justify-center">
 									<button
 										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
@@ -1024,7 +1045,7 @@
 							</td>
 						</tr>
 						<tr>
-							<td colspan="16" class="border-t border-[var(--color-app-border)] p-0">
+							<td colspan={tableColSpan} class="border-t border-[var(--color-app-border)] p-0">
 								<RowResizeHandle
 									rowCount={rows.length}
 									onRowCountChange={setRowCount}
@@ -1075,5 +1096,4 @@
 			{/if}
 		{/key}
 	</div>
-	{/if}
 </div>

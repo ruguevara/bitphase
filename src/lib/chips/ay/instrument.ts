@@ -1,22 +1,22 @@
 import type { Instrument } from '../../models/song';
 
+export type AySidPeriodMode = 'auto' | 'manual';
+
 export type AyTimerRow = {
 	sid: boolean;
+	sidPeriodMode?: AySidPeriodMode;
+	detune?: number;
+	period?: number;
 };
-
-export type AySidPeriodMode = 'auto' | 'manual';
 
 export type AyInstrumentFields = {
 	timerRows: AyTimerRow[];
 	timerWaveform: number[];
 	timerWaveformLoop: number;
-	sidPeriodMode: AySidPeriodMode;
-	sidPeriod: number;
-	sidPeriodDetune: number;
 };
 
 export const DEFAULT_AY_SID_PERIOD = 100;
-export const DEFAULT_AY_SID_PERIOD_DETUNE = 3;
+export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
 
 type ExtendedInstrument = Instrument & {
@@ -28,36 +28,86 @@ type ExtendedInstrument = Instrument & {
 	sidPeriodDetune?: number;
 };
 
+type LegacyInstrumentDefaults = {
+	sidPeriodMode: AySidPeriodMode;
+	sidPeriod: number;
+	sidPeriodDetune: number;
+};
+
 export function createDefaultAyTimerRow(): AyTimerRow {
 	return { sid: false };
 }
 
-export function resolveAySidPeriodMode(instrument: Instrument): AySidPeriodMode {
+export function resolveLegacyInstrumentDefaults(instrument: Instrument): LegacyInstrumentDefaults {
 	const extended = instrument as ExtendedInstrument;
-	if (extended.sidPeriodMode === 'auto' || extended.sidPeriodMode === 'manual') {
-		return extended.sidPeriodMode;
-	}
-	return extended.sidPeriod !== undefined ? 'manual' : 'auto';
+	const sidPeriodMode =
+		extended.sidPeriodMode === 'auto' || extended.sidPeriodMode === 'manual'
+			? extended.sidPeriodMode
+			: extended.sidPeriod !== undefined
+				? 'manual'
+				: 'auto';
+	return {
+		sidPeriodMode,
+		sidPeriod: Math.max(1, (extended.sidPeriod ?? DEFAULT_AY_SID_PERIOD) & 0xffff),
+		sidPeriodDetune: extended.sidPeriodDetune ?? DEFAULT_AY_SID_PERIOD_DETUNE
+	};
 }
 
-export function computeSidPeriod(tonePeriod: number, fields: AyInstrumentFields): number {
-	if (fields.sidPeriodMode === 'manual') {
-		return Math.max(1, fields.sidPeriod & 0xffff);
+export function resolveAyTimerRowSidPeriodMode(row: AyTimerRow | undefined): AySidPeriodMode {
+	return row?.sidPeriodMode === 'manual' ? 'manual' : 'auto';
+}
+
+export function effectiveRowDetune(row: AyTimerRow | undefined): number {
+	return row?.detune ?? DEFAULT_AY_SID_PERIOD_DETUNE;
+}
+
+export function effectiveRowPeriod(row: AyTimerRow | undefined): number {
+	return Math.max(1, (row?.period ?? DEFAULT_AY_SID_PERIOD) & 0xffff);
+}
+
+export function computeSidPeriod(tonePeriod: number, timerRow?: AyTimerRow): number {
+	if (resolveAyTimerRowSidPeriodMode(timerRow) === 'manual') {
+		return effectiveRowPeriod(timerRow);
 	}
 	if (tonePeriod > 0) {
-		const detune = fields.sidPeriodDetune | 0;
+		const detune = effectiveRowDetune(timerRow) | 0;
 		return Math.max(1, ((tonePeriod + detune) & 0xffff) || 1);
 	}
-	return Math.max(1, fields.sidPeriod & 0xffff);
+	return effectiveRowPeriod(timerRow);
+}
+
+function normalizeTimerRow(
+	row: AyTimerRow | undefined,
+	legacy: LegacyInstrumentDefaults
+): AyTimerRow {
+	const sid = row?.sid ?? false;
+	const sidPeriodMode =
+		row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
+			? row.sidPeriodMode
+			: legacy.sidPeriodMode;
+	const normalized: AyTimerRow = { sid, sidPeriodMode };
+	if (row?.detune !== undefined) {
+		normalized.detune = row.detune;
+	} else if (legacy.sidPeriodDetune !== DEFAULT_AY_SID_PERIOD_DETUNE) {
+		normalized.detune = legacy.sidPeriodDetune;
+	}
+	if (row?.period !== undefined) {
+		normalized.period = Math.max(1, row.period & 0xffff);
+	} else if (legacy.sidPeriodMode === 'manual' && legacy.sidPeriod !== DEFAULT_AY_SID_PERIOD) {
+		normalized.period = legacy.sidPeriod;
+	}
+	return normalized;
 }
 
 export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumentFields {
 	const rowCount = Math.max(instrument.rows.length, 1);
 	const extended = instrument as ExtendedInstrument;
+	const legacy = resolveLegacyInstrumentDefaults(instrument);
 	let timerRows = extended.timerRows;
 	if (!timerRows) {
 		timerRows = instrument.rows.map(() => createDefaultAyTimerRow());
 	}
+	timerRows = timerRows.map((row) => normalizeTimerRow(row, legacy));
 	while (timerRows.length < rowCount) {
 		timerRows.push(createDefaultAyTimerRow());
 	}
@@ -71,17 +121,11 @@ export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumen
 	}
 
 	const timerWaveformLoop = extended.timerWaveformLoop ?? 0;
-	const sidPeriodMode = resolveAySidPeriodMode(instrument);
-	const sidPeriod = extended.sidPeriod ?? DEFAULT_AY_SID_PERIOD;
-	const sidPeriodDetune = extended.sidPeriodDetune ?? DEFAULT_AY_SID_PERIOD_DETUNE;
 
 	return {
 		timerRows,
 		timerWaveform,
-		timerWaveformLoop,
-		sidPeriodMode,
-		sidPeriod: Math.max(1, sidPeriod & 0xffff),
-		sidPeriodDetune
+		timerWaveformLoop
 	};
 }
 
@@ -110,14 +154,5 @@ export function copyAyInstrumentFields(
 	}
 	if (source.timerWaveformLoop !== undefined) {
 		target.timerWaveformLoop = source.timerWaveformLoop;
-	}
-	if (source.sidPeriodMode !== undefined) {
-		target.sidPeriodMode = source.sidPeriodMode;
-	}
-	if (source.sidPeriod !== undefined) {
-		target.sidPeriod = source.sidPeriod;
-	}
-	if (source.sidPeriodDetune !== undefined) {
-		target.sidPeriodDetune = source.sidPeriodDetune;
 	}
 }
