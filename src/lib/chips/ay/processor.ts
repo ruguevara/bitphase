@@ -168,7 +168,17 @@ export class AYProcessor
 			id: o.id,
 			rows: Array.from(o.rows).map((row) => ({ ...row })),
 			loop: o.loop,
-			name: o.name
+			name: o.name,
+			timerRows: (o as Instrument & { timerRows?: { sid: boolean }[] }).timerRows?.map(
+				(row) => ({ ...row })
+			),
+			timerWaveform: (o as Instrument & { timerWaveform?: number[] }).timerWaveform
+				? [...((o as Instrument & { timerWaveform?: number[] }).timerWaveform as number[])]
+				: undefined,
+			timerWaveformLoop: (o as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop,
+			sidPeriodMode: (o as Instrument & { sidPeriodMode?: 'auto' | 'manual' }).sidPeriodMode,
+			sidPeriod: (o as Instrument & { sidPeriod?: number }).sidPeriod,
+			sidPeriodDetune: (o as Instrument & { sidPeriodDetune?: number }).sidPeriodDetune
 		}));
 		this.bridge.sendCommand({ type: 'init_instruments', instruments: sanitized });
 	}
@@ -247,7 +257,24 @@ export class AYProcessor
 					id: instrument.id,
 					rows: Array.from(instrument.rows).map((row) => ({ ...row })),
 					loop: instrument.loop,
-					name: instrument.name
+					name: instrument.name,
+					timerRows: (instrument as Instrument & { timerRows?: { sid: boolean }[] })
+						.timerRows?.map((row) => ({ ...row })),
+					timerWaveform: (instrument as Instrument & { timerWaveform?: number[] })
+						.timerWaveform
+						? [
+								...((
+									instrument as Instrument & { timerWaveform?: number[] }
+								).timerWaveform as number[])
+							]
+						: undefined,
+					timerWaveformLoop: (instrument as Instrument & { timerWaveformLoop?: number })
+						.timerWaveformLoop,
+					sidPeriodMode: (instrument as Instrument & { sidPeriodMode?: 'auto' | 'manual' })
+						.sidPeriodMode,
+					sidPeriod: (instrument as Instrument & { sidPeriod?: number }).sidPeriod,
+					sidPeriodDetune: (instrument as Instrument & { sidPeriodDetune?: number })
+						.sidPeriodDetune
 				}
 			: undefined;
 		this.bridge.sendCommand({

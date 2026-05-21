@@ -27,6 +27,10 @@
 		ACTION_TRANSPOSE_OCTAVE_DOWN
 	} from '../../config/keybindings';
 	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
+	import AYTimerEffectsEditor from './AYTimerEffectsEditor.svelte';
+	import { syncAyInstrumentTimerRows } from './instrument';
+
+	type InstrumentTab = 'mixer' | 'timer';
 
 	let {
 		instrument,
@@ -43,6 +47,7 @@
 	} = $props();
 
 	let selectionAnchor = $state<number | null>(null);
+	let activeTab = $state<InstrumentTab>('mixer');
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded);
@@ -336,7 +341,8 @@
 	function updateArraysAfterRowChange(newRows: any[]) {
 		rows = newRows;
 		if (loopRow >= rows.length) loopRow = rows.length - 1;
-		updateInstrument({ rows });
+		const timerRows = syncAyInstrumentTimerRows(instrument, rows.length);
+		updateInstrument({ rows, timerRows });
 	}
 
 	function addRow() {
@@ -535,6 +541,33 @@
 		<Input class="w-48 text-xs" bind:value={name} />
 	</div>
 
+	<div class="mt-3 ml-2 flex gap-1">
+		<button
+			type="button"
+			class="cursor-pointer rounded px-3 py-1 text-xs {activeTab === 'mixer'
+				? 'bg-[var(--color-app-primary)] text-white'
+				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)]'}"
+			onclick={() => (activeTab = 'mixer')}>
+			Mixer
+		</button>
+		<button
+			type="button"
+			class="cursor-pointer rounded px-3 py-1 text-xs {activeTab === 'timer'
+				? 'bg-[var(--color-app-primary)] text-white'
+				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)]'}"
+			onclick={() => (activeTab = 'timer')}>
+			Timer Effects
+		</button>
+	</div>
+
+	{#if activeTab === 'timer'}
+		<AYTimerEffectsEditor
+			{instrument}
+			{asHex}
+			{isExpanded}
+			{onInstrumentChange}
+			bind:selectedRowIndices />
+	{:else}
 	<div class="mt-3 flex items-start gap-2 overflow-x-auto">
 		{#key isExpanded}
 			<div class="relative flex flex-col">
@@ -1042,4 +1075,5 @@
 			{/if}
 		{/key}
 	</div>
+	{/if}
 </div>

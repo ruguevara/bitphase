@@ -10,8 +10,12 @@ describe('AyumiEngine', () => {
 		ayumi_set_noise: ReturnType<typeof vi.fn>;
 		ayumi_set_envelope: ReturnType<typeof vi.fn>;
 		ayumi_set_envelope_shape: ReturnType<typeof vi.fn>;
+		ayumi_set_sid: ReturnType<typeof vi.fn>;
+		ayumi_set_sid_waveform: ReturnType<typeof vi.fn>;
 		ayumi_process: ReturnType<typeof vi.fn>;
 		ayumi_remove_dc: ReturnType<typeof vi.fn>;
+		memory: { buffer: ArrayBuffer };
+		malloc: ReturnType<typeof vi.fn>;
 	};
 	let mockPtr: number;
 
@@ -24,8 +28,12 @@ describe('AyumiEngine', () => {
 			ayumi_set_noise: vi.fn(),
 			ayumi_set_envelope: vi.fn(),
 			ayumi_set_envelope_shape: vi.fn(),
+			ayumi_set_sid: vi.fn(),
+			ayumi_set_sid_waveform: vi.fn(),
 			ayumi_process: vi.fn(),
-			ayumi_remove_dc: vi.fn()
+			ayumi_remove_dc: vi.fn(),
+			memory: { buffer: new ArrayBuffer(4096) },
+			malloc: vi.fn(() => 256)
 		};
 	});
 
@@ -101,6 +109,51 @@ describe('AyumiEngine', () => {
 			mockWasm.ayumi_set_tone.mockClear();
 			engine.applyRegisterState(state);
 			expect(mockWasm.ayumi_set_tone).not.toHaveBeenCalled();
+		});
+
+		it('uploads SID waveform when SID is first enabled with default waveform', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].sid = {
+				enabled: true,
+				period: 503,
+				baseVolume: 15,
+				waveform: [15, 0],
+				waveformLoop: 0,
+				resetPhase: false
+			};
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_sid).toHaveBeenCalledWith(mockPtr, 0, 1, 503, 15);
+			expect(mockWasm.ayumi_set_sid_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				256,
+				2,
+				0
+			);
+		});
+
+		it('does not re-upload unchanged SID waveform while SID stays enabled', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].sid = {
+				enabled: true,
+				period: 503,
+				baseVolume: 15,
+				waveform: [15, 0],
+				waveformLoop: 0,
+				resetPhase: false
+			};
+			engine.applyRegisterState(state);
+			mockWasm.ayumi_set_sid_waveform.mockClear();
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_sid_waveform).not.toHaveBeenCalled();
 		});
 	});
 

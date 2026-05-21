@@ -187,6 +187,30 @@ function reconstructInstrument(data: any): Instrument {
 	if (data.rows) {
 		instrument.rows = data.rows.map((rowData: any) => reconstructInstrumentRow(rowData));
 	}
+	if (data.timerRows) {
+		(instrument as Instrument & { timerRows?: { sid: boolean }[] }).timerRows =
+			data.timerRows.map((row: { sid?: boolean }) => ({ sid: row.sid ?? false }));
+	}
+	if (data.timerWaveform) {
+		(instrument as Instrument & { timerWaveform?: number[] }).timerWaveform = [
+			...data.timerWaveform
+		];
+	}
+	if (data.timerWaveformLoop !== undefined) {
+		(instrument as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop =
+			data.timerWaveformLoop;
+	}
+	if (data.sidPeriodMode !== undefined) {
+		(instrument as Instrument & { sidPeriodMode?: 'auto' | 'manual' }).sidPeriodMode =
+			data.sidPeriodMode;
+	}
+	if (data.sidPeriod !== undefined) {
+		(instrument as Instrument & { sidPeriod?: number }).sidPeriod = data.sidPeriod;
+	}
+	if (data.sidPeriodDetune !== undefined) {
+		(instrument as Instrument & { sidPeriodDetune?: number }).sidPeriodDetune =
+			data.sidPeriodDetune;
+	}
 	return instrument;
 }
 

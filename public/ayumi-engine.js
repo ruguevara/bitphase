@@ -5,6 +5,68 @@ class AyumiEngine {
 		this.wasmModule = wasmModule;
 		this.ayumiPtr = ayumiPtr;
 		this.lastState = new AYChipRegisterState();
+		this.sidWaveformPtrs = [0, 0, 0];
+		this.sidWaveformLengths = [0, 0, 0];
+	}
+
+	_ensureSidWaveformBuffer(channelIndex, length) {
+		const needed = Math.max(length, 1) * 4;
+		if (this.sidWaveformPtrs[channelIndex] && this.sidWaveformLengths[channelIndex] >= length) {
+			return this.sidWaveformPtrs[channelIndex];
+		}
+		if (this.sidWaveformPtrs[channelIndex]) {
+			this.wasmModule.free(this.sidWaveformPtrs[channelIndex]);
+		}
+		const ptr = this.wasmModule.malloc(needed);
+		this.sidWaveformPtrs[channelIndex] = ptr;
+		this.sidWaveformLengths[channelIndex] = length;
+		return ptr;
+	}
+
+	_applySid(channelIndex, sid, lastSid) {
+		const enabled = sid.enabled ? 1 : 0;
+		const period = sid.period > 0 ? sid.period : 1;
+		const baseVolume = sid.baseVolume & 0xf;
+		const wasEnabled = lastSid.enabled ? 1 : 0;
+		const enableChanged = enabled !== wasEnabled;
+
+		if (enableChanged || period !== lastSid.period || baseVolume !== lastSid.baseVolume) {
+			this.wasmModule.ayumi_set_sid(this.ayumiPtr, channelIndex, enabled, period, baseVolume);
+			lastSid.enabled = sid.enabled;
+			lastSid.period = period;
+			lastSid.baseVolume = baseVolume;
+		}
+
+		const waveform = sid.waveform ?? [15, 0];
+		const waveformLoop = sid.waveformLoop ?? 0;
+		const lastWaveform = lastSid.waveform ?? [15, 0];
+		const waveformChanged =
+			waveform.length !== lastWaveform.length ||
+			waveformLoop !== (lastSid.waveformLoop ?? 0) ||
+			waveform.some((value, index) => value !== lastWaveform[index]);
+
+		if (sid.enabled && waveform.length > 0 && (waveformChanged || enableChanged)) {
+			const ptr = this._ensureSidWaveformBuffer(channelIndex, waveform.length);
+			const memory = new Int32Array(this.wasmModule.memory.buffer);
+			const offset = ptr >> 2;
+			for (let i = 0; i < waveform.length; i++) {
+				memory[offset + i] = waveform[i] & 0xf;
+			}
+			this.wasmModule.ayumi_set_sid_waveform(
+				this.ayumiPtr,
+				channelIndex,
+				ptr,
+				waveform.length,
+				waveformLoop
+			);
+			lastSid.waveform = [...waveform];
+			lastSid.waveformLoop = waveformLoop;
+		}
+
+		if (sid.resetPhase) {
+			this.wasmModule.ayumi_sid_reset(this.ayumiPtr, channelIndex);
+			sid.resetPhase = false;
+		}
 	}
 
 	applyRegisterState(state) {
@@ -15,6 +77,7 @@ class AyumiEngine {
 		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
 			const channel = state.channels[channelIndex];
 			const lastChannel = this.lastState.channels[channelIndex];
+			if (!channel || !lastChannel) continue;
 
 			if (channel.tone !== lastChannel.tone) {
 				this.wasmModule.ayumi_set_tone(this.ayumiPtr, channelIndex, channel.tone);
@@ -43,6 +106,10 @@ class AyumiEngine {
 				lastMixer.tone = mixer.tone;
 				lastMixer.noise = mixer.noise;
 				lastMixer.envelope = mixer.envelope;
+			}
+
+			if (channel.sid) {
+				this._applySid(channelIndex, channel.sid, lastChannel.sid);
 			}
 		}
 
@@ -79,6 +146,16 @@ class AyumiEngine {
 
 	reset() {
 		this.lastState.reset();
+	}
+
+	dispose() {
+		for (let i = 0; i < this.sidWaveformPtrs.length; i++) {
+			if (this.sidWaveformPtrs[i]) {
+				this.wasmModule.free(this.sidWaveformPtrs[i]);
+				this.sidWaveformPtrs[i] = 0;
+				this.sidWaveformLengths[i] = 0;
+			}
+		}
 	}
 }
 

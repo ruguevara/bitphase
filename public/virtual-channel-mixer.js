@@ -91,6 +91,14 @@ class VirtualChannelMixer {
 		dst.mixer.tone = src.mixer.tone;
 		dst.mixer.noise = src.mixer.noise;
 		dst.mixer.envelope = src.mixer.envelope;
+		if (src.sid && dst.sid) {
+			dst.sid.enabled = src.sid.enabled;
+			dst.sid.period = src.sid.period;
+			dst.sid.baseVolume = src.sid.baseVolume;
+			dst.sid.waveform = [...src.sid.waveform];
+			dst.sid.waveformLoop = src.sid.waveformLoop;
+			dst.sid.resetPhase = src.sid.resetPhase;
+		}
 	}
 }
 

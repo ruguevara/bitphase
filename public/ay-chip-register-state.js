@@ -1,3 +1,12 @@
+const DEFAULT_SID = {
+	enabled: false,
+	period: 100,
+	baseVolume: 0,
+	waveform: [15, 0],
+	waveformLoop: 0,
+	resetPhase: false
+};
+
 class AYChipRegisterState {
 	constructor(channelCount = 3) {
 		this.channelCount = channelCount;
@@ -6,7 +15,8 @@ class AYChipRegisterState {
 			this.channels.push({
 				tone: 0,
 				volume: 0,
-				mixer: { tone: false, noise: false, envelope: false }
+				mixer: { tone: false, noise: false, envelope: false },
+				sid: { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] }
 			});
 		}
 		this.noise = 0;
@@ -20,6 +30,7 @@ class AYChipRegisterState {
 			this.channels[i].tone = 0;
 			this.channels[i].volume = 0;
 			this.channels[i].mixer = { tone: false, noise: false, envelope: false };
+			this.channels[i].sid = { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] };
 		}
 		this.noise = 0;
 		this.envelopePeriod = 0;
@@ -32,7 +43,8 @@ class AYChipRegisterState {
 			this.channels.push({
 				tone: 0,
 				volume: 0,
-				mixer: { tone: false, noise: false, envelope: false }
+				mixer: { tone: false, noise: false, envelope: false },
+				sid: { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] }
 			});
 		}
 		if (this.channels.length > newChannelCount) {
@@ -50,6 +62,15 @@ class AYChipRegisterState {
 				tone: this.channels[i].mixer.tone,
 				noise: this.channels[i].mixer.noise,
 				envelope: this.channels[i].mixer.envelope
+			};
+			const sid = this.channels[i].sid;
+			copy.channels[i].sid = {
+				enabled: sid.enabled,
+				period: sid.period,
+				baseVolume: sid.baseVolume,
+				waveform: [...sid.waveform],
+				waveformLoop: sid.waveformLoop,
+				resetPhase: sid.resetPhase
 			};
 		}
 		copy.noise = this.noise;

@@ -1,6 +1,7 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
+import { normalizeAyInstrumentFields, getAySidBaseVolume, computeSidPeriod } from './ay-instrument-utils.js';
 
 class AYAudioDriver {
 	constructor(channelCount = 3) {
@@ -50,6 +51,9 @@ class AYAudioDriver {
 		state.channelNoiseAccumulator[channelIndex] = 0;
 		state.channelEnvelopeAccumulator[channelIndex] = 0;
 		state.channelAmplitudeSliding[channelIndex] = 0;
+		if (state.channelSidReset) {
+			state.channelSidReset[channelIndex] = true;
+		}
 		if (state.channelToneSliding) {
 			const hasActiveSlide =
 				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
@@ -504,8 +508,8 @@ class AYAudioDriver {
 			const effectiveRows = hasRows ? instrument.rows : [defaultInstrumentRow];
 			const effectiveRowsLength = effectiveRows.length;
 			const effectiveLoop = hasRows ? instrument.loop : 0;
-			const instrumentRow =
-				effectiveRows[state.instrumentPositions[channelIndex] % effectiveRowsLength];
+			const rowIndex = state.instrumentPositions[channelIndex] % effectiveRowsLength;
+			const instrumentRow = effectiveRows[rowIndex];
 			if (!instrumentRow) {
 				registerState.channels[channelIndex].mixer.tone = false;
 				registerState.channels[channelIndex].mixer.noise = false;
@@ -611,6 +615,7 @@ class AYAudioDriver {
 				registerState.channels[channelIndex].mixer.tone = false;
 				registerState.channels[channelIndex].mixer.noise = false;
 				registerState.channels[channelIndex].mixer.envelope = false;
+				registerState.channels[channelIndex].sid.enabled = false;
 				this.channelMixerState[channelIndex].tone = false;
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
@@ -619,6 +624,11 @@ class AYAudioDriver {
 				registerState.channels[channelIndex].mixer.noise = instrumentRow.noise;
 				this.channelMixerState[channelIndex].tone = instrumentRow.tone;
 				this.channelMixerState[channelIndex].noise = instrumentRow.noise;
+
+				const ayFields = normalizeAyInstrumentFields(instrument);
+				const timerRow = ayFields.timerRows[rowIndex] ?? { sid: false };
+				const sidActive =
+					timerRow.sid && instrumentRow.tone && !instrumentRow.envelope;
 
 				if (
 					instrumentRow.envelope &&
@@ -636,6 +646,19 @@ class AYAudioDriver {
 				}
 
 				registerState.channels[channelIndex].volume = finalVolume;
+
+				const sidBaseVolume = getAySidBaseVolume(finalVolume);
+				registerState.channels[channelIndex].sid = {
+					enabled: sidActive,
+					period: computeSidPeriod(finalTone, ayFields),
+					baseVolume: sidBaseVolume,
+					waveform: ayFields.timerWaveform,
+					waveformLoop: ayFields.timerWaveformLoop,
+					resetPhase: state.channelSidReset?.[channelIndex] ?? false
+				};
+				if (state.channelSidReset) {
+					state.channelSidReset[channelIndex] = false;
+				}
 			}
 
 			if (!onOffHalted) {

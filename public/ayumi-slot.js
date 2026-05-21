@@ -62,7 +62,11 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			});
 
 			const wasmModule = result.instance.exports;
-			const ayumiPtr = wasmModule.malloc(AYUMI_STRUCT_SIZE);
+			const structSize =
+				typeof wasmModule.ayumi_struct_size === 'function'
+					? wasmModule.ayumi_struct_size()
+					: AYUMI_STRUCT_SIZE;
+			const ayumiPtr = wasmModule.malloc(structSize);
 
 			const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
 			const isYM = this.state.isYM ?? 0;

@@ -15,10 +15,10 @@ import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 22928;
-const AYUMI_STRUCT_LEFT_OFFSET = 22888;
-const AYUMI_STRUCT_RIGHT_OFFSET = 22896;
-const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = 22904;
+const AYUMI_STRUCT_SIZE = 23384;
+const AYUMI_STRUCT_LEFT_OFFSET = 23344;
+const AYUMI_STRUCT_RIGHT_OFFSET = 23352;
+const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = 23360;
 const TONE_CHANNELS = 3;
 const DEFAULT_AYM_FREQUENCY = 1773400;
 
@@ -70,7 +70,9 @@ export class AYChipRenderer implements ChipRenderer {
 		getPanSettingsForLayout: GetPanSettingsForLayout
 	): number {
 		const chipFrequency = song.chipFrequency || DEFAULT_AYM_FREQUENCY;
-		const ayumiPtr = wasm.malloc(AYUMI_STRUCT_SIZE);
+		const structSize =
+			typeof wasm.ayumi_struct_size === 'function' ? wasm.ayumi_struct_size() : AYUMI_STRUCT_SIZE;
+		const ayumiPtr = wasm.malloc(structSize);
 		if (!ayumiPtr) {
 			throw new Error('Failed to allocate Ayumi structure');
 		}
@@ -565,6 +567,9 @@ export class AYChipRenderer implements ChipRenderer {
 
 				state.currentPattern = patterns[startOrderIndex]!;
 				state.timeline.currentPatternOrderIndex = startOrderIndex;
+				if (contexts.length === 0) {
+					state.timeline.tickAccumulator = 1.0;
+				}
 
 				contexts.push({
 					songIndex,
@@ -686,6 +691,7 @@ export class AYChipRenderer implements ChipRenderer {
 
 		state.currentPattern = patterns[startOrderIndex];
 		state.timeline.currentPatternOrderIndex = startOrderIndex;
+		state.timeline.tickAccumulator = 1.0;
 
 		onProgress?.(50, 'Initializing renderer...');
 		const firstPassRows = this.calculateTotalRows(song, patternOrder);

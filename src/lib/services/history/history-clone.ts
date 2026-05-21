@@ -112,12 +112,47 @@ export class HistoryClone {
 	}
 
 	static instrument(instrument: Instrument): Instrument {
-		return new Instrument(
+		const cloned = new Instrument(
 			instrument.id,
 			instrument.rows.map((row) => this.instrumentRow(row)),
 			instrument.loop,
 			instrument.name
 		);
+		const extended = instrument as Instrument & {
+			timerRows?: { sid: boolean }[];
+			timerWaveform?: number[];
+			timerWaveformLoop?: number;
+			sidPeriodMode?: 'auto' | 'manual';
+			sidPeriod?: number;
+			sidPeriodDetune?: number;
+		};
+		const clonedExtended = cloned as Instrument & {
+			timerRows?: { sid: boolean }[];
+			timerWaveform?: number[];
+			timerWaveformLoop?: number;
+			sidPeriodMode?: 'auto' | 'manual';
+			sidPeriod?: number;
+			sidPeriodDetune?: number;
+		};
+		if (extended.timerRows) {
+			clonedExtended.timerRows = extended.timerRows.map((row) => ({ ...row }));
+		}
+		if (extended.timerWaveform) {
+			clonedExtended.timerWaveform = [...extended.timerWaveform];
+		}
+		if (extended.timerWaveformLoop !== undefined) {
+			clonedExtended.timerWaveformLoop = extended.timerWaveformLoop;
+		}
+		if (extended.sidPeriodMode !== undefined) {
+			clonedExtended.sidPeriodMode = extended.sidPeriodMode;
+		}
+		if (extended.sidPeriod !== undefined) {
+			clonedExtended.sidPeriod = extended.sidPeriod;
+		}
+		if (extended.sidPeriodDetune !== undefined) {
+			clonedExtended.sidPeriodDetune = extended.sidPeriodDetune;
+		}
+		return cloned;
 	}
 
 	static instrumentRow(row: InstrumentRow): InstrumentRow {

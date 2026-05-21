@@ -12,8 +12,8 @@ import {
 
 describe('ayumi-constants', () => {
 	describe('constants', () => {
-		it('AYUMI_STRUCT_SIZE is 22928', () => {
-			expect(AYUMI_STRUCT_SIZE).toBe(22928);
+		it('AYUMI_STRUCT_SIZE is 23384', () => {
+			expect(AYUMI_STRUCT_SIZE).toBe(23384);
 		});
 
 		it('AYUMI_STRUCT_LEFT_OFFSET is struct size minus 40', () => {
