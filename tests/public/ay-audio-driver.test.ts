@@ -93,6 +93,54 @@ describe('AYAudioDriver', () => {
 			driver.resetInstrumentAccumulators(state, 0);
 			expect(state.channelToneSliding[0]).toBe(100);
 		});
+
+		it('does not reset SID phase when slide or portamento is active', () => {
+			const driver = new AYAudioDriver();
+			const stateWithSlide = {
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [5],
+				channelPortamentoActive: [false],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0],
+				channelSidReset: [false]
+			};
+			driver.resetInstrumentAccumulators(stateWithSlide, 0);
+			expect(stateWithSlide.channelSidReset[0]).toBe(false);
+
+			const stateWithPortamento = {
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [0],
+				channelPortamentoActive: [true],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0],
+				channelSidReset: [false]
+			};
+			driver.resetInstrumentAccumulators(stateWithPortamento, 0);
+			expect(stateWithPortamento.channelSidReset[0]).toBe(false);
+		});
+
+		it('resets SID phase on a normal new note', () => {
+			const driver = new AYAudioDriver();
+			const state = {
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [0],
+				channelPortamentoActive: [false],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0],
+				channelSidReset: [false]
+			};
+			driver.resetInstrumentAccumulators(state, 0);
+			expect(state.channelSidReset[0]).toBe(true);
+		});
 	});
 
 	describe('processPatternRow', () => {

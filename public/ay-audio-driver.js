@@ -52,7 +52,13 @@ class AYAudioDriver {
 		state.channelEnvelopeAccumulator[channelIndex] = 0;
 		state.channelAmplitudeSliding[channelIndex] = 0;
 		if (state.channelSidReset) {
-			state.channelSidReset[channelIndex] = true;
+			const hasActiveSlide =
+				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
+			const hasActivePortamento =
+				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
+			if (!hasActiveSlide && !hasActivePortamento) {
+				state.channelSidReset[channelIndex] = true;
+			}
 		}
 		if (state.channelToneSliding) {
 			const hasActiveSlide =
