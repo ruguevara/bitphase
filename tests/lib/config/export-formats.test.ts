@@ -9,6 +9,7 @@ describe('export formats', () => {
 
 		expect(labels).toContain('WAV');
 		expect(labels).toContain('PSG');
+		expect(labels).toContain('TMR');
 		expect(labels).toContain('SNDH');
 		expect(labels).not.toContain('PSG (ZIP)');
 	});
@@ -20,6 +21,7 @@ describe('export formats', () => {
 
 		expect(labels).toContain('WAV');
 		expect(labels).toContain('PSG (ZIP)');
+		expect(labels).toContain('TMR (ZIP)');
 		expect(labels).not.toContain('PSG');
 		expect(labels).not.toContain('SNDH');
 	});

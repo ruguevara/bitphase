@@ -4,6 +4,7 @@ import { undoRedoStore } from '../../stores/undo-redo.svelte';
 import ConfirmModal from '../../components/Modal/ConfirmModal.svelte';
 import SettingsModal from '../../components/Settings/SettingsModal.svelte';
 import AboutModal from '../../components/Modal/AboutModal.svelte';
+import TmrCheckerModal from '../../components/Modal/TmrCheckerModal.svelte';
 import EffectsModal from '../../components/Modal/EffectsModal.svelte';
 import UserScriptsModal from '../../components/Modal/UserScriptsModal.svelte';
 import WavExportSettingsModal from '../../components/Modal/WavExportSettingsModal.svelte';
@@ -243,6 +244,11 @@ export function createMenuActionHandler(ctx: MenuActionContext) {
 				return;
 			}
 
+			if (data.action === 'tmr-checker') {
+				await ctx.open(TmrCheckerModal, {});
+				return;
+			}
+
 			if (data.action === 'effects') {
 				await ctx.open(EffectsModal, {});
 				return;
@@ -291,6 +297,14 @@ export function createMenuActionHandler(ctx: MenuActionContext) {
 				await ctx.open(ProgressModal, {
 					project: ctx.getCurrentProject(),
 					exportType: 'psg'
+				});
+				return;
+			}
+
+			if (data.action === 'export-tmr' || data.action === 'export-tmr-zip') {
+				await ctx.open(ProgressModal, {
+					project: ctx.getCurrentProject(),
+					exportType: 'tmr'
 				});
 				return;
 			}

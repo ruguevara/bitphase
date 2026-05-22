@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
 	import ContributorsModal from './ContributorsModal.svelte';
+	import TmrCheckerModal from './TmrCheckerModal.svelte';
 	import { open } from '../../services/modal/modal-service';
 
 	let { resolve } = $props<{
@@ -17,6 +18,10 @@
 
 	async function openContributors() {
 		await open(ContributorsModal, {});
+	}
+
+	async function openTmrChecker() {
+		await open(TmrCheckerModal, {});
 	}
 </script>
 
@@ -50,6 +55,12 @@
 		</div>
 
 		<div class="flex flex-col items-center gap-2">
+			<button
+				type="button"
+				class="cursor-pointer text-[var(--color-app-text-secondary)] hover:text-[var(--color-app-text-primary)] hover:underline"
+				onclick={openTmrChecker}>
+				TMR Checker
+			</button>
 			<button
 				type="button"
 				class="cursor-pointer text-[var(--color-app-text-secondary)] hover:text-[var(--color-app-text-primary)] hover:underline"
