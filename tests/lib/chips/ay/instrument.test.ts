@@ -5,6 +5,9 @@ import {
 	computeSidPeriod,
 	resolveAyTimerRowSidPeriodMode,
 	resolveExclusiveTimerEffects,
+	formatAyTimerWaveform,
+	parseAyTimerWaveform,
+	parseAyTimerWaveformPartial,
 	DEFAULT_AY_SID_PERIOD,
 	DEFAULT_AY_SID_PERIOD_DETUNE,
 	DEFAULT_AY_TIMER_WAVEFORM
@@ -68,5 +71,24 @@ describe('ay instrument timer fields', () => {
 		const fields = normalizeAyInstrumentFields(instrument);
 		expect(fields.timerRows[0]?.sid).toBe(true);
 		expect(fields.timerRows[0]?.syncbuzzer).toBe(false);
+	});
+
+	it('formats and parses space-separated timer waveform strings', () => {
+		expect(formatAyTimerWaveform([15, 0], false)).toBe('15 0');
+		expect(formatAyTimerWaveform([15, 0], true)).toBe('F 0');
+		expect(parseAyTimerWaveform('15 0', false)).toEqual([15, 0]);
+		expect(parseAyTimerWaveform('F 0', true)).toEqual([15, 0]);
+		expect(parseAyTimerWaveform('15  0', false)).toEqual([15, 0]);
+		expect(parseAyTimerWaveform('16', false)).toBeNull();
+		expect(parseAyTimerWaveform('', false)).toBeNull();
+	});
+
+	it('parses partial timer waveform strings for live preview', () => {
+		expect(parseAyTimerWaveformPartial('15', false)).toEqual([15]);
+		expect(parseAyTimerWaveformPartial('15 ', false)).toEqual([15]);
+		expect(parseAyTimerWaveformPartial('15 0', false)).toEqual([15, 0]);
+		expect(parseAyTimerWaveformPartial('15 1', false)).toEqual([15, 1]);
+		expect(parseAyTimerWaveformPartial('15 16', false)).toEqual([15]);
+		expect(parseAyTimerWaveform('15 16', false)).toBeNull();
 	});
 });

@@ -1,11 +1,15 @@
 import type { Instrument } from '../../models/song';
 import {
+	createDefaultAyTimerRow,
 	effectiveRowDetune,
 	effectiveRowPeriod,
+	formatAyTimerWaveform,
 	normalizeAyInstrumentFields,
+	parseAyTimerWaveform,
+	parseAyTimerWaveformPartial,
 	resolveAyTimerRowSidPeriodMode,
 	resolveExclusiveTimerEffects,
-	syncAyInstrumentTimerRows,
+	AY_TIMER_WAVEFORM_MAX_LENGTH,
 	type AySidPeriodMode,
 	type AyTimerRow
 } from './instrument';
@@ -68,8 +72,16 @@ export class AyTimerEffectsController {
 	}
 
 	syncFromInstrument(instrument: Instrument): void {
-		syncAyInstrumentTimerRows(instrument, Math.max(instrument.rows.length, 1));
-		this.fields = normalizeAyInstrumentFields(instrument);
+		const rowCount = Math.max(instrument.rows.length, 1);
+		const normalized = normalizeAyInstrumentFields(instrument);
+		const timerRows = [...normalized.timerRows];
+		while (timerRows.length < rowCount) {
+			timerRows.push(createDefaultAyTimerRow());
+		}
+		if (timerRows.length > rowCount) {
+			timerRows.length = rowCount;
+		}
+		this.fields = { ...normalized, timerRows };
 		this.lastSyncedRowCount = instrument.rows.length;
 		this.lastInstrumentId = instrument.id;
 	}
@@ -194,22 +206,38 @@ export class AyTimerEffectsController {
 		);
 	}
 
-	updateWaveformValue(index: number, text: string): void {
-		const parsed = this.parseNum(text);
-		if (parsed === null || parsed < 0 || parsed > 15) return;
+	setWaveformStep(index: number, step: number): void {
+		if (index < 0) return;
+		const clamped = Math.max(0, Math.min(15, step | 0));
 		const nextWaveform = [...this.fields.timerWaveform];
-		nextWaveform[index] = parsed;
+		while (nextWaveform.length <= index && nextWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH) {
+			nextWaveform.push(0);
+		}
+		if (index >= nextWaveform.length) return;
+		if (nextWaveform[index] === clamped) return;
+		nextWaveform[index] = clamped;
 		this.commitFields({ ...this.fields, timerWaveform: nextWaveform });
 	}
 
-	addWaveformStep(): void {
-		if (this.fields.timerWaveform.length >= 32) return;
-		this.commitFields({ ...this.fields, timerWaveform: [...this.fields.timerWaveform, 0] });
+	formatTimerWaveform(): string {
+		return formatAyTimerWaveform(this.fields.timerWaveform, this.getAsHex());
 	}
 
-	removeWaveformStep(index: number): void {
-		if (this.fields.timerWaveform.length <= 1) return;
-		const nextWaveform = this.fields.timerWaveform.filter((_, i) => i !== index);
+	parseTimerWaveform(text: string): number[] | null {
+		return parseAyTimerWaveform(text, this.getAsHex());
+	}
+
+	parseTimerWaveformPartial(text: string): number[] | null {
+		return parseAyTimerWaveformPartial(text, this.getAsHex());
+	}
+
+	setTimerWaveform(values: number[]): void {
+		if (values.length === 0) {
+			return;
+		}
+		const nextWaveform = values
+			.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			.map((value) => Math.max(0, Math.min(15, value | 0)));
 		this.commitFields({ ...this.fields, timerWaveform: nextWaveform });
 	}
 

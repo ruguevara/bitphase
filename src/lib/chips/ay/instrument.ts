@@ -19,6 +19,7 @@ export type AyInstrumentFields = {
 export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
+export const AY_TIMER_WAVEFORM_MAX_LENGTH = 32;
 
 type ExtendedInstrument = Instrument & {
 	timerRows?: AyTimerRow[];
@@ -139,6 +140,66 @@ export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumen
 		timerWaveform,
 		timerWaveformLoop
 	};
+}
+
+export function formatAyTimerWaveform(waveform: readonly number[], asHex: boolean): string {
+	return waveform
+		.map((value) => (asHex ? (value & 0xf).toString(16).toUpperCase() : String(value & 0xf)))
+		.join(' ');
+}
+
+function parseWaveformToken(part: string, asHex: boolean): number | null {
+	if (asHex) {
+		if (!/^[0-9a-fA-F]+$/.test(part)) {
+			return null;
+		}
+		return parseInt(part, 16);
+	}
+	if (!/^\d+$/.test(part)) {
+		return null;
+	}
+	return parseInt(part, 10);
+}
+
+export function parseAyTimerWaveformPartial(text: string, asHex: boolean): number[] | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const parts = text.trimEnd().split(/\s+/).filter((part) => part.length > 0);
+	const values: number[] = [];
+	for (const part of parts) {
+		const parsed = parseWaveformToken(part, asHex);
+		if (parsed === null || parsed < 0 || parsed > 15) {
+			break;
+		}
+		values.push(parsed);
+		if (values.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
+			break;
+		}
+	}
+	return values.length > 0 ? values : null;
+}
+
+export function parseAyTimerWaveform(text: string, asHex: boolean): number[] | null {
+	const values = parseAyTimerWaveformPartial(text, asHex);
+	if (!values) {
+		return null;
+	}
+	const trimmed = text.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const parts = trimmed.split(/\s+/).filter((part) => part.length > 0);
+	if (parts.length !== values.length) {
+		return null;
+	}
+	for (let index = 0; index < parts.length; index++) {
+		const parsed = parseWaveformToken(parts[index], asHex);
+		if (parsed === null || parsed !== values[index]) {
+			return null;
+		}
+	}
+	return values;
 }
 
 export function syncAyInstrumentTimerRows(instrument: Instrument, rowCount: number): AyTimerRow[] {
