@@ -30,6 +30,7 @@ export class AyTimerEffectsController {
 
 	private lastInstrumentId = '';
 	private lastSyncedRowCount = 0;
+	private lastInstrumentRef: Instrument | null = null;
 
 	constructor(
 		private getInstrument: () => Instrument,
@@ -61,14 +62,11 @@ export class AyTimerEffectsController {
 	}
 
 	handleInstrumentChange(instrument: Instrument): void {
-		if (instrument.id !== this.lastInstrumentId) {
-			this.lastInstrumentId = instrument.id;
-			this.syncFromInstrument(instrument);
+		if (instrument === this.lastInstrumentRef) {
 			return;
 		}
-		if (instrument.rows.length !== this.lastSyncedRowCount) {
-			this.syncFromInstrument(instrument);
-		}
+		this.lastInstrumentRef = instrument;
+		this.syncFromInstrument(instrument);
 	}
 
 	syncFromInstrument(instrument: Instrument): void {

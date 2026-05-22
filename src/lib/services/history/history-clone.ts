@@ -121,6 +121,7 @@ export class HistoryClone {
 		const extended = instrument as Instrument & {
 			timerRows?: {
 				sid: boolean;
+				syncbuzzer?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -131,6 +132,7 @@ export class HistoryClone {
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
 				sid: boolean;
+				syncbuzzer?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;

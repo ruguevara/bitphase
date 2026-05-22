@@ -78,6 +78,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 
 	_onTransportStop() {
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
+		if (this.ayumiEngine) {
+			this.ayumiEngine.reset();
+		}
 		this._applyRegisterStateToEngine();
 	}
 
@@ -297,6 +303,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 
 		this.state.reset({ resetTimeline: false });
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
+		if (this.ayumiEngine) {
+			this.ayumiEngine.reset();
+		}
 
 		for (let r = 0; r < rowIndex; r++) {
 			this._simulateRow(pattern, r);
@@ -323,6 +335,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		} else {
 			this.previewActiveChannels.clear();
 			this.registerState.reset();
+			if (this.audioDriver) {
+				this.audioDriver.resetChannelMixerState();
+			}
+			if (this.ayumiEngine) {
+				this.ayumiEngine.reset();
+			}
 			this._applyRegisterStateToEngine();
 		}
 	}

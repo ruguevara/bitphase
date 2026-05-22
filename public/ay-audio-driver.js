@@ -7,13 +7,19 @@ class AYAudioDriver {
 	constructor(channelCount = 3) {
 		this.channelMixerState = [];
 		for (let i = 0; i < channelCount; i++) {
-			this.channelMixerState.push({ tone: true, noise: true, envelope: false });
+			this.channelMixerState.push({ tone: false, noise: false, envelope: false });
+		}
+	}
+
+	resetChannelMixerState() {
+		for (let i = 0; i < this.channelMixerState.length; i++) {
+			this.channelMixerState[i] = { tone: false, noise: false, envelope: false };
 		}
 	}
 
 	resizeChannels(newCount) {
 		while (this.channelMixerState.length < newCount) {
-			this.channelMixerState.push({ tone: true, noise: true, envelope: false });
+			this.channelMixerState.push({ tone: false, noise: false, envelope: false });
 		}
 		if (this.channelMixerState.length > newCount) {
 			this.channelMixerState.length = newCount;

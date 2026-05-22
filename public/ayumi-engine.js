@@ -7,6 +7,7 @@ class AyumiEngine {
 		this.lastState = new AYChipRegisterState();
 		this.sidWaveformPtrs = [0, 0, 0];
 		this.sidWaveformLengths = [0, 0, 0];
+		this.forceFullApply = false;
 	}
 
 	_ensureSidWaveformBuffer(channelIndex, length) {
@@ -23,14 +24,14 @@ class AyumiEngine {
 		return ptr;
 	}
 
-	_applySid(channelIndex, sid, lastSid) {
+	_applySid(channelIndex, sid, lastSid, forceApply = false) {
 		const enabled = sid.enabled ? 1 : 0;
 		const period = sid.period > 0 ? sid.period : 1;
 		const baseVolume = sid.baseVolume & 0xf;
 		const wasEnabled = lastSid.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
 
-		if (enableChanged || period !== lastSid.period || baseVolume !== lastSid.baseVolume) {
+		if (forceApply || enableChanged || period !== lastSid.period || baseVolume !== lastSid.baseVolume) {
 			this.wasmModule.ayumi_set_sid(this.ayumiPtr, channelIndex, enabled, period, baseVolume);
 			lastSid.enabled = sid.enabled;
 			lastSid.period = period;
@@ -45,7 +46,11 @@ class AyumiEngine {
 			waveformLoop !== (lastSid.waveformLoop ?? 0) ||
 			waveform.some((value, index) => value !== lastWaveform[index]);
 
-		if (sid.enabled && waveform.length > 0 && (waveformChanged || enableChanged)) {
+		if (
+			sid.enabled &&
+			waveform.length > 0 &&
+			(forceApply || waveformChanged || enableChanged)
+		) {
 			const ptr = this._ensureSidWaveformBuffer(channelIndex, waveform.length);
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
 			const offset = ptr >> 2;
@@ -69,7 +74,7 @@ class AyumiEngine {
 		}
 	}
 
-	_applySyncbuzzer(channelIndex, syncbuzzer, lastSyncbuzzer) {
+	_applySyncbuzzer(channelIndex, syncbuzzer, lastSyncbuzzer, forceApply = false) {
 		const enabled = syncbuzzer.enabled ? 1 : 0;
 		const period = syncbuzzer.period > 0 ? syncbuzzer.period : 1;
 		const shape = syncbuzzer.shape & 0xf;
@@ -77,6 +82,7 @@ class AyumiEngine {
 		const enableChanged = enabled !== wasEnabled;
 
 		if (
+			forceApply ||
 			enableChanged ||
 			period !== lastSyncbuzzer.period ||
 			shape !== lastSyncbuzzer.shape
@@ -104,17 +110,20 @@ class AyumiEngine {
 			return;
 		}
 
+		const forceApply = this.forceFullApply;
+		this.forceFullApply = false;
+
 		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
 			const channel = state.channels[channelIndex];
 			const lastChannel = this.lastState.channels[channelIndex];
 			if (!channel || !lastChannel) continue;
 
-			if (channel.tone !== lastChannel.tone) {
+			if (forceApply || channel.tone !== lastChannel.tone) {
 				this.wasmModule.ayumi_set_tone(this.ayumiPtr, channelIndex, channel.tone);
 				lastChannel.tone = channel.tone;
 			}
 
-			if (channel.volume !== lastChannel.volume) {
+			if (forceApply || channel.volume !== lastChannel.volume) {
 				this.wasmModule.ayumi_set_volume(this.ayumiPtr, channelIndex, channel.volume);
 				lastChannel.volume = channel.volume;
 			}
@@ -122,6 +131,7 @@ class AyumiEngine {
 			const mixer = channel.mixer;
 			const lastMixer = lastChannel.mixer;
 			if (
+				forceApply ||
 				mixer.tone !== lastMixer.tone ||
 				mixer.noise !== lastMixer.noise ||
 				mixer.envelope !== lastMixer.envelope
@@ -139,25 +149,25 @@ class AyumiEngine {
 			}
 
 			if (channel.sid) {
-				this._applySid(channelIndex, channel.sid, lastChannel.sid);
+				this._applySid(channelIndex, channel.sid, lastChannel.sid, forceApply);
 			}
 
 			if (channel.syncbuzzer) {
-				this._applySyncbuzzer(channelIndex, channel.syncbuzzer, lastChannel.syncbuzzer);
+				this._applySyncbuzzer(channelIndex, channel.syncbuzzer, lastChannel.syncbuzzer, forceApply);
 			}
 		}
 
-		if (state.noise !== this.lastState.noise) {
+		if (forceApply || state.noise !== this.lastState.noise) {
 			this.wasmModule.ayumi_set_noise(this.ayumiPtr, state.noise);
 			this.lastState.noise = state.noise;
 		}
 
-		if (state.envelopePeriod !== this.lastState.envelopePeriod) {
+		if (forceApply || state.envelopePeriod !== this.lastState.envelopePeriod) {
 			this.wasmModule.ayumi_set_envelope(this.ayumiPtr, state.envelopePeriod);
 			this.lastState.envelopePeriod = state.envelopePeriod;
 		}
 
-		if (state.forceEnvelopeShapeWrite || state.envelopeShape !== this.lastState.envelopeShape) {
+		if (forceApply || state.forceEnvelopeShapeWrite || state.envelopeShape !== this.lastState.envelopeShape) {
 			this.wasmModule.ayumi_set_envelope_shape(this.ayumiPtr, state.envelopeShape);
 			this.lastState.envelopeShape = state.envelopeShape;
 			state.forceEnvelopeShapeWrite = false;
@@ -180,6 +190,7 @@ class AyumiEngine {
 
 	reset() {
 		this.lastState.reset();
+		this.forceFullApply = true;
 	}
 
 	dispose() {

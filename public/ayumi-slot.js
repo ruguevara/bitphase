@@ -84,6 +84,8 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				this.port
 			);
 			this._applyVirtualChannelResize();
+			this.registerState.reset();
+			this.ayumiEngine.applyRegisterState(this.registerState);
 			this.initialized = true;
 		} catch (error) {
 			console.error('Failed to initialize Ayumi:', error);
@@ -122,6 +124,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	_prepareOutputForPlay() {
 		this.fadeInSamples = Math.floor(sampleRate * this.fadeInDuration);
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
 		if (this.ayumiEngine) {
 			this.ayumiEngine.reset();
 			this._applyRegisterStateToEngine();

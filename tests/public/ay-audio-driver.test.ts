@@ -4,12 +4,12 @@ import AyumiState from '../../public/ayumi-state.js';
 
 describe('AYAudioDriver', () => {
 	describe('constructor', () => {
-		it('initializes channelMixerState with 3 channels, tone and noise true', () => {
+		it('initializes channelMixerState with all generators off', () => {
 			const driver = new AYAudioDriver();
 			expect(driver.channelMixerState).toHaveLength(3);
 			for (let i = 0; i < 3; i++) {
-				expect(driver.channelMixerState[i].tone).toBe(true);
-				expect(driver.channelMixerState[i].noise).toBe(true);
+				expect(driver.channelMixerState[i].tone).toBe(false);
+				expect(driver.channelMixerState[i].noise).toBe(false);
 				expect(driver.channelMixerState[i].envelope).toBe(false);
 			}
 		});

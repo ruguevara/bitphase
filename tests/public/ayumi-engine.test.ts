@@ -12,6 +12,7 @@ describe('AyumiEngine', () => {
 		ayumi_set_envelope_shape: ReturnType<typeof vi.fn>;
 		ayumi_set_sid: ReturnType<typeof vi.fn>;
 		ayumi_set_sid_waveform: ReturnType<typeof vi.fn>;
+		ayumi_set_syncbuzzer: ReturnType<typeof vi.fn>;
 		ayumi_process: ReturnType<typeof vi.fn>;
 		ayumi_remove_dc: ReturnType<typeof vi.fn>;
 		memory: { buffer: ArrayBuffer };
@@ -30,6 +31,7 @@ describe('AyumiEngine', () => {
 			ayumi_set_envelope_shape: vi.fn(),
 			ayumi_set_sid: vi.fn(),
 			ayumi_set_sid_waveform: vi.fn(),
+			ayumi_set_syncbuzzer: vi.fn(),
 			ayumi_process: vi.fn(),
 			ayumi_remove_dc: vi.fn(),
 			memory: { buffer: new ArrayBuffer(4096) },
@@ -91,6 +93,17 @@ describe('AyumiEngine', () => {
 			state.channels[0].mixer.envelope = false;
 			engine.applyRegisterState(state);
 			expect(mockWasm.ayumi_set_mixer).toHaveBeenCalledWith(mockPtr, 0, 0, 0, 0);
+		});
+
+		it('forces a full mixer apply after reset even when state matches lastState', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			engine.applyRegisterState(state);
+			mockWasm.ayumi_set_mixer.mockClear();
+			engine.reset();
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_mixer).toHaveBeenCalledTimes(3);
+			expect(mockWasm.ayumi_set_mixer).toHaveBeenCalledWith(mockPtr, 0, 1, 1, 0);
 		});
 
 		it('calls ayumi_set_noise when state.noise differs', () => {
