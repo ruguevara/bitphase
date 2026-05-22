@@ -12,8 +12,15 @@ import {
 
 describe('ayumi-constants', () => {
 	describe('constants', () => {
-		it('AYUMI_STRUCT_SIZE is 23384', () => {
-			expect(AYUMI_STRUCT_SIZE).toBe(23384);
+		it('AYUMI_STRUCT_SIZE matches ayumi.wasm', async () => {
+			const fs = await import('node:fs');
+			const path = await import('node:path');
+			const wasmPath = path.join(process.cwd(), 'public/ayumi.wasm');
+			const wasm = fs.readFileSync(wasmPath);
+			const { instance } = await WebAssembly.instantiate(wasm, {
+				env: { emscripten_notify_memory_growth: () => {} }
+			});
+			expect(instance.exports.ayumi_struct_size()).toBe(AYUMI_STRUCT_SIZE);
 		});
 
 		it('AYUMI_STRUCT_LEFT_OFFSET is struct size minus 40', () => {

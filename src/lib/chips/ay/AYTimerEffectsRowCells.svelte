@@ -17,6 +17,7 @@
 	const controller = getAyTimerEffectsContext();
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
 	const sidEnabled = $derived(controller.rowSidEnabled(index));
+	const syncbuzzerEnabled = $derived(controller.rowSyncbuzzerEnabled(index));
 	const rowMode = $derived(controller.rowSidPeriodMode(index));
 	const rowDetune = $derived(controller.rowDetune(index));
 	const rowPeriod = $derived(controller.rowPeriod(index));
@@ -45,6 +46,20 @@
 	onmouseover={() => controller.dragOverSid(index)}
 	onfocus={() => controller.dragOverSid(index)}>
 	{sidEnabled ? '✓' : ''}
+</td>
+<td
+	class="{isExpanded
+		? 'w-8 min-w-8 px-1'
+		: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+		? ROW_SELECTION_STYLES.cell
+		: syncbuzzerEnabled
+			? 'instrument-cell-boolean-on'
+			: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+	tabindex="-1"
+	onmousedown={() => controller.beginDragSyncbuzzer(index)}
+	onmouseover={() => controller.dragOverSyncbuzzer(index)}
+	onfocus={() => controller.dragOverSyncbuzzer(index)}>
+	{syncbuzzerEnabled ? '✓' : ''}
 </td>
 <td
 	class="{isExpanded

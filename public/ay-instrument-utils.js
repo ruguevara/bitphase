@@ -28,7 +28,7 @@ export function effectiveRowPeriod(row) {
 	return Math.max(1, (row?.period ?? DEFAULT_AY_SID_PERIOD) & 0xffff);
 }
 
-export function computeSidPeriod(tonePeriod, timerRow) {
+export function computeTimerEffectPeriod(tonePeriod, timerRow) {
 	if (resolveAyTimerRowSidPeriodMode(timerRow) === 'manual') {
 		return effectiveRowPeriod(timerRow);
 	}
@@ -39,13 +39,18 @@ export function computeSidPeriod(tonePeriod, timerRow) {
 	return effectiveRowPeriod(timerRow);
 }
 
+export function computeSidPeriod(tonePeriod, timerRow) {
+	return computeTimerEffectPeriod(tonePeriod, timerRow);
+}
+
 function normalizeTimerRow(row, legacy) {
 	const sid = row?.sid ?? false;
+	const syncbuzzer = row?.syncbuzzer ?? false;
 	const sidPeriodMode =
 		row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 			? row.sidPeriodMode
 			: legacy.sidPeriodMode;
-	const normalized = { sid, sidPeriodMode };
+	const normalized = { sid, syncbuzzer, sidPeriodMode };
 	if (row?.detune !== undefined) {
 		normalized.detune = row.detune;
 	} else if (legacy.sidPeriodDetune !== DEFAULT_AY_SID_PERIOD_DETUNE) {
@@ -56,7 +61,14 @@ function normalizeTimerRow(row, legacy) {
 	} else if (legacy.sidPeriodMode === 'manual' && legacy.sidPeriod !== DEFAULT_AY_SID_PERIOD) {
 		normalized.period = legacy.sidPeriod;
 	}
-	return normalized;
+	return applyExclusiveTimerEffects(normalized);
+}
+
+function applyExclusiveTimerEffects(row) {
+	if (row.sid && row.syncbuzzer) {
+		return { ...row, syncbuzzer: false };
+	}
+	return row;
 }
 
 export function normalizeAyInstrumentFields(instrument) {
@@ -64,11 +76,11 @@ export function normalizeAyInstrumentFields(instrument) {
 	const legacy = resolveLegacyInstrumentDefaults(instrument);
 	let timerRows = instrument.timerRows;
 	if (!timerRows) {
-		timerRows = (instrument.rows ?? []).map(() => ({ sid: false }));
+		timerRows = (instrument.rows ?? []).map(() => ({ sid: false, syncbuzzer: false }));
 	}
 	timerRows = timerRows.map((row) => normalizeTimerRow(row, legacy));
 	while (timerRows.length < rowCount) {
-		timerRows.push({ sid: false });
+		timerRows.push({ sid: false, syncbuzzer: false });
 	}
 	if (timerRows.length > rowCount) {
 		timerRows.length = rowCount;

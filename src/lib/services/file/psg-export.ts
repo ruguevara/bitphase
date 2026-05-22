@@ -173,7 +173,8 @@ class PsgExportService {
 			const ayRegisters = convertRegisterStateToAYRegisters(stateToConvert);
 			captureFrames.push({
 				registers: [...ayRegisters],
-				sid: extractHardwareSidStates(stateToConvert)
+				sid: extractHardwareSidStates(stateToConvert),
+				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert)
 			});
 			if (mixer.hasVirtualChannels()) {
 				registerState.forceEnvelopeShapeWrite = false;

@@ -69,6 +69,36 @@ class AyumiEngine {
 		}
 	}
 
+	_applySyncbuzzer(channelIndex, syncbuzzer, lastSyncbuzzer) {
+		const enabled = syncbuzzer.enabled ? 1 : 0;
+		const period = syncbuzzer.period > 0 ? syncbuzzer.period : 1;
+		const shape = syncbuzzer.shape & 0xf;
+		const wasEnabled = lastSyncbuzzer.enabled ? 1 : 0;
+		const enableChanged = enabled !== wasEnabled;
+
+		if (
+			enableChanged ||
+			period !== lastSyncbuzzer.period ||
+			shape !== lastSyncbuzzer.shape
+		) {
+			this.wasmModule.ayumi_set_syncbuzzer(
+				this.ayumiPtr,
+				channelIndex,
+				enabled,
+				period,
+				shape
+			);
+			lastSyncbuzzer.enabled = syncbuzzer.enabled;
+			lastSyncbuzzer.period = period;
+			lastSyncbuzzer.shape = shape;
+		}
+
+		if (syncbuzzer.resetPhase) {
+			this.wasmModule.ayumi_syncbuzzer_reset(this.ayumiPtr, channelIndex);
+			syncbuzzer.resetPhase = false;
+		}
+	}
+
 	applyRegisterState(state) {
 		if (!this.wasmModule || !this.ayumiPtr) {
 			return;
@@ -110,6 +140,10 @@ class AyumiEngine {
 
 			if (channel.sid) {
 				this._applySid(channelIndex, channel.sid, lastChannel.sid);
+			}
+
+			if (channel.syncbuzzer) {
+				this._applySyncbuzzer(channelIndex, channel.syncbuzzer, lastChannel.syncbuzzer);
 			}
 		}
 

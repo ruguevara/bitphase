@@ -4,6 +4,7 @@ export type AySidPeriodMode = 'auto' | 'manual';
 
 export type AyTimerRow = {
 	sid: boolean;
+	syncbuzzer?: boolean;
 	sidPeriodMode?: AySidPeriodMode;
 	detune?: number;
 	period?: number;
@@ -35,7 +36,7 @@ type LegacyInstrumentDefaults = {
 };
 
 export function createDefaultAyTimerRow(): AyTimerRow {
-	return { sid: false };
+	return { sid: false, syncbuzzer: false };
 }
 
 export function resolveLegacyInstrumentDefaults(instrument: Instrument): LegacyInstrumentDefaults {
@@ -65,7 +66,7 @@ export function effectiveRowPeriod(row: AyTimerRow | undefined): number {
 	return Math.max(1, (row?.period ?? DEFAULT_AY_SID_PERIOD) & 0xffff);
 }
 
-export function computeSidPeriod(tonePeriod: number, timerRow?: AyTimerRow): number {
+export function computeTimerEffectPeriod(tonePeriod: number, timerRow?: AyTimerRow): number {
 	if (resolveAyTimerRowSidPeriodMode(timerRow) === 'manual') {
 		return effectiveRowPeriod(timerRow);
 	}
@@ -74,6 +75,17 @@ export function computeSidPeriod(tonePeriod: number, timerRow?: AyTimerRow): num
 		return Math.max(1, ((tonePeriod + detune) & 0xffff) || 1);
 	}
 	return effectiveRowPeriod(timerRow);
+}
+
+export function computeSidPeriod(tonePeriod: number, timerRow?: AyTimerRow): number {
+	return computeTimerEffectPeriod(tonePeriod, timerRow);
+}
+
+export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
+	if (row.sid && row.syncbuzzer) {
+		return { ...row, syncbuzzer: false };
+	}
+	return row;
 }
 
 function normalizeTimerRow(
@@ -85,7 +97,7 @@ function normalizeTimerRow(
 		row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 			? row.sidPeriodMode
 			: legacy.sidPeriodMode;
-	const normalized: AyTimerRow = { sid, sidPeriodMode };
+	const normalized: AyTimerRow = { sid, syncbuzzer: row?.syncbuzzer ?? false, sidPeriodMode };
 	if (row?.detune !== undefined) {
 		normalized.detune = row.detune;
 	} else if (legacy.sidPeriodDetune !== DEFAULT_AY_SID_PERIOD_DETUNE) {
@@ -96,7 +108,7 @@ function normalizeTimerRow(
 	} else if (legacy.sidPeriodMode === 'manual' && legacy.sidPeriod !== DEFAULT_AY_SID_PERIOD) {
 		normalized.period = legacy.sidPeriod;
 	}
-	return normalized;
+	return resolveExclusiveTimerEffects(normalized);
 }
 
 export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumentFields {

@@ -1,10 +1,12 @@
 import {
 	allRegistersApplyMask,
 	AY_REGISTER_COUNT,
+	envelopeShapeRegisterApplyMask,
 	registerApplyMask,
 	sidVolumeLevel,
 	volumeRegisterIndex,
 	type HardwareSidState,
+	type HardwareSyncBuzzerState,
 	type SongCaptureFrame
 } from './ay-export-utils';
 import { encodeEventList } from './tmr-event-list';
@@ -63,6 +65,11 @@ export function encodeTMR(
 		waveform: [15, 0],
 		waveformLoop: 0
 	}));
+	const previousSyncbuzzer: HardwareSyncBuzzerState[] = Array.from({ length: 3 }, () => ({
+		enabled: false,
+		period: 0,
+		shape: 0
+	}));
 
 	for (const frame of frames) {
 		let psgMask = allRegistersApplyMask();
@@ -70,40 +77,71 @@ export function encodeTMR(
 
 		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
 			const sid = frame.sid[channelIndex]!;
-			const prev = previousSid[channelIndex]!;
+			const syncbuzzer = frame.syncbuzzer?.[channelIndex] ?? {
+				enabled: false,
+				period: 0,
+				shape: 0
+			};
+			const prevSid = previousSid[channelIndex]!;
+			const prevSyncbuzzer = previousSyncbuzzer[channelIndex]!;
 
-			if (sid.enabled) {
-				psgMask &= ~registerApplyMask(volumeRegisterIndex(channelIndex));
-			}
-
-			if (!sid.enabled) {
-				if (prev.enabled) {
-					timers.push({ interval: 0, eventIndex: TMR_TIMER_EVENT_STOP });
+			if (syncbuzzer.enabled) {
+				psgMask &= ~envelopeShapeRegisterApplyMask();
+				if (!prevSyncbuzzer.enabled || prevSyncbuzzer.shape !== syncbuzzer.shape) {
+					const eventIndex = getOrCreateSyncBuzzerEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						syncbuzzer
+					);
+					timers.push({
+						interval: Math.max(1, syncbuzzer.period & 0xffff),
+						eventIndex
+					});
+				} else if (prevSyncbuzzer.period !== syncbuzzer.period) {
+					const eventIndex = getOrCreateSyncBuzzerEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						syncbuzzer
+					);
+					timers.push({
+						interval: Math.max(1, syncbuzzer.period & 0xffff),
+						eventIndex
+					});
 				} else {
 					timers.push({ interval: 0, eventIndex: 0 });
 				}
-			} else if (!prev.enabled || !sidWaveformConfigEqual(prev, sid)) {
-				const eventIndex = getOrCreateSidEventChain(
-					eventItems,
-					chainStartByKey,
-					channelIndex,
-					sid
-				);
-				timers.push({
-					interval: Math.max(1, sid.period & 0xffff),
-					eventIndex
-				});
-			} else if (prev.period !== sid.period) {
-				const eventIndex = getOrCreateSidEventChain(
-					eventItems,
-					chainStartByKey,
-					channelIndex,
-					sid
-				);
-				timers.push({
-					interval: Math.max(1, sid.period & 0xffff),
-					eventIndex
-				});
+			} else if (sid.enabled) {
+				psgMask &= ~registerApplyMask(volumeRegisterIndex(channelIndex));
+
+				if (!prevSid.enabled || !sidWaveformConfigEqual(prevSid, sid)) {
+					const eventIndex = getOrCreateSidEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						sid
+					);
+					timers.push({
+						interval: Math.max(1, sid.period & 0xffff),
+						eventIndex
+					});
+				} else if (prevSid.period !== sid.period) {
+					const eventIndex = getOrCreateSidEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						sid
+					);
+					timers.push({
+						interval: Math.max(1, sid.period & 0xffff),
+						eventIndex
+					});
+				} else {
+					timers.push({ interval: 0, eventIndex: 0 });
+				}
+			} else if (prevSid.enabled || prevSyncbuzzer.enabled) {
+				timers.push({ interval: 0, eventIndex: TMR_TIMER_EVENT_STOP });
 			} else {
 				timers.push({ interval: 0, eventIndex: 0 });
 			}
@@ -114,6 +152,11 @@ export function encodeTMR(
 				baseVolume: sid.baseVolume,
 				waveform: [...sid.waveform],
 				waveformLoop: sid.waveformLoop
+			};
+			previousSyncbuzzer[channelIndex] = {
+				enabled: syncbuzzer.enabled,
+				period: syncbuzzer.period,
+				shape: syncbuzzer.shape
 			};
 		}
 
@@ -156,6 +199,40 @@ function sidWaveformConfigEqual(a: HardwareSidState, b: HardwareSidState): boole
 
 export function sidEventChainKey(channelIndex: number, sid: HardwareSidState): string {
 	return `${channelIndex}:${sid.baseVolume}:${sid.waveform.join(',')}:${sid.waveformLoop}`;
+}
+
+export function syncBuzzerEventChainKey(
+	channelIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState
+): string {
+	return `sync:${channelIndex}:${syncbuzzer.shape}`;
+}
+
+function getOrCreateSyncBuzzerEventChain(
+	eventItems: EventItem[],
+	chainStartByKey: Map<string, number>,
+	channelIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState
+): number {
+	const key = syncBuzzerEventChainKey(channelIndex, syncbuzzer);
+	const existing = chainStartByKey.get(key);
+	if (existing !== undefined) {
+		return existing;
+	}
+
+	const startIndex = eventItems.length;
+	chainStartByKey.set(key, startIndex);
+	const shapeMask = envelopeShapeRegisterApplyMask();
+	const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+	psgData[13] = syncbuzzer.shape & 0xf;
+	eventItems.push({
+		psgData,
+		psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
+		timerInterval: 0,
+		timerEventIndex: startIndex
+	});
+
+	return startIndex;
 }
 
 function getOrCreateSidEventChain(

@@ -55,7 +55,7 @@
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
-	const tableColSpan = $derived(activeTab === 'mixer' ? 16 : 7);
+	const tableColSpan = $derived(activeTab === 'mixer' ? 16 : 8);
 
 	const timerEffects = new AyTimerEffectsController(
 		() => instrument,

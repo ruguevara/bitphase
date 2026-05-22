@@ -1,7 +1,7 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
-import { normalizeAyInstrumentFields, getAySidBaseVolume, computeSidPeriod } from './ay-instrument-utils.js';
+import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod } from './ay-instrument-utils.js';
 
 class AYAudioDriver {
 	constructor(channelCount = 3) {
@@ -58,6 +58,15 @@ class AYAudioDriver {
 				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
 			if (!hasActiveSlide && !hasActivePortamento) {
 				state.channelSidReset[channelIndex] = true;
+			}
+		}
+		if (state.channelSyncbuzzerReset) {
+			const hasActiveSlide =
+				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
+			const hasActivePortamento =
+				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
+			if (!hasActiveSlide && !hasActivePortamento) {
+				state.channelSyncbuzzerReset[channelIndex] = true;
 			}
 		}
 		if (state.channelToneSliding) {
@@ -622,6 +631,7 @@ class AYAudioDriver {
 				registerState.channels[channelIndex].mixer.noise = false;
 				registerState.channels[channelIndex].mixer.envelope = false;
 				registerState.channels[channelIndex].sid.enabled = false;
+				registerState.channels[channelIndex].syncbuzzer.enabled = false;
 				this.channelMixerState[channelIndex].tone = false;
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
@@ -632,9 +642,16 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].noise = instrumentRow.noise;
 
 				const ayFields = normalizeAyInstrumentFields(instrument);
-				const timerRow = ayFields.timerRows[rowIndex] ?? { sid: false };
+				const timerRow = ayFields.timerRows[rowIndex] ?? { sid: false, syncbuzzer: false };
 				const sidActive =
-					timerRow.sid && instrumentRow.tone && !instrumentRow.envelope;
+					timerRow.sid && !timerRow.syncbuzzer && instrumentRow.tone && !instrumentRow.envelope;
+				const syncbuzzerActive =
+					timerRow.syncbuzzer &&
+					!timerRow.sid &&
+					instrumentRow.envelope &&
+					state.channelEnvelopeEnabled[channelIndex] &&
+					!envelopeDisabledByOnOff;
+				const timerEffectPeriod = computeTimerEffectPeriod(finalTone, timerRow);
 
 				if (
 					instrumentRow.envelope &&
@@ -656,7 +673,7 @@ class AYAudioDriver {
 				const sidBaseVolume = getAySidBaseVolume(finalVolume);
 				registerState.channels[channelIndex].sid = {
 					enabled: sidActive,
-					period: computeSidPeriod(finalTone, timerRow),
+					period: timerEffectPeriod,
 					baseVolume: sidBaseVolume,
 					waveform: ayFields.timerWaveform,
 					waveformLoop: ayFields.timerWaveformLoop,
@@ -664,6 +681,16 @@ class AYAudioDriver {
 				};
 				if (state.channelSidReset) {
 					state.channelSidReset[channelIndex] = false;
+				}
+
+				registerState.channels[channelIndex].syncbuzzer = {
+					enabled: syncbuzzerActive,
+					period: timerEffectPeriod,
+					shape: registerState.envelopeShape & 0xf,
+					resetPhase: state.channelSyncbuzzerReset?.[channelIndex] ?? false
+				};
+				if (state.channelSyncbuzzerReset) {
+					state.channelSyncbuzzerReset[channelIndex] = false;
 				}
 			}
 

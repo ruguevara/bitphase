@@ -173,6 +173,9 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		if (registerState.channels[channelIndex].sid) {
 			registerState.channels[channelIndex].sid.enabled = false;
 		}
+		if (registerState.channels[channelIndex].syncbuzzer) {
+			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+		}
 	}
 
 	handleSetVirtualChannelConfig({ virtualChannelMap, hwChannelCount }) {

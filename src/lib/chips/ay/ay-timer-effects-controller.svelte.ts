@@ -4,6 +4,7 @@ import {
 	effectiveRowPeriod,
 	normalizeAyInstrumentFields,
 	resolveAyTimerRowSidPeriodMode,
+	resolveExclusiveTimerEffects,
 	syncAyInstrumentTimerRows,
 	type AySidPeriodMode,
 	type AyTimerRow
@@ -18,8 +19,9 @@ type ExtendedInstrument = Instrument & {
 export class AyTimerEffectsController {
 	fields = $state(normalizeAyInstrumentFields({ rows: [] } as Instrument));
 	isDragging = $state(false);
-	dragType = $state<'sid' | 'mode' | null>(null);
+	dragType = $state<'sid' | 'syncbuzzer' | 'mode' | null>(null);
 	dragSidValue = $state<boolean | null>(null);
+	dragSyncbuzzerValue = $state<boolean | null>(null);
 	dragModeValue = $state<AySidPeriodMode | null>(null);
 
 	private lastInstrumentId = '';
@@ -76,6 +78,7 @@ export class AyTimerEffectsController {
 		this.isDragging = false;
 		this.dragType = null;
 		this.dragSidValue = null;
+		this.dragSyncbuzzerValue = null;
 		this.dragModeValue = null;
 	}
 
@@ -98,7 +101,31 @@ export class AyTimerEffectsController {
 
 	updateSidRow(index: number, sid: boolean): void {
 		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => (i === index ? { ...row, sid } : row))
+			this.fields.timerRows.map((row, i) => {
+				if (i !== index) {
+					return row;
+				}
+				return resolveExclusiveTimerEffects({
+					...row,
+					sid,
+					syncbuzzer: sid ? false : row.syncbuzzer
+				});
+			})
+		);
+	}
+
+	updateSyncbuzzerRow(index: number, syncbuzzer: boolean): void {
+		this.updateTimerRows(
+			this.fields.timerRows.map((row, i) => {
+				if (i !== index) {
+					return row;
+				}
+				return resolveExclusiveTimerEffects({
+					...row,
+					syncbuzzer,
+					sid: syncbuzzer ? false : row.sid
+				});
+			})
 		);
 	}
 
@@ -133,6 +160,19 @@ export class AyTimerEffectsController {
 	dragOverSid(index: number): void {
 		if (this.isDragging && this.dragType === 'sid' && this.dragSidValue !== null) {
 			this.updateSidRow(index, this.dragSidValue);
+		}
+	}
+
+	beginDragSyncbuzzer(index: number): void {
+		this.isDragging = true;
+		this.dragType = 'syncbuzzer';
+		this.dragSyncbuzzerValue = !this.fields.timerRows[index]?.syncbuzzer;
+		this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
+	}
+
+	dragOverSyncbuzzer(index: number): void {
+		if (this.isDragging && this.dragType === 'syncbuzzer' && this.dragSyncbuzzerValue !== null) {
+			this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
 		}
 	}
 
@@ -187,6 +227,10 @@ export class AyTimerEffectsController {
 
 	rowSidEnabled(index: number): boolean {
 		return this.fields.timerRows[index]?.sid ?? false;
+	}
+
+	rowSyncbuzzerEnabled(index: number): boolean {
+		return this.fields.timerRows[index]?.syncbuzzer ?? false;
 	}
 
 	private parseNum(text: string): number | null {

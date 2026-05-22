@@ -4,6 +4,7 @@ import {
 	syncAyInstrumentTimerRows,
 	computeSidPeriod,
 	resolveAyTimerRowSidPeriodMode,
+	resolveExclusiveTimerEffects,
 	DEFAULT_AY_SID_PERIOD,
 	DEFAULT_AY_SID_PERIOD_DETUNE,
 	DEFAULT_AY_TIMER_WAVEFORM
@@ -49,5 +50,23 @@ describe('ay instrument timer fields', () => {
 	it('uses manual sid period from the row', () => {
 		const row = { sid: true, sidPeriodMode: 'manual' as const, period: 42 };
 		expect(computeSidPeriod(200, row)).toBe(42);
+	});
+
+	it('keeps sid and syncbuzzer mutually exclusive', () => {
+		expect(resolveExclusiveTimerEffects({ sid: true, syncbuzzer: true })).toEqual({
+			sid: true,
+			syncbuzzer: false
+		});
+		expect(resolveExclusiveTimerEffects({ sid: false, syncbuzzer: true })).toEqual({
+			sid: false,
+			syncbuzzer: true
+		});
+
+		const instrument = new Instrument('01', [{ tone: true, volume: 15 }]);
+		(instrument as Instrument & { timerRows?: { sid: boolean; syncbuzzer: boolean }[] }).timerRows =
+			[{ sid: true, syncbuzzer: true }];
+		const fields = normalizeAyInstrumentFields(instrument);
+		expect(fields.timerRows[0]?.sid).toBe(true);
+		expect(fields.timerRows[0]?.syncbuzzer).toBe(false);
 	});
 });

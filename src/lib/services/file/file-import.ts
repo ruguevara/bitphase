@@ -192,6 +192,7 @@ function reconstructInstrument(data: any): Instrument {
 			instrument as Instrument & {
 				timerRows?: {
 					sid: boolean;
+					syncbuzzer?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
@@ -200,17 +201,20 @@ function reconstructInstrument(data: any): Instrument {
 		).timerRows = data.timerRows.map(
 			(row: {
 				sid?: boolean;
+				syncbuzzer?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 			}) => {
 				const timerRow: {
 					sid: boolean;
+					syncbuzzer?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
 				} = {
 					sid: row.sid ?? false,
+					syncbuzzer: row.syncbuzzer ?? false,
 					sidPeriodMode:
 						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
 							? row.sidPeriodMode

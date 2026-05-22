@@ -9,9 +9,16 @@ export type HardwareSidState = {
 	waveformLoop: number;
 };
 
+export type HardwareSyncBuzzerState = {
+	enabled: boolean;
+	period: number;
+	shape: number;
+};
+
 export type SongCaptureFrame = {
 	registers: number[];
 	sid: HardwareSidState[];
+	syncbuzzer: HardwareSyncBuzzerState[];
 };
 
 export function convertRegisterStateToAYRegisters(registerState: {
@@ -109,6 +116,27 @@ export function extractHardwareSidStates(registerState: {
 	return result;
 }
 
+export function extractHardwareSyncBuzzerStates(registerState: {
+	channels: Array<{ syncbuzzer?: HardwareSyncBuzzerState }>;
+}): HardwareSyncBuzzerState[] {
+	const result: HardwareSyncBuzzerState[] = [];
+	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
+		const syncbuzzer = registerState.channels[channelIndex]?.syncbuzzer;
+		result.push({
+			enabled: syncbuzzer?.enabled ?? false,
+			period: syncbuzzer?.period ?? 0,
+			shape: syncbuzzer?.shape ?? 0
+		});
+	}
+	return result;
+}
+
+export const ENVELOPE_SHAPE_REGISTER = 13;
+
+export function envelopeShapeRegisterApplyMask(): number {
+	return registerApplyMask(ENVELOPE_SHAPE_REGISTER);
+}
+
 export function sidStatesEqual(a: HardwareSidState, b: HardwareSidState): boolean {
 	return (
 		a.enabled === b.enabled &&
@@ -118,4 +146,11 @@ export function sidStatesEqual(a: HardwareSidState, b: HardwareSidState): boolea
 		a.waveform.length === b.waveform.length &&
 		a.waveform.every((value, index) => value === b.waveform[index])
 	);
+}
+
+export function syncBuzzerStatesEqual(
+	a: HardwareSyncBuzzerState,
+	b: HardwareSyncBuzzerState
+): boolean {
+	return a.enabled === b.enabled && a.period === b.period && a.shape === b.shape;
 }

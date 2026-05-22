@@ -31,6 +31,11 @@ function disabledSidFrame(registers: number[] = new Array(14).fill(0)): SongCapt
 			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
 			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
 			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 }
+		],
+		syncbuzzer: [
+			{ enabled: false, period: 0, shape: 0 },
+			{ enabled: false, period: 0, shape: 0 },
+			{ enabled: false, period: 0, shape: 0 }
 		]
 	};
 }
