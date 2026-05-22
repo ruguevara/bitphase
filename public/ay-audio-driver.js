@@ -644,7 +644,7 @@ class AYAudioDriver {
 				const ayFields = normalizeAyInstrumentFields(instrument);
 				const timerRow = ayFields.timerRows[rowIndex] ?? { sid: false, syncbuzzer: false };
 				const sidActive =
-					timerRow.sid && !timerRow.syncbuzzer && instrumentRow.tone && !instrumentRow.envelope;
+					timerRow.sid && !timerRow.syncbuzzer && !instrumentRow.envelope;
 				const syncbuzzerActive =
 					timerRow.syncbuzzer &&
 					!timerRow.sid &&
