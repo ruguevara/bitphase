@@ -8,6 +8,8 @@ import {
 	formatAyTimerWaveform,
 	parseAyTimerWaveform,
 	parseAyTimerWaveformPartial,
+	AY_AUTO_TIMER_TONE_MULTIPLIER,
+	AY_TONE_REGISTER_PRESCALER,
 	DEFAULT_AY_SID_PERIOD,
 	DEFAULT_AY_SID_PERIOD_DETUNE,
 	DEFAULT_AY_TIMER_WAVEFORM
@@ -44,10 +46,19 @@ describe('ay instrument timer fields', () => {
 		expect(timerRows.every((row) => row.sid === false)).toBe(true);
 	});
 
-	it('computes auto sid period from tone period plus row detune', () => {
+	it('computes auto sid period aligned to tone prescaler ratio', () => {
 		const row = { sid: true, sidPeriodMode: 'auto' as const, detune: 7 };
-		expect(computeSidPeriod(200, row)).toBe(207);
+		expect(computeSidPeriod(200, row)).toBe(200 + 7);
 		expect(computeSidPeriod(200)).toBe(200 + DEFAULT_AY_SID_PERIOD_DETUNE);
+	});
+
+	it('targets sixteen times tone hz in auto mode', () => {
+		const chipClockHz = 1_773_400;
+		const tonePeriod = 664;
+		const sidPeriod = computeSidPeriod(tonePeriod);
+		const toneHz = chipClockHz / (AY_TONE_REGISTER_PRESCALER * tonePeriod);
+		const sidHz = chipClockHz / sidPeriod;
+		expect(sidHz / toneHz).toBeCloseTo(AY_AUTO_TIMER_TONE_MULTIPLIER, 1);
 	});
 
 	it('uses manual sid period from the row', () => {

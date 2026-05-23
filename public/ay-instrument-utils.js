@@ -1,6 +1,8 @@
 export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
+export const AY_TONE_REGISTER_PRESCALER = 16;
+export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
 
 export function resolveLegacyInstrumentDefaults(instrument) {
 	const sidPeriodMode =
@@ -34,7 +36,13 @@ export function computeTimerEffectPeriod(tonePeriod, timerRow) {
 	}
 	if (tonePeriod > 0) {
 		const detune = effectiveRowDetune(timerRow) | 0;
-		return Math.max(1, ((tonePeriod + detune) & 0xffff) || 1);
+		const tonePeriodWithDetune = ((tonePeriod + detune) & 0xffff) || 1;
+		return Math.max(
+			1,
+			Math.round(
+				(AY_TONE_REGISTER_PRESCALER * tonePeriodWithDetune) / AY_AUTO_TIMER_TONE_MULTIPLIER
+			)
+		);
 	}
 	return effectiveRowPeriod(timerRow);
 }

@@ -1,4 +1,8 @@
 export const AY_REGISTER_COUNT = 14;
+export const DEFAULT_AY_REGISTERS: readonly number[] = Array.from(
+	{ length: AY_REGISTER_COUNT },
+	() => 0
+);
 export const TONE_CHANNELS = 3;
 
 export type HardwareSidState = {
@@ -82,6 +86,21 @@ export function allRegistersApplyMask(): number {
 	let mask = 0;
 	for (let regIndex = 0; regIndex < AY_REGISTER_COUNT; regIndex++) {
 		mask |= registerApplyMask(regIndex);
+	}
+	return mask;
+}
+
+export function registersChangedMask(
+	current: readonly number[],
+	previous: readonly number[]
+): number {
+	let mask = 0;
+	for (let regIndex = 0; regIndex < AY_REGISTER_COUNT; regIndex++) {
+		const currentValue = current[regIndex] ?? 0;
+		const previousValue = previous[regIndex] ?? 0;
+		if ((currentValue & 0xff) !== (previousValue & 0xff)) {
+			mask |= registerApplyMask(regIndex);
+		}
 	}
 	return mask;
 }

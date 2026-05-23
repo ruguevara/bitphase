@@ -1,7 +1,7 @@
 import {
-	allRegistersApplyMask,
 	AY_REGISTER_COUNT,
 	envelopeShapeRegisterApplyMask,
+	registersChangedMask,
 	registerApplyMask,
 	sidVolumeLevel,
 	volumeRegisterIndex,
@@ -12,21 +12,28 @@ import {
 import { encodeEventList } from './tmr-event-list';
 import {
 	encodeEventPsgApplyMask,
+	encodeTimerFrequencyHz,
 	registerMaskFromEventPsgApplyMask,
 	TMR_FRAME_SIZE,
 	TMR_HEADER_SIZE,
 	TMR_TIMER_EVENT_STOP,
 	type TmrEventItemRecord
 } from './tmr-format';
+import { atariMfpFrequencyHzFromYmPeriod, ATARI_MFP_FREQUENCY_HZ } from './atari-mfp-timer';
 
 export {
 	encodeEventPsgApplyMask,
+	decodeTimerFrequencyHz,
+	encodeTimerFrequencyHz,
 	registerMaskFromEventPsgApplyMask,
+	timerFrequencyHzToPeriodTicks,
 	timerIndexFromEventPsgApplyMask,
+	timerPeriodTicksToFrequencyHz,
 	TMR_FRAME_SIZE,
 	TMR_HEADER_SIZE,
 	TMR_ITEM_SIZE,
 	TMR_TIMER_EVENT_STOP,
+	TMR_TIMER_FREQUENCY_SCALE,
 	TMR_PSG_MASK_TIMER_BITS,
 	type TmrEventItemRecord
 } from './tmr-format';
@@ -36,10 +43,27 @@ export type TmrEncodeOptions = {
 	interruptFrequency: number;
 	isYm?: boolean;
 	chipIndex?: number;
+	mfpFrequencyHz?: number;
 };
 
+function encodeExportTimerFrequencyHz(ymPeriod: number, options: TmrEncodeOptions): number {
+	const period = ymPeriod & 0xffff;
+	if (period <= 0) {
+		return 0;
+	}
+	const hz = atariMfpFrequencyHzFromYmPeriod(
+		period,
+		options.chipFrequency,
+		options.mfpFrequencyHz ?? ATARI_MFP_FREQUENCY_HZ
+	);
+	if (hz === null) {
+		return 0;
+	}
+	return encodeTimerFrequencyHz(hz);
+}
+
 type TimerCommand = {
-	interval: number;
+	frequency: number;
 	eventIndex: number;
 };
 
@@ -70,9 +94,11 @@ export function encodeTMR(
 		period: 0,
 		shape: 0
 	}));
+	let previousRegisters = new Array(AY_REGISTER_COUNT).fill(0);
 
 	for (const frame of frames) {
-		let psgMask = allRegistersApplyMask();
+		const psgMask = registersChangedMask(frame.registers, previousRegisters);
+		previousRegisters = [...frame.registers];
 		const timers: TimerCommand[] = [];
 
 		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
@@ -86,7 +112,6 @@ export function encodeTMR(
 			const prevSyncbuzzer = previousSyncbuzzer[channelIndex]!;
 
 			if (syncbuzzer.enabled) {
-				psgMask &= ~envelopeShapeRegisterApplyMask();
 				if (!prevSyncbuzzer.enabled || prevSyncbuzzer.shape !== syncbuzzer.shape) {
 					const eventIndex = getOrCreateSyncBuzzerEventChain(
 						eventItems,
@@ -95,7 +120,7 @@ export function encodeTMR(
 						syncbuzzer
 					);
 					timers.push({
-						interval: Math.max(1, syncbuzzer.period & 0xffff),
+						frequency: encodeExportTimerFrequencyHz(syncbuzzer.period, options),
 						eventIndex
 					});
 				} else if (prevSyncbuzzer.period !== syncbuzzer.period) {
@@ -106,15 +131,13 @@ export function encodeTMR(
 						syncbuzzer
 					);
 					timers.push({
-						interval: Math.max(1, syncbuzzer.period & 0xffff),
+						frequency: encodeExportTimerFrequencyHz(syncbuzzer.period, options),
 						eventIndex
 					});
 				} else {
-					timers.push({ interval: 0, eventIndex: 0 });
+					timers.push({ frequency: 0, eventIndex: 0 });
 				}
 			} else if (sid.enabled) {
-				psgMask &= ~registerApplyMask(volumeRegisterIndex(channelIndex));
-
 				if (!prevSid.enabled || !sidWaveformConfigEqual(prevSid, sid)) {
 					const eventIndex = getOrCreateSidEventChain(
 						eventItems,
@@ -123,7 +146,7 @@ export function encodeTMR(
 						sid
 					);
 					timers.push({
-						interval: Math.max(1, sid.period & 0xffff),
+						frequency: encodeExportTimerFrequencyHz(sid.period, options),
 						eventIndex
 					});
 				} else if (prevSid.period !== sid.period) {
@@ -134,16 +157,16 @@ export function encodeTMR(
 						sid
 					);
 					timers.push({
-						interval: Math.max(1, sid.period & 0xffff),
+						frequency: encodeExportTimerFrequencyHz(sid.period, options),
 						eventIndex
 					});
 				} else {
-					timers.push({ interval: 0, eventIndex: 0 });
+					timers.push({ frequency: 0, eventIndex: 0 });
 				}
 			} else if (prevSid.enabled || prevSyncbuzzer.enabled) {
-				timers.push({ interval: 0, eventIndex: TMR_TIMER_EVENT_STOP });
+				timers.push({ frequency: 0, eventIndex: TMR_TIMER_EVENT_STOP });
 			} else {
-				timers.push({ interval: 0, eventIndex: 0 });
+				timers.push({ frequency: 0, eventIndex: 0 });
 			}
 
 			previousSid[channelIndex] = {
@@ -174,7 +197,7 @@ export function encodeTMR(
 		writeU16(view, offset, frame.psgMask);
 		offset += 2;
 		for (const timer of frame.timers) {
-			writeU32(view, offset, timer.interval);
+			writeU32(view, offset, timer.frequency);
 			offset += 4;
 			writeU16(view, offset, timer.eventIndex);
 			offset += 2;
@@ -228,7 +251,7 @@ function getOrCreateSyncBuzzerEventChain(
 	eventItems.push({
 		psgData,
 		psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
-		timerInterval: 0,
+		timerFrequency: 0,
 		timerEventIndex: startIndex
 	});
 
@@ -259,7 +282,7 @@ function getOrCreateSidEventChain(
 		eventItems.push({
 			psgData,
 			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
-			timerInterval: 0,
+			timerFrequency: 0,
 			timerEventIndex: startIndex + relativeNext
 		});
 	}

@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import {
 	convertRegisterStateToAYRegisters,
 	extractHardwareSidStates,
+	extractHardwareSyncBuzzerStates,
 	TONE_CHANNELS,
 	type SongCaptureFrame
 } from './ay-export-utils';

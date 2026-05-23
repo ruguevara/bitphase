@@ -14,6 +14,9 @@ const DEFAULT_SYNCBUZZER = {
 	resetPhase: false
 };
 
+const AY_REGISTER_COUNT = 14;
+const AY_TONE_CHANNELS = 3;
+
 class AYChipRegisterState {
 	constructor(channelCount = 3) {
 		this.channelCount = channelCount;
@@ -95,6 +98,48 @@ class AYChipRegisterState {
 		copy.envelopeShape = this.envelopeShape;
 		copy.forceEnvelopeShapeWrite = this.forceEnvelopeShapeWrite;
 		return copy;
+	}
+
+	toHardwareRegisters() {
+		const registers = new Array(AY_REGISTER_COUNT).fill(0);
+
+		for (let channelIndex = 0; channelIndex < AY_TONE_CHANNELS; channelIndex++) {
+			const channel = this.channels[channelIndex];
+			const toneReg = channelIndex * 2;
+			const tone = channel.tone & 0xfff;
+			registers[toneReg] = tone & 0xff;
+			registers[toneReg + 1] = (tone >> 8) & 0x0f;
+		}
+
+		registers[6] = this.noise & 0x1f;
+
+		let mixer = 0;
+		for (let channelIndex = 0; channelIndex < AY_TONE_CHANNELS; channelIndex++) {
+			const channel = this.channels[channelIndex];
+			if (!channel.mixer.tone) {
+				mixer |= 1 << channelIndex;
+			}
+			if (!channel.mixer.noise) {
+				mixer |= 1 << (channelIndex + 3);
+			}
+		}
+		registers[7] = mixer;
+
+		for (let channelIndex = 0; channelIndex < AY_TONE_CHANNELS; channelIndex++) {
+			const channel = this.channels[channelIndex];
+			let volume = channel.volume & 0x0f;
+			if (channel.mixer.envelope) {
+				volume |= 0x10;
+			}
+			registers[8 + channelIndex] = volume;
+		}
+
+		const envelopePeriod = this.envelopePeriod & 0xffff;
+		registers[11] = envelopePeriod & 0xff;
+		registers[12] = (envelopePeriod >> 8) & 0xff;
+		registers[13] = this.envelopeShape & 0x0f;
+
+		return registers;
 	}
 }
 

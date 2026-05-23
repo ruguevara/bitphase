@@ -19,6 +19,14 @@ export type MixerWorkletIncomingMessage =
 			type: 'channel_waveform';
 			chipIndex?: number;
 			channels: Float32Array[];
+	  }
+	| {
+			type: 'channel_tone_hz';
+			chipIndex?: number;
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			registers: number[];
 	  };
 
 export type PlayFromPositionMixerCommand = {
@@ -69,6 +77,12 @@ export class MixerWorkletBridge {
 	private onPositionUpdate?: (currentRow: number, currentPatternOrderIndex?: number) => void;
 	private onPatternRequest?: (patternOrderIndex: number) => void;
 	private waveformCallback?: (channels: Float32Array[]) => void;
+	private channelToneHzCallback?: (payload: {
+		frequencies: (number | null)[];
+		sidTimerHz: (number | null)[];
+		syncbuzzerTimerHz: (number | null)[];
+		registers: number[];
+	}) => void;
 	private readonly commandQueue: MixerSlotCommand[] = [];
 
 	constructor(private readonly slotKindSource: Pick<Chip, 'audioSlotKind'>) {}
@@ -89,6 +103,17 @@ export class MixerWorkletBridge {
 		this.waveformCallback = callback;
 	}
 
+	setChannelToneHzCallback(
+		callback: (payload: {
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			registers: number[];
+		}) => void
+	): void {
+		this.channelToneHzCallback = callback;
+	}
+
 	acceptWorkletPayload(data: unknown): void {
 		if (typeof data !== 'object' || data === null || !('type' in data)) {
 			return;
@@ -97,7 +122,8 @@ export class MixerWorkletBridge {
 		if (
 			msgType !== 'position_update' &&
 			msgType !== 'request_pattern' &&
-			msgType !== 'channel_waveform'
+			msgType !== 'channel_waveform' &&
+			msgType !== 'channel_tone_hz'
 		) {
 			return;
 		}
@@ -111,6 +137,14 @@ export class MixerWorkletBridge {
 				break;
 			case 'channel_waveform':
 				this.waveformCallback?.(message.channels);
+				break;
+			case 'channel_tone_hz':
+				this.channelToneHzCallback?.({
+					frequencies: message.frequencies,
+					registers: message.registers ?? [],
+					sidTimerHz: message.sidTimerHz ?? [],
+					syncbuzzerTimerHz: message.syncbuzzerTimerHz ?? []
+				});
 				break;
 		}
 	}

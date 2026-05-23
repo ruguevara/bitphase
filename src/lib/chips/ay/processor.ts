@@ -108,6 +108,17 @@ export class AYProcessor
 		this.bridge.setWaveformCallback(callback);
 	}
 
+	setChannelToneHzCallback(
+		callback: (payload: {
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			registers: number[];
+		}) => void
+	): void {
+		this.bridge.setChannelToneHzCallback(callback);
+	}
+
 	play(initialSpeed?: number): void {
 		this.bridge.sendCommand({ type: 'play', initialSpeed });
 	}

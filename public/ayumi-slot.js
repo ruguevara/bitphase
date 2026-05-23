@@ -141,6 +141,37 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		this.waveformPostCounter = 0;
 	}
 
+	_collectChannelPlaybackHz() {
+		const clock = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
+		const toneHz = [];
+		const sidTimerHz = [];
+		const syncbuzzerTimerHz = [];
+		for (let i = 0; i < this.registerState.channelCount; i++) {
+			const channel = this.registerState.channels[i];
+			if (!channel?.mixer?.tone) {
+				toneHz.push(null);
+			} else {
+				const tonePeriod = channel.tone & 0xfff;
+				toneHz.push(tonePeriod > 0 ? clock / (16 * tonePeriod) : null);
+			}
+
+			if (!channel?.sid?.enabled) {
+				sidTimerHz.push(null);
+			} else {
+				const sidPeriod = channel.sid.period & 0xffff;
+				sidTimerHz.push(sidPeriod > 0 ? clock / sidPeriod : null);
+			}
+
+			if (!channel?.syncbuzzer?.enabled) {
+				syncbuzzerTimerHz.push(null);
+			} else {
+				const syncPeriod = channel.syncbuzzer.period & 0xffff;
+				syncbuzzerTimerHz.push(syncPeriod > 0 ? clock / syncPeriod : null);
+			}
+		}
+		return { toneHz, sidTimerHz, syncbuzzerTimerHz };
+	}
+
 	handleStop() {
 		this.resetChannelWaveformCapture();
 		super.handleStop();
@@ -207,6 +238,14 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				return out;
 			});
 			this._post({ type: 'channel_waveform', channels });
+			const playbackHz = this._collectChannelPlaybackHz();
+			this._post({
+				type: 'channel_tone_hz',
+				frequencies: playbackHz.toneHz,
+				sidTimerHz: playbackHz.sidTimerHz,
+				syncbuzzerTimerHz: playbackHz.syncbuzzerTimerHz,
+				registers: this._collectHardwareRegisters()
+			});
 		}
 
 		this.finishAudioBlockFlushTransport(numSamples, this.paused);

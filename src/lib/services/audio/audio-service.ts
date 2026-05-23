@@ -9,6 +9,7 @@ import { ChipSettings } from './chip-settings';
 import type { CatchUpSegment } from './play-from-position';
 import { channelMuteStore } from '../../stores/channel-mute.svelte';
 import { waveformStore } from '../../stores/waveform.svelte';
+import { playbackToneDebugStore } from '../../stores/playback-tone-debug.svelte';
 
 import type { Pattern } from '../../models/song';
 
@@ -137,22 +138,43 @@ export class AudioService {
 
 		const processorWithWaveform = processor as {
 			setWaveformCallback?: (cb: (channels: Float32Array[]) => void) => void;
+			setChannelToneHzCallback?: (cb: (payload: {
+				frequencies: (number | null)[];
+				sidTimerHz: (number | null)[];
+				syncbuzzerTimerHz: (number | null)[];
+				registers: number[];
+			}) => void) => void;
 		};
 		processorWithWaveform.setWaveformCallback?.((channels: Float32Array[]) => {
 			const showWaveform = this._isPlaying || this._previewChipIndices.has(chipIndex);
 			if (showWaveform) waveformStore.setChannels(chipIndex, channels);
+		});
+		processorWithWaveform.setChannelToneHzCallback?.((payload) => {
+			const showToneDebug = this._isPlaying || this._previewChipIndices.has(chipIndex);
+			if (showToneDebug) {
+				playbackToneDebugStore.setChipPlaybackHz(chipIndex, {
+					toneHz: payload.frequencies,
+					sidTimerHz: payload.sidTimerHz,
+					syncbuzzerTimerHz: payload.syncbuzzerTimerHz,
+					registers: payload.registers
+				});
+			}
 		});
 	}
 
 	setPreviewActiveForChips(indices: number | number[] | null): void {
 		if (indices === null) {
 			this._previewChipIndices.clear();
-			if (!this._isPlaying) waveformStore.clear();
+			if (!this._isPlaying) {
+				waveformStore.clear();
+				playbackToneDebugStore.clear();
+			}
 			return;
 		}
 		const arr = Array.isArray(indices) ? indices : [indices];
 		if (!this._isPlaying) {
 			waveformStore.clear();
+			playbackToneDebugStore.clear();
 		}
 		this._previewChipIndices = new Set(arr);
 	}
@@ -215,6 +237,7 @@ export class AudioService {
 		this._previewChipIndices.clear();
 
 		waveformStore.clear();
+		playbackToneDebugStore.clear();
 
 		this.chipProcessors.forEach((chipProcessor) => {
 			chipProcessor.stop();

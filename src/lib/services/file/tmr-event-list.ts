@@ -84,7 +84,7 @@ export function writeEventItems(
 		offset += AY_REGISTER_COUNT;
 		view.setUint16(offset, item.psgMask, true);
 		offset += 2;
-		view.setUint32(offset, item.timerInterval, true);
+		view.setUint32(offset, item.timerFrequency, true);
 		offset += 4;
 		view.setUint16(offset, item.timerEventIndex, true);
 		offset += 2;
@@ -106,11 +106,11 @@ export function readEventItems(
 		offset += AY_REGISTER_COUNT;
 		const psgMask = view.getUint16(offset, true);
 		offset += 2;
-		const timerInterval = view.getUint32(offset, true);
+		const timerFrequency = view.getUint32(offset, true);
 		offset += 4;
 		const timerEventIndex = view.getUint16(offset, true);
 		offset += 2;
-		eventItems.push({ psgData, psgMask, timerInterval, timerEventIndex });
+		eventItems.push({ psgData, psgMask, timerFrequency, timerEventIndex });
 	}
 	return eventItems;
 }

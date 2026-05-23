@@ -1,6 +1,8 @@
 import { AY_REGISTER_COUNT, registerApplyMask } from './ay-export-utils';
 import {
+	decodeTimerFrequencyHz,
 	registerMaskFromEventPsgApplyMask,
+	timerFrequencyHzToPeriodTicks,
 	timerIndexFromEventPsgApplyMask,
 	TMR_FRAME_SIZE,
 	TMR_HEADER_SIZE,
@@ -43,7 +45,7 @@ export type ParsedTmrHeader = {
 };
 
 export type ParsedTimerSlot = {
-	interval: number;
+	frequencyHz: number;
 	eventIndex: number;
 	command: TmrTimerCommand;
 };
@@ -61,7 +63,7 @@ export type ParsedEventItem = {
 	psgApplyMask: number;
 	registerApplyMask: number;
 	timerIndex: number;
-	timerInterval: number;
+	frequencyHz: number;
 	timerEventIndex: number;
 };
 
@@ -144,14 +146,14 @@ export function parseTMR(buffer: ArrayBuffer): TmrParseResult {
 		offset += 2;
 		const timers: ParsedTimerSlot[] = [];
 		for (let timerIndex = 0; timerIndex < 3; timerIndex++) {
-			const interval = view.getUint32(offset, true);
+			const frequencyStored = view.getUint32(offset, true);
 			offset += 4;
 			const eventIndex = view.getUint16(offset, true);
 			offset += 2;
 			timers.push({
-				interval,
+				frequencyHz: decodeTimerFrequencyHz(frequencyStored),
 				eventIndex,
-				command: resolveTimerCommand(interval, eventIndex)
+				command: resolveTimerCommand(frequencyStored, eventIndex)
 			});
 		}
 		frames.push({
@@ -193,7 +195,7 @@ export function toParsedEventItems(
 			psgApplyMask: record.psgMask,
 			registerApplyMask: registerApplyMaskValue,
 			timerIndex: timerIndexFromEventPsgApplyMask(record.psgMask),
-			timerInterval: record.timerInterval,
+			frequencyHz: decodeTimerFrequencyHz(record.timerFrequency),
 			timerEventIndex: record.timerEventIndex
 		};
 	});
@@ -210,12 +212,12 @@ export function attachEventListToTmrFile(
 	};
 }
 
-export function resolveTimerCommand(interval: number, eventIndex: number): TmrTimerCommand {
+export function resolveTimerCommand(frequencyStored: number, eventIndex: number): TmrTimerCommand {
 	if (eventIndex === TMR_TIMER_EVENT_STOP) {
 		return 'stop';
 	}
-	if (interval !== 0 || eventIndex !== 0) {
-		if (interval > 0 && eventIndex !== TMR_TIMER_EVENT_STOP) {
+	if (frequencyStored !== 0 || eventIndex !== 0) {
+		if (frequencyStored > 0 && eventIndex !== TMR_TIMER_EVENT_STOP) {
 			return 'start';
 		}
 	}
@@ -231,10 +233,6 @@ export function formatHz(value: number): string {
 		return `${value} Hz`;
 	}
 	return `${value.toFixed(2)} Hz`;
-}
-
-export function timerIntervalToHz(psgClockHz: number, intervalTicks: number): number {
-	return psgClockHz / Math.max(1, intervalTicks);
 }
 
 export function formatTimerFrequencyHz(frequencyHz: number): string {
@@ -295,7 +293,7 @@ export function formatTimerSlotSummary(slot: ParsedTimerSlot): string {
 		return 'STOP';
 	}
 	if (slot.command === 'start') {
-		return `START  interval ${slot.interval.toLocaleString()}  → event #${slot.eventIndex}`;
+		return `START  ${formatTimerFrequencyHz(slot.frequencyHz)}  → event #${slot.eventIndex}`;
 	}
 	return '—';
 }
@@ -338,7 +336,6 @@ export type TmrScheduleEntry = {
 	timerIndex: number;
 	kind: TmrScheduleEntryKind;
 	eventIndex?: number;
-	interval?: number;
 	frequencyHz?: number;
 	eventTimerIndex?: number;
 	writes?: string;
@@ -353,7 +350,8 @@ export type TmrScheduleResult = {
 
 type TimerRuntimeState = {
 	active: boolean;
-	interval: number;
+	frequencyHz: number;
+	periodTicks: number;
 	eventIndex: number;
 	countdown: number;
 };
@@ -368,7 +366,8 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 
 	const timers: TimerRuntimeState[] = Array.from({ length: 3 }, () => ({
 		active: false,
-		interval: 1,
+		frequencyHz: 0,
+		periodTicks: 1,
 		eventIndex: 0,
 		countdown: 1
 	}));
@@ -405,9 +404,13 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 				}
 			} else if (slot.command === 'start') {
 				timer.active = true;
-				timer.interval = Math.max(1, slot.interval);
+				timer.frequencyHz = slot.frequencyHz;
+				timer.periodTicks = timerFrequencyHzToPeriodTicks(
+					file.header.psgClockHz,
+					slot.frequencyHz
+				);
 				timer.eventIndex = slot.eventIndex;
-				timer.countdown = timer.interval;
+				timer.countdown = timer.periodTicks;
 				if (
 					!pushEntry({
 						frame: frame.index,
@@ -416,8 +419,7 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 						timerIndex,
 						kind: 'start',
 						eventIndex: slot.eventIndex,
-						interval: timer.interval,
-						frequencyHz: timerIntervalToHz(file.header.psgClockHz, timer.interval)
+						frequencyHz: slot.frequencyHz
 					})
 				) {
 					return { entries, chipTicksPerFrame, truncated: true };
@@ -448,7 +450,7 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 						? 'STOP'
 						: `#${item.timerEventIndex}`;
 
-				const fireInterval = timer.interval;
+				const fireFrequencyHz = timer.frequencyHz;
 
 				if (
 					!pushEntry({
@@ -459,8 +461,7 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 						kind: 'fire',
 						eventIndex: timer.eventIndex,
 						eventTimerIndex: item.timerIndex,
-						interval: fireInterval,
-						frequencyHz: timerIntervalToHz(file.header.psgClockHz, fireInterval),
+						frequencyHz: fireFrequencyHz,
 						writes: formatEventItemWrites(item),
 						nextLabel
 					})
@@ -474,10 +475,14 @@ export function buildTmrSchedule(file: ParsedTmrFile, maxEntries = 5000): TmrSch
 				}
 
 				timer.eventIndex = item.timerEventIndex;
-				if (item.timerInterval > 0) {
-					timer.interval = item.timerInterval;
+				if (item.frequencyHz > 0) {
+					timer.frequencyHz = item.frequencyHz;
+					timer.periodTicks = timerFrequencyHzToPeriodTicks(
+						file.header.psgClockHz,
+						item.frequencyHz
+					);
 				}
-				timer.countdown = timer.interval;
+				timer.countdown = timer.periodTicks;
 			}
 		}
 	}
@@ -503,7 +508,7 @@ export function formatScheduleEntry(entry: TmrScheduleEntry): string {
 	if (entry.kind === 'start') {
 		const frequency =
 			entry.frequencyHz !== undefined ? formatTimerFrequencyHz(entry.frequencyHz) : '—';
-		return `Timer ${timer} START → event #${entry.eventIndex}, interval ${entry.interval?.toLocaleString()} (${frequency})`;
+		return `Timer ${timer} START → event #${entry.eventIndex}, ${frequency}`;
 	}
 	if (entry.kind === 'stop') {
 		return `Timer ${timer} STOP`;

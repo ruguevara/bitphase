@@ -9,9 +9,9 @@ import {
 	formatTimerFrequencyHz,
 	formatTimerSlotSummary,
 	parseTMR,
-	resolveTimerCommand,
-	timerIntervalToHz
+	resolveTimerCommand
 } from '@/lib/services/file/tmr-parser';
+import { timerPeriodTicksToFrequencyHz } from '@/lib/services/file/tmr-format';
 import type { SongCaptureFrame } from '@/lib/services/file/ay-export-utils';
 
 function disabledSidFrame(): SongCaptureFrame {
@@ -78,10 +78,10 @@ describe('tmr parser', () => {
 
 	it('classifies timer commands', () => {
 		expect(resolveTimerCommand(0, 0)).toBe('none');
-		expect(formatTimerSlotSummary({ interval: 0, eventIndex: 0, command: 'none' })).toBe('—');
-		expect(formatTimerSlotSummary({ interval: 0, eventIndex: 0xffff, command: 'stop' })).toBe('STOP');
+		expect(formatTimerSlotSummary({ frequencyHz: 0, eventIndex: 0, command: 'none' })).toBe('—');
+		expect(formatTimerSlotSummary({ frequencyHz: 0, eventIndex: 0xffff, command: 'stop' })).toBe('STOP');
 		expect(
-			formatTimerSlotSummary({ interval: 500, eventIndex: 3, command: 'start' })
+			formatTimerSlotSummary({ frequencyHz: 1773.4, eventIndex: 3, command: 'start' })
 		).toContain('event #3');
 	});
 
@@ -121,8 +121,7 @@ describe('tmr parser', () => {
 		expect(firstFire.tickInFrame).toBe(999);
 		expect(firstFire.eventIndex).toBe(0);
 		expect(firstFire.eventTimerIndex).toBe(0);
-		expect(firstFire.interval).toBe(1000);
-		expect(firstFire.frequencyHz).toBeCloseTo(timerIntervalToHz(1773400, 1000));
+		expect(firstFire.frequencyHz).toBeCloseTo(timerPeriodTicksToFrequencyHz(1773400, 1000));
 		expect(formatScheduleTimeMs(firstFire.timeMs)).toBe('0.563 ms');
 		expect(formatTimerFrequencyHz(firstFire.frequencyHz!)).toBe('1.773 kHz');
 	});

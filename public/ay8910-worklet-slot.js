@@ -226,10 +226,21 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		this._applyRegisterStateToEngine();
 	}
 
+	_getEngineRegisterState() {
+		if (this.virtualChannelMixer.hasVirtualChannels()) {
+			return this.virtualChannelMixer.merge(this.registerState, this.state);
+		}
+		return this.registerState;
+	}
+
+	_collectHardwareRegisters() {
+		return this._getEngineRegisterState().toHardwareRegisters();
+	}
+
 	_applyRegisterStateToEngine() {
 		if (!this.ayumiEngine) return;
 		if (this.virtualChannelMixer.hasVirtualChannels()) {
-			const hwState = this.virtualChannelMixer.merge(this.registerState, this.state);
+			const hwState = this._getEngineRegisterState();
 			this.ayumiEngine.applyRegisterState(hwState);
 			this.registerState.forceEnvelopeShapeWrite = false;
 		} else {

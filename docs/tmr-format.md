@@ -32,11 +32,11 @@ Additionally the TMR frame contains information that indicates the start and sto
 | TMR piece | Size | Purpose |
 | --------- | ---- | ------ |
 | psg_mask | 2 bytes (`uint16` LE) | mask for PSG reg writes, MSB = reg 0, 1=write, 0=skip/no change |
-| Timer 1 frequency | 4 bytes (`uint32` LE) | frequency/interval for interrupt schedule, 0=skip/no change |
+| Timer 1 frequency | 4 bytes (`uint32` LE) | timer rate in Hz, 16.16 fixed point; 0 = skip/no change |
 | Timer 1 Event | 2 bytes (`uint16` LE) | index into EventList for next timed action, `0xFFFF`=stop active timer |
-| Timer 2 frequency | 4 bytes (`uint32` LE) | frequency/interval for interrupt schedule, 0=skip/no change |
+| Timer 2 frequency | 4 bytes (`uint32` LE) | timer rate in Hz, 16.16 fixed point; 0 = skip/no change |
 | Timer 2 Event | 2 bytes (`uint16` LE) | index into EventList for next timed action, `0xFFFF`=stop active timer |
-| Timer 3 frequency | 4 bytes (`uint32` LE) | frequency/interval for interrupt schedule, 0=skip/no change |
+| Timer 3 frequency | 4 bytes (`uint32` LE) | timer rate in Hz, 16.16 fixed point; 0 = skip/no change |
 | Timer 3 Event | 2 bytes (`uint16` LE) | index into EventList for next timed action, `0xFFFF`=stop active timer |
 
 **EventItem** is the representation of actions that can occur during an individual interval/action of a timer-based instrument. The whole of a timer-based instrument is a sequence of 1 or more linked EventItems. Each individual EventItem can by itself mimic a player frame write.
@@ -45,7 +45,7 @@ Additionally the TMR frame contains information that indicates the start and sto
 | --------------- | ---- | ------- |
 | PSG data | 14 bytes | register values for reg 0..13 |
 | PSG Mask | 2 bytes (`uint16` LE) | mask for PSG reg writes, MSB = reg 0, 1=write, 0=skip |
-| Timer Frequency | 4 bytes (`uint32` LE) | frequency/interval for interrupt schedule, 0=skip/no change |
+| Timer Frequency | 4 bytes (`uint32` LE) | timer rate in Hz, 16.16 fixed point; 0 = skip/no change |
 | Event | 2 bytes (`uint16` LE) | index into EventList for next timed action, `0xFFFF`=stop active timer |
 
 ## Per-frame TMR layout — 20 bytes (`frameSize`)
@@ -53,11 +53,11 @@ Additionally the TMR frame contains information that indicates the start and sto
 | Offset | Size | Field | Type |
 | ------ | ---- | ----- | ---- |
 | 0 | 2 | `psg_apply_mask` | `uint16` LE |
-| 2 | 4 | `timer_1_interval` | `uint32` LE |
+| 2 | 4 | `timer_1_frequency_hz` | `uint32` LE, 16.16 Hz |
 | 6 | 2 | `timer_1_event_index` | `uint16` LE |
-| 8 | 4 | `timer_2_interval` | `uint32` LE |
+| 8 | 4 | `timer_2_frequency_hz` | `uint32` LE, 16.16 Hz |
 | 12 | 2 | `timer_2_event_index` | `uint16` LE |
-| 14 | 4 | `timer_3_interval` | `uint32` LE |
+| 14 | 4 | `timer_3_frequency_hz` | `uint32` LE, 16.16 Hz |
 | 18 | 2 | `timer_3_event_index` | `uint16` LE |
 
 ## Per-Event layout — 22 bytes (`itemSize`)
@@ -79,7 +79,7 @@ Additionally the TMR frame contains information that indicates the start and sto
 | 12 | 1 | `psg_data_reg12` | `uint8` |
 | 13 | 1 | `psg_data_reg13` | `uint8` |
 | 14 | 2 | `psg_apply_mask` | `uint16` LE |
-| 16 | 4 | `timer_interval` | `uint32` LE |
+| 16 | 4 | `timer_frequency_hz` | `uint32` LE, 16.16 Hz |
 | 20 | 2 | `timer_event_index` | `uint16` LE |
 
 EventList item byte offset in `.tel` = `TEL_header_size + event_index × itemSize` (22).
@@ -112,18 +112,22 @@ EventList item byte offset in `.tel` = `TEL_header_size + event_index × itemSiz
 
 ## `psg_apply_mask`
 
-After decoding as `uint16` LE, bit **r** (MSB-first, **r**=0 is reg 0) = 1 → apply PSG delta for register **r** (0..13). Register bits use bits **15..2** (14 registers).
+Player-frame masks are derived from the captured replayer register state: for each 50 Hz frame, bit **r** is set when register **r** in that frame differs from the previous frame (same rule as `.psg` delta encoding, with initial previous state all zero).
+
+After decoding as `uint16` LE, bit **r** (MSB-first, **r**=0 is reg 0) = 1 → apply the paired PSG delta for register **r** (0..13). Register bits use bits **15..2** (14 registers). Mask `0` means no PSG register writes this frame.
 
 **EventItem only:** bits **1..0** encode the hardware timer slot (**0** = timer 1, **1** = timer 2, **2** = timer 3). This preserves timer context when following linked EventItems beyond the player-frame START command. Player-frame masks keep bits **1..0** clear (timer identity comes from the timer slot fields).
 
 Example: mask value `0xFFFB` (all regs except reg 8) → on disk: `FB FF`. EventItem on timer 2 writing reg 9 only: `0x0041` (`0x0040` reg mask + timer index 1).
+
+Timer frequency fields use the same **16.16 fixed-point Hz** encoding as `frame_rate_hz`: stored value = `round(hz × 65536)`. Decode as `stored / 65536`. Values are **Atari MFP timer rates** (2.4576 MHz clock, prescaler + data register), not raw YM chip-tick SID rates. Export converts captured YM timer periods via `atari-mfp-timer.ts` so playback matches tone rate on hardware. Bitphase’s internal player still runs SID at chip-tick rate (~16× tone Hz).
 
 ## Playback
 
 1. Apply PSG deltas per mask.
 2. Per timer:
    - **None** — no operation, no actions.
-   - **Start** — schedule new action with interval `f` and first EventItem at `event_index`.
+   - **Start** — schedule new action at frequency `f` Hz and first EventItem at `event_index`.
    - **Stop** — `event_index = 0xFFFF` (`FF FF`); stop any scheduled actions on that timer.
 
 ## Example: PWM on timer 1
@@ -131,17 +135,17 @@ Example: mask value `0xFFFB` (all regs except reg 8) → on disk: `FB FF`. Event
 ```
 Mask: bit 8 = 0  → ignore PSG volume A (mask value excludes reg 8)
 
-Timer 1: START → interval 1000 (E8 03 00 00), first event index 5 (05 00), byte offset 5×22 = 110
-Timer 2: nothing (interval 0, event 0)
-Timer 3: nothing (interval 0, event 0)
+Timer 1: START → 1773.4 Hz, first event index 5 (05 00), byte offset 5×22 = 110
+Timer 2: nothing (frequency 0, event 0)
+Timer 3: nothing (frequency 0, event 0)
 
-Item 0: interval 0 (00 00 00 00), write reg 8 = LOUD, go to 1
-Item 1: interval 0 (00 00 00 00), write reg 8 = quiet, go to 0 (loop)
+Item 0: frequency 0 (inherit), write reg 8 = LOUD, go to 1
+Item 1: frequency 0 (inherit), write reg 8 = quiet, go to 0 (loop)
 ```
 
-**f** = `tone_hz × rateMultiplier`. Items only toggle volume; rate stays **f** from **Start**.
+**f** is the timer rate in Hz. Items only toggle volume; rate stays **f** from **Start** unless an event item sets a new non-zero frequency.
 
-Asymmetric duty: e.g. **Start** `f_high`; item 1 sets interval to `f_low` on the quiet step; item 0 keeps interval `0` (inherit from chain).
+Asymmetric duty: e.g. **Start** at `f_high` Hz; item 1 sets frequency to `f_low` Hz on the quiet step; item 0 keeps frequency `0` (inherit from chain).
 
 ## Export
 

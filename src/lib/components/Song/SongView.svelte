@@ -27,6 +27,7 @@
 	import Input from '../Input/Input.svelte';
 	import { playbackStore } from '../../stores/playback.svelte';
 	import StatusBar from './StatusBar.svelte';
+	import PlaybackToneDebug from './PlaybackToneDebug.svelte';
 	import ChannelOscilloscopes from './ChannelOscilloscopes.svelte';
 	import { PatternService } from '../../services/pattern/pattern-service';
 	import { settingsStore } from '../../stores/settings.svelte';
@@ -652,6 +653,9 @@
 						{/if}
 					{/each}
 				</div>
+				{#if settingsStore.debugMode}
+					<PlaybackToneDebug {chipProcessors} />
+				{/if}
 			</div>
 			{#if isRightPanelExpanded}
 				<button

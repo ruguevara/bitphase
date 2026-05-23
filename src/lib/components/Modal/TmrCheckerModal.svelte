@@ -81,8 +81,10 @@
 		const query = frameFilter.trim();
 		let frames = parsedFile.frames;
 		if (!showInactiveFrames) {
-			frames = frames.filter((frame) =>
-				frame.timers.some((timer) => timer.command !== 'none' || frame.psgApplyMask !== 0xfffc)
+			frames = frames.filter(
+				(frame) =>
+					frame.psgApplyMask !== 0 ||
+					frame.timers.some((timer) => timer.command !== 'none')
 			);
 		}
 		if (!query) {
@@ -306,7 +308,7 @@
 									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Offset</th>
 									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Writes</th>
 									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Mask</th>
-									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Interval</th>
+									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Frequency</th>
 									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">Next</th>
 									<th class="px-3 py-2 font-medium text-[var(--color-app-text-muted)]">
 										Scheduled at (f)
@@ -338,7 +340,9 @@
 											</span>
 										</td>
 										<td class="px-3 py-2 font-mono text-[var(--color-app-text-secondary)]">
-											{item.timerInterval === 0 ? 'inherit' : item.timerInterval.toLocaleString()}
+											{item.frequencyHz === 0
+												? 'inherit'
+												: formatTimerFrequencyHz(item.frequencyHz)}
 										</td>
 										<td class="px-3 py-2 font-mono text-[var(--color-app-text-secondary)]">
 											{#if item.timerEventIndex === 0xffff}
@@ -432,11 +436,6 @@
 										<td class="px-3 py-2 font-mono text-[var(--color-app-text-secondary)]">
 											{#if entry.frequencyHz !== undefined}
 												{formatTimerFrequencyHz(entry.frequencyHz)}
-												{#if entry.interval !== undefined}
-													<span class="ml-1 text-[var(--color-app-text-muted)]">
-														({entry.interval.toLocaleString()} ticks)
-													</span>
-												{/if}
 											{:else}
 												—
 											{/if}

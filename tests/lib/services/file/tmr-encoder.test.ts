@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-	allRegistersApplyMask,
-	registerApplyMask,
-	volumeRegisterIndex,
-	type SongCaptureFrame
-} from '@/lib/services/file/ay-export-utils';
-import {
 	encodeEventPsgApplyMask,
 	encodeTMR,
 	TMR_FRAME_SIZE,
@@ -15,6 +9,24 @@ import {
 } from '@/lib/services/file/tmr-encoder';
 import { parseEventList, TEL_HEADER_SIZE } from '@/lib/services/file/tmr-event-list';
 import { attachEventListToTmrFile, parseTMR } from '@/lib/services/file/tmr-parser';
+import {
+	encodeTimerFrequencyHz
+} from '@/lib/services/file/tmr-format';
+import {
+	atariMfpFrequencyHzFromYmPeriod,
+	ATARI_MFP_FREQUENCY_HZ
+} from '@/lib/services/file/atari-mfp-timer';
+import {
+	registerApplyMask,
+	registersChangedMask,
+	volumeRegisterIndex,
+	type SongCaptureFrame
+} from '@/lib/services/file/ay-export-utils';
+
+function storedTimerHz(period: number, psgClockHz = 1773400): number {
+	const hz = atariMfpFrequencyHzFromYmPeriod(period, psgClockHz, ATARI_MFP_FREQUENCY_HZ);
+	return encodeTimerFrequencyHz(hz ?? 0);
+}
 
 function readU16LE(buffer: ArrayBuffer, offset: number): number {
 	return new DataView(buffer).getUint16(offset, true);
@@ -73,7 +85,9 @@ describe('tmr encoder', () => {
 	});
 
 	it('starts timer 1 with SID event chain on channel A', () => {
-		const frame = disabledSidFrame();
+		const registers = new Array(14).fill(0);
+		registers[8] = 0x0f;
+		const frame = disabledSidFrame(registers);
 		frame.sid[0] = {
 			enabled: true,
 			period: 1000,
@@ -88,8 +102,11 @@ describe('tmr encoder', () => {
 		});
 
 		const volumeMask = registerApplyMask(volumeRegisterIndex(0));
-		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE)).toBe(allRegistersApplyMask() & ~volumeMask);
-		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(1000);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE)).toBe(
+			registersChangedMask(registers, new Array(14).fill(0))
+		);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE)).toBe(volumeMask);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(1000));
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
 		expect(encoded.tmr.byteLength).toBe(TMR_HEADER_SIZE + TMR_FRAME_SIZE);
 		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
@@ -138,6 +155,25 @@ describe('tmr encoder', () => {
 		expect(encodedMask).toBe(encodeEventPsgApplyMask(volumeMask, 1));
 	});
 
+	it('derives player frame psg mask from register changes between frames', () => {
+		const silent = disabledSidFrame();
+		const playing = disabledSidFrame();
+		playing.registers[0] = 0x34;
+		playing.registers[1] = 0x01;
+		playing.registers[7] = 0x38;
+		playing.registers[8] = 0x0f;
+
+		const encoded = encodeTMR([silent, playing], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE)).toBe(0);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE)).toBe(
+			registersChangedMask(playing.registers, silent.registers)
+		);
+	});
+
 	it('keeps timer bits clear in player frame psg mask', () => {
 		const frame = disabledSidFrame();
 		frame.sid[1] = {
@@ -177,8 +213,8 @@ describe('tmr encoder', () => {
 		expect(encoded.tmr.byteLength).toBe(TMR_HEADER_SIZE + frames.length * TMR_FRAME_SIZE);
 		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
-		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(500);
-		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 2)).toBe(520);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(500));
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 2)).toBe(storedTimerHz(520));
 	});
 
 	it('reuses event chain after stop and start with same waveform config', () => {
