@@ -35,6 +35,14 @@
 </th>
 <th
 	class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5 text-[0.65rem]'}
+	title="Detune (semitone) added to tone period (auto mode)">
+	<div class="flex items-center justify-center gap-0.5">
+		<IconCarbonChartWinLoss class={iconSizeClass} />
+		<span>+</span>
+	</div>
+</th>
+<th
+	class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5 text-[0.65rem]'}
 	title="Detune added to tone period (auto mode)">
 	<div class="flex items-center justify-center gap-0.5">
 		<IconCarbonChartWinLoss class={iconSizeClass} />

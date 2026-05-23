@@ -3,6 +3,7 @@ import {
 	createDefaultAyTimerRow,
 	effectiveRowDetune,
 	effectiveRowPeriod,
+	effectiveRowToneDetune,
 	formatAyTimerWaveform,
 	normalizeAyInstrumentFields,
 	parseAyTimerWaveform,
@@ -196,6 +197,16 @@ export class AyTimerEffectsController {
 		);
 	}
 
+	updateRowToneDetune(index: number, text: string): void {
+		let parsed = this.parseSignedNum(text);
+		if (parsed === null) return;
+		if (parsed < -127) parsed = -127;
+		if (parsed > 128) parsed = 128;
+		this.updateTimerRows(
+			this.fields.timerRows.map((row, i) => (i === index ? { ...row, semitone: parsed } : row))
+		);
+	}
+
 	updateRowPeriod(index: number, text: string): void {
 		const parsed = this.parseNum(text);
 		if (parsed === null || parsed < 1) return;
@@ -245,6 +256,10 @@ export class AyTimerEffectsController {
 
 	rowPeriod(index: number): number {
 		return effectiveRowPeriod(this.fields.timerRows[index]);
+	}
+
+	rowToneDetune(index: number): number {
+		return effectiveRowToneDetune(this.fields.timerRows[index]);
 	}
 
 	rowSidPeriodMode(index: number): AySidPeriodMode {

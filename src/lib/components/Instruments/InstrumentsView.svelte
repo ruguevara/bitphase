@@ -278,6 +278,7 @@
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
+					semitone?: number;
 				}[];
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
@@ -288,6 +289,7 @@
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
+					semitone?: number;
 				}[];
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;

@@ -19,6 +19,7 @@
 	const sidEnabled = $derived(controller.rowSidEnabled(index));
 	const syncbuzzerEnabled = $derived(controller.rowSyncbuzzerEnabled(index));
 	const rowMode = $derived(controller.rowSidPeriodMode(index));
+	const rowToneDetune = $derived(controller.rowToneDetune(index));
 	const rowDetune = $derived(controller.rowDetune(index));
 	const rowPeriod = $derived(controller.rowPeriod(index));
 
@@ -83,6 +84,14 @@
 			<IconCarbonRenew class={iconSizeClass} />
 		{/if}
 	</div>
+</td>
+<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
+	<input
+		type="text"
+		class={numericInputClass(rowMode === 'manual')}
+		value={controller.formatSignedNum(rowToneDetune)}
+		onfocus={(e) => (e.target as HTMLInputElement).select()}
+		oninput={(e) => controller.updateRowToneDetune(index, (e.target as HTMLInputElement).value)} />
 </td>
 <td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
 	<input
