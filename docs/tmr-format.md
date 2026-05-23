@@ -120,7 +120,7 @@ After decoding as `uint16` LE, bit **r** (MSB-first, **r**=0 is reg 0) = 1 → a
 
 Example: mask value `0xFFFB` (all regs except reg 8) → on disk: `FB FF`. EventItem on timer 2 writing reg 9 only: `0x0041` (`0x0040` reg mask + timer index 1).
 
-Timer frequency fields use the same **16.16 fixed-point Hz** encoding as `frame_rate_hz`: stored value = `round(hz × 65536)`. Decode as `stored / 65536`. Values are **Atari MFP timer rates** (2.4576 MHz clock, prescaler + data register), not raw YM chip-tick SID rates. Export converts captured YM timer periods via `atari-mfp-timer.ts` so playback matches tone rate on hardware. Bitphase’s internal player still runs SID at chip-tick rate (~16× tone Hz).
+Timer frequency fields use the same **16.16 fixed-point Hz** encoding as `frame_rate_hz`: stored value = `round(hz × 65536)`. Decode as `stored / 65536`. Values are **Atari MFP timer rates** (2.4576 MHz clock, prescaler + data register), not raw YM chip-tick SID rates. Export converts captured YM timer periods via `atari-mfp-timer.ts` and applies a **2× output multiplier** so TMR playback matches hardware timer interrupt rate (~2× tone Hz). Bitphase’s internal player still runs SID at chip-tick rate (~16× tone Hz).
 
 ## Playback
 

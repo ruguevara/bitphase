@@ -10,7 +10,7 @@ describe('atari-mfp-timer', () => {
 		expect(calculateAtariMfpTimer(664, 2_000_000)).toEqual({ data: 204, prescalerIndex: 5 });
 	});
 
-	it('exports tone-rate Hz instead of chip-tick Hz', () => {
+	it('exports 2× tone-rate Hz for Atari MFP timer output', () => {
 		const ymPeriod = 664;
 		const aymFrequencyHz = 2_000_000;
 		const toneHz = aymFrequencyHz / (16 * ymPeriod);
@@ -18,8 +18,8 @@ describe('atari-mfp-timer', () => {
 		const chipSidHz = timerPeriodTicksToFrequencyHz(aymFrequencyHz, ymPeriod);
 
 		expect(mfpHz).not.toBeNull();
-		expect(mfpHz!).toBeCloseTo(toneHz, 0);
+		expect(mfpHz!).toBeCloseTo(toneHz * 2, 0);
 		expect(chipSidHz / toneHz).toBeCloseTo(16, 0);
-		expect(mfpHz!).toBeLessThan(chipSidHz / 8);
+		expect(mfpHz!).toBeCloseTo(chipSidHz / 8, 0);
 	});
 });

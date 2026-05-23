@@ -1,5 +1,6 @@
 export const ATARI_MFP_FREQUENCY_HZ = 2_457_600;
 export const ATARI_MFP_PRESCALERS = [1, 4, 10, 16, 50, 64, 100, 200] as const;
+export const ATARI_MFP_OUTPUT_FREQUENCY_MULTIPLIER = 2;
 
 export type AtariMfpTimer = {
 	data: number;
@@ -49,5 +50,7 @@ export function atariMfpFrequencyHzFromYmPeriod(
 	const { data, prescalerIndex } = calculateAtariMfpTimer(ymPeriod, aymFrequencyHz, mfpFrequencyHz);
 	const prescaler = ATARI_MFP_PRESCALERS[prescalerIndex]!;
 	const effectiveCount = data === 0 ? 256 : data;
-	return mfpFrequencyHz / (prescaler * effectiveCount);
+	return (
+		(mfpFrequencyHz / (prescaler * effectiveCount)) * ATARI_MFP_OUTPUT_FREQUENCY_MULTIPLIER
+	);
 }
