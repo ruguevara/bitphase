@@ -196,6 +196,7 @@ function reconstructInstrument(data: any): Instrument {
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
+					semitone?: number;
 				}[];
 			}
 		).timerRows = data.timerRows.map(
@@ -205,6 +206,7 @@ function reconstructInstrument(data: any): Instrument {
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
+				semitone?: number;
 			}) => {
 				const timerRow: {
 					sid: boolean;
@@ -212,6 +214,7 @@ function reconstructInstrument(data: any): Instrument {
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
+					semitone?: number;
 				} = {
 					sid: row.sid ?? false,
 					syncbuzzer: row.syncbuzzer ?? false,
@@ -222,6 +225,7 @@ function reconstructInstrument(data: any): Instrument {
 				};
 				if (row.detune !== undefined) timerRow.detune = row.detune;
 				if (row.period !== undefined) timerRow.period = row.period;
+				if (row.semitone !== undefined) timerRow.semitone = row.semitone;
 				return timerRow;
 			}
 		);
@@ -269,10 +273,7 @@ function reconstructInstrumentRow(data: any): InstrumentRow {
 }
 
 export class FileImportService {
-	static reconstructFromJson(
-		json: string,
-		getChip?: (chipType: string) => Chip | null
-	): Project {
+	static reconstructFromJson(json: string, getChip?: (chipType: string) => Chip | null): Project {
 		const data = JSON.parse(json);
 		const resolveChip =
 			getChip ??
@@ -346,9 +347,7 @@ export class FileImportService {
 								'Unknown format. Expected PT3 or VT2 module (.pt3, .vt2).'
 							);
 						}
-						const project = isPT3
-							? await loadPT3File(file)
-							: await loadVT2File(file);
+						const project = isPT3 ? await loadPT3File(file) : await loadVT2File(file);
 						resolve(project);
 					} catch (error) {
 						console.error('Error loading module file:', error);

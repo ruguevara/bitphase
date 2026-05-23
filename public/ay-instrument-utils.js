@@ -1,5 +1,6 @@
 export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
+export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
 export const AY_TONE_REGISTER_PRESCALER = 16;
 export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
@@ -22,6 +23,10 @@ export function resolveAyTimerRowSidPeriodMode(row) {
 	return row?.sidPeriodMode === 'manual' ? 'manual' : 'auto';
 }
 
+export function effectiveRowToneDetune(row) {
+	return row?.semitone ?? DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE;
+}
+
 export function effectiveRowDetune(row) {
 	return row?.detune ?? DEFAULT_AY_SID_PERIOD_DETUNE;
 }
@@ -36,13 +41,9 @@ export function computeTimerEffectPeriod(tonePeriod, timerRow) {
 	}
 	if (tonePeriod > 0) {
 		const detune = effectiveRowDetune(timerRow) | 0;
-		const tonePeriodWithDetune = ((tonePeriod + detune) & 0xffff) || 1;
-		return Math.max(
-			1,
-			Math.round(
-				(AY_TONE_REGISTER_PRESCALER * tonePeriodWithDetune) / AY_AUTO_TIMER_TONE_MULTIPLIER
-			)
-		);
+		const semitone = effectiveRowToneDetune(timerRow) | 0;
+		const transposeFactor = Math.pow(2, -semitone / 12);
+		return Math.max(1, (Math.round(tonePeriod * transposeFactor) + detune) & 0xffff || 1);
 	}
 	return effectiveRowPeriod(timerRow);
 }
@@ -63,6 +64,9 @@ function normalizeTimerRow(row, legacy) {
 		normalized.detune = row.detune;
 	} else if (legacy.sidPeriodDetune !== DEFAULT_AY_SID_PERIOD_DETUNE) {
 		normalized.detune = legacy.sidPeriodDetune;
+	}
+	if (row?.semitone !== undefined) {
+		normalized.semitone = row.semitone;
 	}
 	if (row?.period !== undefined) {
 		normalized.period = Math.max(1, row.period & 0xffff);
