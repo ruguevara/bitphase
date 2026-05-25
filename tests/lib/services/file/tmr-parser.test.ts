@@ -11,7 +11,7 @@ import {
 	parseTMR,
 	resolveTimerCommand
 } from '@/lib/services/file/tmr-parser';
-import { timerPeriodTicksToFrequencyHz } from '@/lib/services/file/tmr-format';
+import { exportTimerFrequencyHzFromYmPeriod } from '@/lib/services/file/tmr-format';
 import type { SongCaptureFrame } from '@/lib/services/file/ay-export-utils';
 
 function disabledSidFrame(): SongCaptureFrame {
@@ -117,13 +117,20 @@ describe('tmr parser', () => {
 		const fires = schedule.entries.filter((entry) => entry.kind === 'fire');
 		expect(fires.length).toBeGreaterThan(1);
 
+		const chipFrequency = 1773400;
+		const ymPeriod = 1000;
+		const exportHz = exportTimerFrequencyHzFromYmPeriod(chipFrequency, ymPeriod);
+		const timerPeriodTicks = Math.round(chipFrequency / exportHz);
+
 		const firstFire = fires[0]!;
-		expect(firstFire.tickInFrame).toBe(999);
+		expect(firstFire.tickInFrame).toBe(timerPeriodTicks - 1);
 		expect(firstFire.eventIndex).toBe(0);
 		expect(firstFire.eventTimerIndex).toBe(0);
-		expect(firstFire.frequencyHz).toBeCloseTo(timerPeriodTicksToFrequencyHz(1773400, 1000));
-		expect(formatScheduleTimeMs(firstFire.timeMs)).toBe('0.563 ms');
-		expect(formatTimerFrequencyHz(firstFire.frequencyHz!)).toBe('1.773 kHz');
+		expect(firstFire.frequencyHz).toBeCloseTo(exportHz);
+		expect(formatScheduleTimeMs(firstFire.timeMs)).toBe(
+			formatScheduleTimeMs(((timerPeriodTicks - 1) / chipFrequency) * 1000)
+		);
+		expect(formatTimerFrequencyHz(firstFire.frequencyHz!)).toBe(formatTimerFrequencyHz(exportHz));
 	});
 });
 

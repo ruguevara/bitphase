@@ -12,14 +12,13 @@ import {
 import { encodeEventList } from './tmr-event-list';
 import {
 	encodeEventPsgApplyMask,
-	encodeTimerFrequencyHz,
+	exportTimerFrequencyStoredFromYmPeriod,
 	registerMaskFromEventPsgApplyMask,
 	TMR_FRAME_SIZE,
 	TMR_HEADER_SIZE,
 	TMR_TIMER_EVENT_STOP,
 	type TmrEventItemRecord
 } from './tmr-format';
-import { atariMfpFrequencyHzFromYmPeriod, ATARI_MFP_FREQUENCY_HZ } from './atari-mfp-timer';
 
 export {
 	encodeEventPsgApplyMask,
@@ -43,23 +42,10 @@ export type TmrEncodeOptions = {
 	interruptFrequency: number;
 	isYm?: boolean;
 	chipIndex?: number;
-	mfpFrequencyHz?: number;
 };
 
 function encodeExportTimerFrequencyHz(ymPeriod: number, options: TmrEncodeOptions): number {
-	const period = ymPeriod & 0xffff;
-	if (period <= 0) {
-		return 0;
-	}
-	const hz = atariMfpFrequencyHzFromYmPeriod(
-		period,
-		options.chipFrequency,
-		options.mfpFrequencyHz ?? ATARI_MFP_FREQUENCY_HZ
-	);
-	if (hz === null) {
-		return 0;
-	}
-	return encodeTimerFrequencyHz(hz);
+	return exportTimerFrequencyStoredFromYmPeriod(ymPeriod, options.chipFrequency);
 }
 
 type TimerCommand = {

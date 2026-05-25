@@ -11,7 +11,7 @@ export function timerPeriodToFrequencyHz(chipClockHz: number, periodTicks: numbe
 	if (period <= 0 || chipClockHz <= 0) {
 		return null;
 	}
-	return chipClockHz / period;
+	return chipClockHz / (8 * period);
 }
 
 export function formatToneFrequencyHz(hz: number | null): string {

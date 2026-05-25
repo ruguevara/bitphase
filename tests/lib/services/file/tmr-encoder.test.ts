@@ -10,12 +10,9 @@ import {
 import { parseEventList, TEL_HEADER_SIZE } from '@/lib/services/file/tmr-event-list';
 import { attachEventListToTmrFile, parseTMR } from '@/lib/services/file/tmr-parser';
 import {
-	encodeTimerFrequencyHz
+	encodeTimerFrequencyHz,
+	exportTimerFrequencyStoredFromYmPeriod
 } from '@/lib/services/file/tmr-format';
-import {
-	atariMfpFrequencyHzFromYmPeriod,
-	ATARI_MFP_FREQUENCY_HZ
-} from '@/lib/services/file/atari-mfp-timer';
 import {
 	registerApplyMask,
 	registersChangedMask,
@@ -24,8 +21,7 @@ import {
 } from '@/lib/services/file/ay-export-utils';
 
 function storedTimerHz(period: number, psgClockHz = 1773400): number {
-	const hz = atariMfpFrequencyHzFromYmPeriod(period, psgClockHz, ATARI_MFP_FREQUENCY_HZ);
-	return encodeTimerFrequencyHz(hz ?? 0);
+	return exportTimerFrequencyStoredFromYmPeriod(period, psgClockHz);
 }
 
 function readU16LE(buffer: ArrayBuffer, offset: number): number {

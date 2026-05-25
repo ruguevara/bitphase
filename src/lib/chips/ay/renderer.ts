@@ -141,6 +141,23 @@ export class AYChipRenderer implements ChipRenderer {
 		this.applyAyExportLaneSetup(state, song, project, wasm, ayumiPtr, wasmBuffer, true);
 	}
 
+	private syncExportEngineRegisterState(
+		audioDriver: any,
+		ayumiEngine: any,
+		registerState: any,
+		mixer: any,
+		state: any
+	): void {
+		audioDriver.resetChannelMixerState();
+		registerState.reset();
+		ayumiEngine.reset();
+		if (mixer.hasVirtualChannels()) {
+			ayumiEngine.applyRegisterState(mixer.merge(registerState, state));
+		} else {
+			ayumiEngine.applyRegisterState(registerState);
+		}
+	}
+
 	private applyAyExportLaneSetup(
 		state: any,
 		song: any,
@@ -560,6 +577,14 @@ export class AYChipRenderer implements ChipRenderer {
 					postMessage: () => {}
 				});
 
+				this.syncExportEngineRegisterState(
+					audioDriver,
+					ayumiEngine,
+					registerState,
+					mixer,
+					state
+				);
+
 				const patterns = this.getPatterns(song, patternOrder);
 				if (patterns.length === 0) {
 					throw new Error('No patterns found');
@@ -681,6 +706,8 @@ export class AYChipRenderer implements ChipRenderer {
 		const patternProcessor = new TrackerPatternProcessor(state, audioDriver, {
 			postMessage: () => {}
 		});
+
+		this.syncExportEngineRegisterState(audioDriver, ayumiEngine, registerState, mixer, state);
 
 		const patterns = this.getPatterns(song, patternOrder);
 

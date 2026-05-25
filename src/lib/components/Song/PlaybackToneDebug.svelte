@@ -6,7 +6,7 @@
 		AY_REGISTER_COUNT,
 		DEFAULT_AY_REGISTERS
 	} from '../../services/file/ay-export-utils';
-	import { AY_REGISTER_NAMES } from '../../services/file/tmr-parser';
+	import { AY_REGISTER_NAMES, formatTimerFrequencyHz } from '../../services/file/tmr-parser';
 	import { playbackToneDebugStore } from '../../stores/playback-tone-debug.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import IconCarbonActivity from '~icons/carbon/activity';
@@ -28,6 +28,7 @@
 		accentClass: string;
 		icon: Component<{ class?: string }>;
 		readHz: (column: ChannelColumn) => number | null;
+		formatHz: (hz: number | null) => string;
 	};
 
 	type ChipRegisterRow = {
@@ -41,21 +42,24 @@
 			label: 'Tone',
 			icon: IconCarbonMusic,
 			accentClass: 'text-[var(--color-pattern-note)]',
-			readHz: (column) => column.toneHz
+			readHz: (column) => column.toneHz,
+			formatHz: formatToneFrequencyHz
 		},
 		{
 			key: 'sid',
 			label: 'SID',
 			icon: IconCarbonChartWinLoss,
 			accentClass: 'text-[var(--color-pattern-instrument)]',
-			readHz: (column) => column.sidHz
+			readHz: (column) => column.sidHz,
+			formatHz: (hz) => (hz === null || hz <= 0 ? '—' : formatTimerFrequencyHz(hz))
 		},
 		{
 			key: 'sync',
 			label: 'Syncbuzzer',
 			icon: IconCarbonActivity,
 			accentClass: 'text-[var(--color-pattern-envelope)]',
-			readHz: (column) => column.syncHz
+			readHz: (column) => column.syncHz,
+			formatHz: (hz) => (hz === null || hz <= 0 ? '—' : formatTimerFrequencyHz(hz))
 		}
 	];
 
@@ -142,7 +146,7 @@
 							{#each columns as column (metric.key + column.label)}
 								{@const hz = metric.readHz(column)}
 								<div class="px-0.5 text-center {hzCellClass(hz, metric.accentClass)}">
-									{formatToneFrequencyHz(hz)}
+									{metric.formatHz(hz)}
 								</div>
 							{/each}
 						{/each}

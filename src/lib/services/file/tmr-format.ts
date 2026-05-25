@@ -26,8 +26,41 @@ export function decodeTimerFrequencyHz(stored: number): number {
 	return stored / TMR_TIMER_FREQUENCY_SCALE;
 }
 
+export const YM_SID_TONE_PERIOD_DIVISOR = 16;
+export const TMR_EXPORT_TIMER_FREQUENCY_TONE_MULTIPLIER = 2;
+
 export function timerPeriodTicksToFrequencyHz(psgClockHz: number, periodTicks: number): number {
 	return psgClockHz / Math.max(1, periodTicks);
+}
+
+export function ymSidToneFrequencyHz(psgClockHz: number, ymPeriod: number): number {
+	const period = ymPeriod & 0xffff;
+	if (period <= 0 || psgClockHz <= 0) {
+		return 0;
+	}
+	return psgClockHz / (YM_SID_TONE_PERIOD_DIVISOR * period);
+}
+
+export function exportTimerFrequencyHzFromYmPeriod(
+	chipFrequencyHz: number,
+	ymPeriod: number
+): number {
+	const toneHz = ymSidToneFrequencyHz(chipFrequencyHz, ymPeriod);
+	if (toneHz <= 0) {
+		return 0;
+	}
+	return toneHz * TMR_EXPORT_TIMER_FREQUENCY_TONE_MULTIPLIER;
+}
+
+export function exportTimerFrequencyStoredFromYmPeriod(
+	ymPeriod: number,
+	chipFrequencyHz: number
+): number {
+	const exportHz = exportTimerFrequencyHzFromYmPeriod(chipFrequencyHz, ymPeriod);
+	if (exportHz <= 0) {
+		return 0;
+	}
+	return encodeTimerFrequencyHz(exportHz);
 }
 
 export function timerFrequencyHzToPeriodTicks(psgClockHz: number, hz: number): number {

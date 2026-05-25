@@ -159,14 +159,14 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				sidTimerHz.push(null);
 			} else {
 				const sidPeriod = channel.sid.period & 0xffff;
-				sidTimerHz.push(sidPeriod > 0 ? clock / sidPeriod : null);
+				sidTimerHz.push(sidPeriod > 0 ? clock / (8 * sidPeriod) : null);
 			}
 
 			if (!channel?.syncbuzzer?.enabled) {
 				syncbuzzerTimerHz.push(null);
 			} else {
 				const syncPeriod = channel.syncbuzzer.period & 0xffff;
-				syncbuzzerTimerHz.push(syncPeriod > 0 ? clock / syncPeriod : null);
+				syncbuzzerTimerHz.push(syncPeriod > 0 ? clock / (8 * syncPeriod) : null);
 			}
 		}
 		return { toneHz, sidTimerHz, syncbuzzerTimerHz };

@@ -15,7 +15,7 @@ describe('tone-frequency', () => {
 	});
 
 	it('converts hardware timer period to Hz', () => {
-		expect(timerPeriodToFrequencyHz(1773400, 1000)).toBeCloseTo(1773.4, 4);
+		expect(timerPeriodToFrequencyHz(1773400, 1000)).toBeCloseTo(221.675, 3);
 	});
 
 	it('formats Hz for display', () => {
