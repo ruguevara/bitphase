@@ -1,4 +1,4 @@
-import type { Instrument } from '../../models/song';
+import { Instrument } from '../../models/song';
 import {
 	createDefaultAyTimerRow,
 	effectiveRowDetune,
@@ -22,7 +22,7 @@ type ExtendedInstrument = Instrument & {
 };
 
 export class AyTimerEffectsController {
-	fields = $state(normalizeAyInstrumentFields({ rows: [] } as Instrument));
+	fields = $state(normalizeAyInstrumentFields(new Instrument('', [])));
 	isDragging = $state(false);
 	dragType = $state<'sid' | 'syncbuzzer' | 'mode' | null>(null);
 	dragSidValue = $state<boolean | null>(null);

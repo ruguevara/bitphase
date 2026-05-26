@@ -30,9 +30,9 @@
 	import AYTimerWaveformEditor from './AYTimerWaveformEditor.svelte';
 	import AYTimerEffectsHeaderCells from './AYTimerEffectsHeaderCells.svelte';
 	import AYTimerEffectsRowCells from './AYTimerEffectsRowCells.svelte';
-	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.ts';
+	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
 	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
-	import { syncAyInstrumentTimerRows } from './instrument';
+	import { syncAyInstrumentTimerRows, type AyInstrumentFields } from './instrument';
 
 	type InstrumentTab = 'mixer' | 'timer';
 
@@ -90,6 +90,7 @@
 		| 'toneAccumulation'
 		| 'noiseAccumulation'
 		| 'envelopeAccumulation';
+	type InstrumentUpdate = Partial<Instrument & AyInstrumentFields>;
 
 	let isDragging = $state(false);
 	let dragType:
@@ -179,7 +180,7 @@
 	let lastSyncedRows = $state([...instrument.rows]);
 	let lastSyncedLoop = $state(instrument.loop);
 
-	function updateInstrument(updates: Partial<Instrument>) {
+	function updateInstrument(updates: InstrumentUpdate) {
 		onInstrumentChange({ ...instrument, ...updates });
 	}
 

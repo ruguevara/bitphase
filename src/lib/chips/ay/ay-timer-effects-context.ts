@@ -1,5 +1,5 @@
 import { getContext, setContext } from 'svelte';
-import type { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.ts';
+import type { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
 
 const AY_TIMER_EFFECTS_CONTEXT_KEY = Symbol('ay-timer-effects');
 

@@ -34,6 +34,7 @@ export class AudioService {
 	private _playPatternId: number | null = null;
 	private _mixerNode: AudioWorkletNode | null = null;
 	private readonly _wasmByUrl = new Map<string, ArrayBuffer>();
+	private _processorRevision = 0;
 
 	chipProcessors: ChipProcessor[] = [];
 
@@ -81,6 +82,7 @@ export class AudioService {
 	private async _rebuildMixerAfterChipListChange(): Promise<void> {
 		if (!this._audioContext || !this._masterGainNode) return;
 
+		const revision = this._processorRevision;
 		this._mixerNode?.port.postMessage({ type: 'dispose_mixer' });
 		this._mixerNode?.disconnect();
 		this._mixerNode = null;
@@ -89,6 +91,7 @@ export class AudioService {
 
 		const base = import.meta.env.BASE_URL;
 		await this._audioContext.audioWorklet.addModule(base + BITPHASE_AUDIO_MODULE);
+		if (revision !== this._processorRevision || !this._audioContext) return;
 		this._mixerNode = new AudioWorkletNode(this._audioContext, BITPHASE_AUDIO_PROCESSOR, {
 			outputChannelCount: [2]
 		});
@@ -100,6 +103,7 @@ export class AudioService {
 			if (isMixerWorkletSlotProcessor(processor)) {
 				processor.bindChipIndex(i);
 				const wasmBuffer = await this._loadWasm(processor.chip.wasmUrl);
+				if (revision !== this._processorRevision || !this._mixerNode) return;
 				processor.initialize(wasmBuffer, this._mixerNode);
 			}
 		}
@@ -110,6 +114,7 @@ export class AudioService {
 			throw new Error('Audio context not initialized');
 		}
 
+		const revision = this._processorRevision;
 		const processor = this.createChipProcessor(chip);
 		if (!isMixerWorkletSlotProcessor(processor)) {
 			throw new Error(`Chip "${chip.type}" does not implement the bitphase mixer worklet slot`);
@@ -117,15 +122,29 @@ export class AudioService {
 		const chipIndex = this.chipProcessors.length;
 		this.chipProcessors.push(processor);
 
+		let unsubscribeSettings: (() => void) | undefined;
 		if (this.hasSettingsSubscription(processor)) {
 			processor.subscribeToSettings(this.chipSettings);
+			unsubscribeSettings = () => processor.unsubscribeFromSettings();
 		}
 
 		const wasmBuffer = await this._loadWasm(chip.wasmUrl);
+		if (revision !== this._processorRevision || this.chipProcessors[chipIndex] !== processor) {
+			unsubscribeSettings?.();
+			return;
+		}
 		const base = import.meta.env.BASE_URL;
 
 		if (!this._mixerNode) {
 			await this._audioContext.audioWorklet.addModule(base + BITPHASE_AUDIO_MODULE);
+			if (
+				revision !== this._processorRevision ||
+				this.chipProcessors[chipIndex] !== processor ||
+				!this._audioContext
+			) {
+				unsubscribeSettings?.();
+				return;
+			}
 			this._mixerNode = new AudioWorkletNode(this._audioContext, BITPHASE_AUDIO_PROCESSOR, {
 				outputChannelCount: [2]
 			});
@@ -288,6 +307,8 @@ export class AudioService {
 		if (this._isPlaying) {
 			this.stop();
 		}
+		this.unsubscribeProcessorFromSettings(this.chipProcessors[index]);
+		this._processorRevision++;
 		this.chipProcessors = this.chipProcessors.filter((_, i) => i !== index);
 		void this._rebuildMixerAfterChipListChange();
 	}
@@ -299,6 +320,8 @@ export class AudioService {
 		this._mixerNode?.port.postMessage({ type: 'dispose_mixer' });
 		this._mixerNode?.disconnect();
 		this._mixerNode = null;
+		this._processorRevision++;
+		this.chipProcessors.forEach((processor) => this.unsubscribeProcessorFromSettings(processor));
 		this.chipProcessors = [];
 	}
 
@@ -306,6 +329,8 @@ export class AudioService {
 		if (this._isPlaying) {
 			this.stop();
 		}
+		this._processorRevision++;
+		this.chipProcessors.forEach((processor) => this.unsubscribeProcessorFromSettings(processor));
 
 		if (this._audioContext) {
 			await this._audioContext.close();
@@ -344,6 +369,12 @@ export class AudioService {
 			typeof (processor as unknown as SettingsSubscriber).subscribeToSettings === 'function' &&
 			typeof (processor as unknown as SettingsSubscriber).unsubscribeFromSettings === 'function'
 		);
+	}
+
+	private unsubscribeProcessorFromSettings(processor: ChipProcessor): void {
+		if (this.hasSettingsSubscription(processor)) {
+			processor.unsubscribeFromSettings();
+		}
 	}
 
 	private applyMuteStateToAllChips(): void {
