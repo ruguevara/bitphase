@@ -1,4 +1,5 @@
 <script lang="ts">
+	import IconCarbonAdd from '~icons/carbon/add';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
@@ -9,6 +10,7 @@
 		sidStepToAmplitude,
 		SID_WAVEFORM_PREVIEW_BASE_VOLUME
 	} from './sid-waveform-volume';
+	import { AY_TIMER_WAVEFORM_MAX_LENGTH } from './instrument';
 
 	let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -17,10 +19,11 @@
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
 	const canvasHeight = $derived(isExpanded ? 104 : 72);
 
-	const PLOT_PADDING = 8;
+	const PLOT_PADDING = 10;
 	const VIEW_HEIGHT = 72;
-	const DOT_RADIUS_PX = 2;
-	const DOT_RADIUS_ACTIVE_PX = 2.5;
+	const DOT_RADIUS_PX = 2.5;
+	const DOT_RADIUS_ACTIVE_PX = 3.5;
+	const GRADIENT_ID = 'ay-timer-waveform-gradient';
 
 	let svgEl = $state<SVGSVGElement | null>(null);
 	let plotSize = $state({ width: 0, height: 0 });
@@ -28,6 +31,7 @@
 	let waveformInputFocused = $state(false);
 	let isDrawing = $state(false);
 	let activeStepIndex = $state<number | null>(null);
+	let hoverStepIndex = $state<number | null>(null);
 
 	const chipVariant = $derived(
 		resolveAyChipVariant(containerContext.audioService.chipSettings.get('chipVariant'))
@@ -48,6 +52,14 @@
 	const displayedWaveformText = $derived(
 		waveformInputFocused ? waveformText : controller.formatTimerWaveform()
 	);
+
+	const highlightedStepIndex = $derived(activeStepIndex ?? hoverStepIndex);
+
+	const activeStepValue = $derived(
+		highlightedStepIndex !== null ? (displayWaveform[highlightedStepIndex] ?? null) : null
+	);
+
+	const canAppendStep = $derived(displayWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH);
 
 	$effect(() => {
 		waveform;
@@ -81,6 +93,7 @@
 		const innerWidth = viewWidth - PLOT_PADDING * 2;
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const stepWidth = steps > 0 ? innerWidth / steps : innerWidth;
+		const baseY = VIEW_HEIGHT - PLOT_PADDING;
 
 		const bars = displayWaveform.map((value, index) => {
 			const amplitude = sidStepToAmplitude(
@@ -89,25 +102,42 @@
 				chipVariant
 			);
 			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
-			const barWidth = stepWidth * 0.48;
-			const barHeight = innerHeight * amplitude;
-			const baseY = VIEW_HEIGHT - PLOT_PADDING;
 			return {
 				index,
 				value,
-				amplitude,
-				x: centerX - barWidth / 2,
-				y: baseY - barHeight,
-				width: barWidth,
-				height: barHeight > 0 ? barHeight : 2,
 				centerX,
-				centerY: baseY - barHeight
+				centerY: baseY - innerHeight * amplitude
 			};
 		});
 
-		const waveformPath = buildSquareWaveformPath(bars, stepWidth, PLOT_PADDING);
+		const stepColumns = bars.map((bar) => ({
+			index: bar.index,
+			x: PLOT_PADDING + stepWidth * bar.index,
+			width: stepWidth
+		}));
 
-		return { viewWidth, bars, waveformPath };
+		const gridLines = [0.25, 0.5, 0.75].map((fraction) => ({
+			y: baseY - innerHeight * fraction
+		}));
+
+		const waveformPath = buildSquareWaveformPath(bars, stepWidth, PLOT_PADDING);
+		const waveformFillPath = buildSquareWaveformFillPath(
+			bars,
+			stepWidth,
+			PLOT_PADDING,
+			baseY
+		);
+
+		return {
+			viewWidth,
+			innerHeight,
+			baseY,
+			bars,
+			stepColumns,
+			gridLines,
+			waveformPath,
+			waveformFillPath
+		};
 	});
 
 	function buildSquareWaveformPath(
@@ -137,10 +167,24 @@
 		return segments.join(' ');
 	}
 
+	function buildSquareWaveformFillPath(
+		bars: Array<{ centerY: number }>,
+		stepWidth: number,
+		plotPadding: number,
+		baseY: number
+	): string {
+		const wavePath = buildSquareWaveformPath(bars, stepWidth, plotPadding);
+		if (!wavePath) {
+			return '';
+		}
+		const endX = plotPadding + stepWidth * bars.length;
+		return `${wavePath} L ${endX} ${baseY} L ${plotPadding} ${baseY} Z`;
+	}
+
 	function symmetricDotRadius(active: boolean): { rx: number; ry: number } {
 		const { viewWidth } = waveformGraphic;
 		if (plotSize.width <= 0 || plotSize.height <= 0) {
-			const fallback = active ? 2 : 1.5;
+			const fallback = active ? 2.5 : 2;
 			return { rx: fallback, ry: fallback };
 		}
 		const radiusPx = active ? DOT_RADIUS_ACTIVE_PX : DOT_RADIUS_PX;
@@ -216,8 +260,17 @@
 	}
 
 	function handlePointerMove(event: PointerEvent): void {
-		if (!isDrawing) return;
-		applyPointer(event.clientX, event.clientY);
+		if (isDrawing) {
+			applyPointer(event.clientX, event.clientY);
+			return;
+		}
+		hoverStepIndex = pointerStepIndex(event.clientX, event.clientY);
+	}
+
+	function handlePointerLeave(): void {
+		if (!isDrawing) {
+			hoverStepIndex = null;
+		}
 	}
 
 	function stopDrawing(event: PointerEvent): void {
@@ -226,21 +279,46 @@
 		activeStepIndex = null;
 		svgEl?.releasePointerCapture(event.pointerId);
 	}
+
+	function handleAppendStep(): void {
+		if (!controller.appendWaveformStep()) {
+			return;
+		}
+		waveformText = controller.formatTimerWaveform();
+		activeStepIndex = controller.fields.timerWaveform.length - 1;
+	}
 </script>
 
-<div class="mt-3 ml-2">
-	<div
-		class="mb-1.5 flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-		title="SID volume steps (0–15). Y axis uses {chipVariant} DAC curve.">
-		<IconCarbonWaveform class={iconSizeClass} />
-		<span>SID waveform</span>
-		<span class="text-[var(--color-app-text-tertiary)]">({chipVariant} curve)</span>
+<div
+	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3">
+	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+		<div
+			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
+			title="SID volume steps (0–15). Y axis uses {chipVariant} DAC curve.">
+			<span
+				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
+				<IconCarbonWaveform class={iconSizeClass} />
+			</span>
+			<div class="leading-tight">
+				<div class="text-[var(--color-app-text-secondary)]">SID waveform</div>
+				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{chipVariant} DAC curve</div>
+			</div>
+		</div>
+		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
+			<span>{displayWaveform.length} steps</span>
+			{#if activeStepValue !== null && highlightedStepIndex !== null}
+				<span
+					class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
+					#{highlightedStepIndex + 1} = {activeStepValue}
+				</span>
+			{/if}
+		</div>
 	</div>
 
 	<div
-		class="mb-2 max-w-full overflow-hidden rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)]"
-		style:height="{canvasHeight}px"
-		use:observePlotSize>
+		class="flex overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] ring-1 ring-inset ring-[var(--color-app-border)]/60"
+		style:height="{canvasHeight}px">
+		<div class="min-w-0 flex-1 overflow-hidden" use:observePlotSize>
 		<svg
 			bind:this={svgEl}
 			viewBox="0 0 {waveformGraphic.viewWidth} {VIEW_HEIGHT}"
@@ -251,56 +329,114 @@
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
 			onpointerup={stopDrawing}
-			onpointercancel={stopDrawing}>
+			onpointercancel={stopDrawing}
+			onpointerleave={handlePointerLeave}>
+			<defs>
+				<linearGradient id={GRADIENT_ID} x1="0" y1="0" x2="0" y2="1">
+					<stop offset="0%" stop-color="var(--color-pattern-note)" stop-opacity="0.28" />
+					<stop offset="100%" stop-color="var(--color-pattern-note)" stop-opacity="0.03" />
+				</linearGradient>
+			</defs>
+
+			<rect
+				x={PLOT_PADDING}
+				y={PLOT_PADDING}
+				width={waveformGraphic.viewWidth - PLOT_PADDING * 2}
+				height={waveformGraphic.innerHeight}
+				fill="var(--color-app-surface-secondary)"
+				opacity="0.45"
+				rx="2" />
+
+			{#each waveformGraphic.gridLines as gridLine, gridIndex (gridIndex)}
+				<line
+					x1={PLOT_PADDING}
+					y1={gridLine.y}
+					x2={waveformGraphic.viewWidth - PLOT_PADDING}
+					y2={gridLine.y}
+					class="stroke-[var(--color-app-border)]"
+					stroke-width="1"
+					vector-effect="non-scaling-stroke"
+					stroke-dasharray="3 4"
+					opacity="0.55" />
+			{/each}
+
+			{#each waveformGraphic.stepColumns as column (column.index)}
+				{#if highlightedStepIndex === column.index}
+					<rect
+						x={column.x}
+						y={PLOT_PADDING}
+						width={column.width}
+						height={waveformGraphic.innerHeight}
+						fill="var(--color-pattern-note)"
+						opacity="0.08" />
+				{/if}
+				<line
+					x1={column.x + column.width}
+					y1={PLOT_PADDING}
+					x2={column.x + column.width}
+					y2={waveformGraphic.baseY}
+					class="stroke-[var(--color-app-border)]"
+					stroke-width="1"
+					vector-effect="non-scaling-stroke"
+					opacity={column.index === waveformGraphic.stepColumns.length - 1 ? 0.35 : 0.18} />
+			{/each}
+
 			<line
 				x1={PLOT_PADDING}
-				y1={VIEW_HEIGHT - PLOT_PADDING}
+				y1={waveformGraphic.baseY}
 				x2={waveformGraphic.viewWidth - PLOT_PADDING}
-				y2={VIEW_HEIGHT - PLOT_PADDING}
-				class="stroke-[var(--color-app-border)]"
+				y2={waveformGraphic.baseY}
+				class="stroke-[var(--color-app-border-hover)]"
 				stroke-width="1"
 				vector-effect="non-scaling-stroke"
-				opacity="0.35" />
-			{#each waveformGraphic.bars as bar (bar.index)}
-				<rect
-					x={bar.x}
-					y={bar.y}
-					width={bar.width}
-					height={bar.height}
-					class={activeStepIndex === bar.index
-						? 'fill-[var(--color-app-primary)]'
-						: bar.amplitude > 0
-							? 'fill-[var(--color-app-text-secondary)]'
-							: 'fill-[var(--color-app-text-muted)]'}
-					opacity={bar.amplitude > 0 ? 0.55 : 0.25} />
-			{/each}
+				opacity="0.8" />
+
+			{#if waveformGraphic.waveformFillPath}
+				<path d={waveformGraphic.waveformFillPath} fill="url(#{GRADIENT_ID})" />
+			{/if}
+
 			{#if waveformGraphic.waveformPath}
 				<path
 					d={waveformGraphic.waveformPath}
 					fill="none"
 					class="stroke-[var(--color-pattern-note)]"
-					stroke-width="1.5"
+					stroke-width="2"
+					stroke-linejoin="miter"
 					vector-effect="non-scaling-stroke"
-					opacity="0.9" />
+					opacity="0.95" />
 			{/if}
+
 			{#each waveformGraphic.bars as bar (bar.index)}
-				{@const dotRadius = symmetricDotRadius(activeStepIndex === bar.index)}
+				{@const dotRadius = symmetricDotRadius(highlightedStepIndex === bar.index)}
 				<ellipse
 					cx={bar.centerX}
 					cy={bar.centerY}
 					rx={dotRadius.rx}
 					ry={dotRadius.ry}
-					class={activeStepIndex === bar.index
-						? 'fill-[var(--color-app-primary)]'
-						: 'fill-[var(--color-pattern-note)]'} />
+					class={highlightedStepIndex === bar.index
+						? 'fill-[var(--color-app-on-primary)] stroke-[var(--color-app-primary)]'
+						: 'fill-[var(--color-pattern-note)] stroke-[var(--color-app-surface)]'}
+					stroke-width="1.25"
+					vector-effect="non-scaling-stroke" />
 			{/each}
 		</svg>
+		</div>
+		<button
+			type="button"
+			class="flex w-9 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
+			disabled={!canAppendStep}
+			title={canAppendStep ? 'Add waveform step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} steps`}
+			aria-label="Add waveform step"
+			onclick={handleAppendStep}>
+			<IconCarbonAdd class={isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
+		</button>
 	</div>
 
-	<div class="flex items-center gap-2">
+	<label class="mt-2 block text-[10px] text-[var(--color-app-text-tertiary)]">
+		<span class="mb-1 block">Volume steps</span>
 		<input
 			type="text"
-			class="min-w-0 flex-1 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+			class="min-w-0 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2.5 py-1.5 font-mono text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] transition-colors focus:border-[var(--color-pattern-note)] focus:ring-1 focus:ring-[var(--color-pattern-note)]/30 focus:outline-none"
 			value={displayedWaveformText}
 			placeholder="15 0"
 			spellcheck="false"
@@ -308,5 +444,5 @@
 			onfocus={handleWaveformFocus}
 			oninput={handleWaveformInput}
 			onblur={handleWaveformBlur} />
-	</div>
+	</label>
 </div>

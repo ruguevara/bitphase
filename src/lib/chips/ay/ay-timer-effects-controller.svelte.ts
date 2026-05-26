@@ -142,7 +142,9 @@ export class AyTimerEffectsController {
 
 	setRowSidPeriodMode(index: number, mode: AySidPeriodMode): void {
 		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => (i === index ? { ...row, sidPeriodMode: mode } : row))
+			this.fields.timerRows.map((row, i) =>
+				i === index ? { ...row, sidPeriodMode: mode } : row
+			)
 		);
 	}
 
@@ -182,7 +184,11 @@ export class AyTimerEffectsController {
 	}
 
 	dragOverSyncbuzzer(index: number): void {
-		if (this.isDragging && this.dragType === 'syncbuzzer' && this.dragSyncbuzzerValue !== null) {
+		if (
+			this.isDragging &&
+			this.dragType === 'syncbuzzer' &&
+			this.dragSyncbuzzerValue !== null
+		) {
 			this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
 		}
 	}
@@ -203,7 +209,9 @@ export class AyTimerEffectsController {
 		if (parsed < -127) parsed = -127;
 		if (parsed > 128) parsed = 128;
 		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => (i === index ? { ...row, semitone: parsed } : row))
+			this.fields.timerRows.map((row, i) =>
+				i === index ? { ...row, semitone: parsed } : row
+			)
 		);
 	}
 
@@ -211,7 +219,9 @@ export class AyTimerEffectsController {
 		const parsed = this.parseNum(text);
 		if (parsed === null || parsed < 1) return;
 		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => (i === index ? { ...row, period: parsed & 0xffff } : row))
+			this.fields.timerRows.map((row, i) =>
+				i === index ? { ...row, period: parsed & 0xffff } : row
+			)
 		);
 	}
 
@@ -248,6 +258,22 @@ export class AyTimerEffectsController {
 			.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
 			.map((value) => Math.max(0, Math.min(15, value | 0)));
 		this.commitFields({ ...this.fields, timerWaveform: nextWaveform });
+	}
+
+	appendWaveformStep(step = 0): boolean {
+		if (this.fields.timerWaveform.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
+			return false;
+		}
+		const clamped = Math.max(0, Math.min(15, step | 0));
+		this.commitFields({
+			...this.fields,
+			timerWaveform: [...this.fields.timerWaveform, clamped]
+		});
+		return true;
+	}
+
+	canAppendWaveformStep(): boolean {
+		return this.fields.timerWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH;
 	}
 
 	rowDetune(index: number): number {
