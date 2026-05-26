@@ -15,10 +15,10 @@
 	const controller = getAyTimerEffectsContext();
 	const containerContext: { audioService: AudioService } = getContext('container');
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
-	const canvasHeight = $derived(isExpanded ? 96 : 64);
+	const canvasHeight = $derived(isExpanded ? 104 : 72);
 
 	const PLOT_PADDING = 8;
-	const VIEW_HEIGHT = 64;
+	const VIEW_HEIGHT = 72;
 	const DOT_RADIUS_PX = 2;
 	const DOT_RADIUS_ACTIVE_PX = 2.5;
 
@@ -105,12 +105,37 @@
 			};
 		});
 
-		const connectorPoints = bars
-			.map((bar) => `${bar.centerX},${bar.centerY}`)
-			.join(' ');
+		const waveformPath = buildSquareWaveformPath(bars, stepWidth, PLOT_PADDING);
 
-		return { viewWidth, bars, connectorPoints };
+		return { viewWidth, bars, waveformPath };
 	});
+
+	function buildSquareWaveformPath(
+		bars: Array<{ centerY: number }>,
+		stepWidth: number,
+		plotPadding: number
+	): string {
+		if (bars.length === 0) {
+			return '';
+		}
+
+		const segments: string[] = [];
+		for (let index = 0; index < bars.length; index++) {
+			const xLeft = plotPadding + stepWidth * index;
+			const xRight = plotPadding + stepWidth * (index + 1);
+			const y = bars[index]!.centerY;
+
+			if (index === 0) {
+				segments.push(`M ${xLeft} ${y}`);
+			}
+			segments.push(`L ${xRight} ${y}`);
+			if (index < bars.length - 1) {
+				segments.push(`L ${xRight} ${bars[index + 1]!.centerY}`);
+			}
+		}
+
+		return segments.join(' ');
+	}
 
 	function symmetricDotRadius(active: boolean): { rx: number; ry: number } {
 		const { viewWidth } = waveformGraphic;
@@ -249,9 +274,9 @@
 							: 'fill-[var(--color-app-text-muted)]'}
 					opacity={bar.amplitude > 0 ? 0.55 : 0.25} />
 			{/each}
-			{#if waveformGraphic.connectorPoints}
-				<polyline
-					points={waveformGraphic.connectorPoints}
+			{#if waveformGraphic.waveformPath}
+				<path
+					d={waveformGraphic.waveformPath}
 					fill="none"
 					class="stroke-[var(--color-pattern-note)]"
 					stroke-width="1.5"
