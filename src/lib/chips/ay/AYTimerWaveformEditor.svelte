@@ -1,5 +1,6 @@
 <script lang="ts">
 	import IconCarbonAdd from '~icons/carbon/add';
+	import IconCarbonClose from '~icons/carbon/close';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
@@ -12,7 +13,15 @@
 	} from './sid-waveform-volume';
 	import { AY_TIMER_WAVEFORM_MAX_LENGTH } from './instrument';
 
-	let { isExpanded = false }: { isExpanded?: boolean } = $props();
+	let {
+		rowIndex,
+		isExpanded = false,
+		onclose
+	}: {
+		rowIndex: number;
+		isExpanded?: boolean;
+		onclose?: () => void;
+	} = $props();
 
 	const controller = getAyTimerEffectsContext();
 	const containerContext: { audioService: AudioService } = getContext('container');
@@ -23,12 +32,10 @@
 	const VIEW_HEIGHT = 72;
 	const DOT_RADIUS_PX = 2.5;
 	const DOT_RADIUS_ACTIVE_PX = 3.5;
-	const GRADIENT_ID = 'ay-timer-waveform-gradient';
+	const GRADIENT_ID = $derived(`ay-timer-waveform-gradient-${rowIndex}`);
 
 	let svgEl = $state<SVGSVGElement | null>(null);
 	let plotSize = $state({ width: 0, height: 0 });
-	let waveformText = $state('');
-	let waveformInputFocused = $state(false);
 	let isDrawing = $state(false);
 	let activeStepIndex = $state<number | null>(null);
 	let hoverStepIndex = $state<number | null>(null);
@@ -37,65 +44,25 @@
 		resolveAyChipVariant(containerContext.audioService.chipSettings.get('chipVariant'))
 	);
 
-	const waveform = $derived(controller.fields.timerWaveform);
-
-	const displayWaveform = $derived.by(() => {
-		if (waveformInputFocused) {
-			const preview = controller.parseTimerWaveformPartial(waveformText);
-			if (preview !== null) {
-				return preview;
-			}
-		}
-		return waveform;
-	});
-
-	const displayedWaveformText = $derived(
-		waveformInputFocused ? waveformText : controller.formatTimerWaveform()
-	);
+	const waveform = $derived(controller.rowTimerWaveform(rowIndex));
 
 	const highlightedStepIndex = $derived(activeStepIndex ?? hoverStepIndex);
 
 	const activeStepValue = $derived(
-		highlightedStepIndex !== null ? (displayWaveform[highlightedStepIndex] ?? null) : null
+		highlightedStepIndex !== null ? (waveform[highlightedStepIndex] ?? null) : null
 	);
 
-	const canAppendStep = $derived(displayWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH);
-
-	$effect(() => {
-		waveform;
-		if (!waveformInputFocused) {
-			waveformText = controller.formatTimerWaveform();
-		}
-	});
-
-	function handleWaveformFocus(event: FocusEvent): void {
-		waveformInputFocused = true;
-		waveformText = controller.formatTimerWaveform();
-		(event.target as HTMLInputElement).select();
-	}
-
-	function handleWaveformInput(event: Event): void {
-		waveformText = (event.target as HTMLInputElement).value;
-	}
-
-	function handleWaveformBlur(): void {
-		waveformInputFocused = false;
-		const parsed = controller.parseTimerWaveform(waveformText);
-		if (parsed !== null) {
-			controller.setTimerWaveform(parsed);
-		}
-		waveformText = controller.formatTimerWaveform();
-	}
+	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex));
 
 	const waveformGraphic = $derived.by(() => {
-		const steps = displayWaveform.length;
+		const steps = waveform.length;
 		const viewWidth = Math.max(48, steps * 14 + PLOT_PADDING * 2);
 		const innerWidth = viewWidth - PLOT_PADDING * 2;
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const stepWidth = steps > 0 ? innerWidth / steps : innerWidth;
 		const baseY = VIEW_HEIGHT - PLOT_PADDING;
 
-		const bars = displayWaveform.map((value, index) => {
+		const bars = waveform.map((value, index) => {
 			const amplitude = sidStepToAmplitude(
 				value,
 				SID_WAVEFORM_PREVIEW_BASE_VOLUME,
@@ -223,7 +190,7 @@
 	function pointerStepIndex(clientX: number, clientY: number): number | null {
 		const point = clientToSvg(clientX, clientY);
 		if (!point) return null;
-		const steps = displayWaveform.length;
+		const steps = waveform.length;
 		if (steps <= 0) return null;
 		const innerWidth = waveformGraphic.viewWidth - PLOT_PADDING * 2;
 		const stepWidth = innerWidth / steps;
@@ -248,7 +215,7 @@
 			SID_WAVEFORM_PREVIEW_BASE_VOLUME,
 			chipVariant
 		);
-		controller.setWaveformStep(index, step);
+		controller.setRowWaveformStep(rowIndex, index, step);
 	}
 
 	function handlePointerDown(event: PointerEvent): void {
@@ -281,11 +248,10 @@
 	}
 
 	function handleAppendStep(): void {
-		if (!controller.appendWaveformStep()) {
+		if (!controller.appendRowWaveformStep(rowIndex)) {
 			return;
 		}
-		waveformText = controller.formatTimerWaveform();
-		activeStepIndex = controller.fields.timerWaveform.length - 1;
+		activeStepIndex = controller.rowTimerWaveform(rowIndex).length - 1;
 	}
 </script>
 
@@ -294,24 +260,32 @@
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<div
 			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title="SID volume steps (0–15). Y axis uses {chipVariant} DAC curve.">
+			title="SID steps (0–15). Y axis uses {chipVariant} DAC curve.">
 			<span
 				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
 				<IconCarbonWaveform class={iconSizeClass} />
 			</span>
 			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">SID waveform</div>
+				<div class="text-[var(--color-app-text-secondary)]">SID steps · row {rowIndex + 1}</div>
 				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{chipVariant} DAC curve</div>
 			</div>
 		</div>
 		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
-			<span>{displayWaveform.length} steps</span>
+			<span>{waveform.length} SID steps</span>
 			{#if activeStepValue !== null && highlightedStepIndex !== null}
 				<span
 					class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
 					#{highlightedStepIndex + 1} = {activeStepValue}
 				</span>
 			{/if}
+			<button
+				type="button"
+				class="inline-flex cursor-pointer items-center justify-center rounded p-1 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)]"
+				title="Close waveform editor"
+				aria-label="Close waveform editor"
+				onclick={() => onclose?.()}>
+				<IconCarbonClose class={iconSizeClass} />
+			</button>
 		</div>
 	</div>
 
@@ -325,7 +299,7 @@
 			preserveAspectRatio="none"
 			class="block h-full w-full cursor-crosshair touch-none"
 			role="img"
-			aria-label="SID waveform editor"
+			aria-label="SID steps editor"
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
 			onpointerup={stopDrawing}
@@ -425,24 +399,10 @@
 			type="button"
 			class="flex w-9 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
 			disabled={!canAppendStep}
-			title={canAppendStep ? 'Add waveform step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} steps`}
+			title={canAppendStep ? 'Add SID step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} SID steps`}
 			aria-label="Add waveform step"
 			onclick={handleAppendStep}>
 			<IconCarbonAdd class={isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
 		</button>
 	</div>
-
-	<label class="mt-2 block text-[10px] text-[var(--color-app-text-tertiary)]">
-		<span class="mb-1 block">Volume steps</span>
-		<input
-			type="text"
-			class="min-w-0 w-full rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2.5 py-1.5 font-mono text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] transition-colors focus:border-[var(--color-pattern-note)] focus:ring-1 focus:ring-[var(--color-pattern-note)]/30 focus:outline-none"
-			value={displayedWaveformText}
-			placeholder="15 0"
-			spellcheck="false"
-			title="Space-separated volume steps (0–15)"
-			onfocus={handleWaveformFocus}
-			oninput={handleWaveformInput}
-			onblur={handleWaveformBlur} />
-	</label>
 </div>

@@ -3,26 +3,33 @@ import {
 	createDefaultAyTimerRow,
 	effectiveRowDetune,
 	effectiveRowPeriod,
+	effectiveInstrumentTimerPwmDuty,
+	effectiveInstrumentTimerPwmSweep,
+	effectiveInstrumentTimerPwmSweepMin,
+	effectiveRowTimerWaveform,
+	effectiveRowTimerWaveformLoop,
+	instrumentSupportsTimerPwm,
 	effectiveRowToneDetune,
 	formatAyTimerWaveform,
 	normalizeAyInstrumentFields,
+	normalizeInstrumentTimerPwmFields,
 	parseAyTimerWaveform,
 	parseAyTimerWaveformPartial,
 	resolveAyTimerRowSidPeriodMode,
 	resolveExclusiveTimerEffects,
+	clampTimerPwmDuty,
+	clampTimerPwmSweepMin,
 	AY_TIMER_WAVEFORM_MAX_LENGTH,
+	type AyInstrumentFields,
 	type AySidPeriodMode,
 	type AyTimerRow
 } from './instrument';
 
-type ExtendedInstrument = Instrument & {
-	timerRows?: AyTimerRow[];
-	timerWaveform?: number[];
-	timerWaveformLoop?: number;
-};
+type ExtendedInstrument = Instrument & Partial<AyInstrumentFields>;
 
 export class AyTimerEffectsController {
 	fields = $state(normalizeAyInstrumentFields(new Instrument('', [])));
+	waveformEditorRowIndex = $state<number | null>(null);
 	isDragging = $state(false);
 	dragType = $state<'sid' | 'syncbuzzer' | 'mode' | null>(null);
 	dragSidValue = $state<boolean | null>(null);
@@ -80,7 +87,19 @@ export class AyTimerEffectsController {
 		if (timerRows.length > rowCount) {
 			timerRows.length = rowCount;
 		}
-		this.fields = { ...normalized, timerRows };
+		this.fields = {
+			timerRows,
+			timerPwmDuty: normalized.timerPwmDuty,
+			timerPwmSweepMin: normalized.timerPwmSweepMin,
+			timerPwmSweep: normalized.timerPwmSweep,
+			timerPwmPreserveOnNewNote: normalized.timerPwmPreserveOnNewNote
+		};
+		if (
+			this.waveformEditorRowIndex !== null &&
+			this.waveformEditorRowIndex >= timerRows.length
+		) {
+			this.waveformEditorRowIndex = null;
+		}
 		this.lastSyncedRowCount = instrument.rows.length;
 		this.lastInstrumentId = instrument.id;
 	}
@@ -93,16 +112,33 @@ export class AyTimerEffectsController {
 		this.dragModeValue = null;
 	}
 
+	openWaveformEditor(rowIndex: number): void {
+		if (rowIndex < 0 || rowIndex >= this.fields.timerRows.length) {
+			return;
+		}
+		if (this.fields.timerRows[rowIndex]?.syncbuzzer) {
+			return;
+		}
+		this.waveformEditorRowIndex =
+			this.waveformEditorRowIndex === rowIndex ? null : rowIndex;
+	}
+
+	closeWaveformEditor(): void {
+		this.waveformEditorRowIndex = null;
+	}
+
 	private updateInstrument(updates: Partial<ExtendedInstrument>): void {
 		this.onInstrumentChange({ ...this.getInstrument(), ...updates });
 	}
 
-	private commitFields(next: ReturnType<typeof normalizeAyInstrumentFields>): void {
+	private commitFields(next: AyInstrumentFields): void {
 		this.fields = next;
 		this.updateInstrument({
 			timerRows: next.timerRows,
-			timerWaveform: next.timerWaveform,
-			timerWaveformLoop: next.timerWaveformLoop
+			timerPwmDuty: next.timerPwmDuty,
+			timerPwmSweepMin: next.timerPwmSweepMin,
+			timerPwmSweep: next.timerPwmSweep,
+			timerPwmPreserveOnNewNote: next.timerPwmPreserveOnNewNote
 		});
 	}
 
@@ -110,42 +146,91 @@ export class AyTimerEffectsController {
 		this.commitFields({ ...this.fields, timerRows: nextRows });
 	}
 
-	updateSidRow(index: number, sid: boolean): void {
+	private mapTimerRow(rowIndex: number, mapRow: (row: AyTimerRow) => AyTimerRow): void {
 		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => {
-				if (i !== index) {
-					return row;
-				}
-				return resolveExclusiveTimerEffects({
-					...row,
-					sid,
-					syncbuzzer: sid ? false : row.syncbuzzer
-				});
+			this.fields.timerRows.map((row, index) => (index === rowIndex ? mapRow(row) : row))
+		);
+	}
+
+	instrumentSupportsTimerPwm(): boolean {
+		return instrumentSupportsTimerPwm(this.fields);
+	}
+
+	timerPwmDuty(): number {
+		return effectiveInstrumentTimerPwmDuty(this.fields);
+	}
+
+	timerPwmSweepMin(): number {
+		return effectiveInstrumentTimerPwmSweepMin(this.fields);
+	}
+
+	timerPwmSweep(): number {
+		return effectiveInstrumentTimerPwmSweep(this.fields);
+	}
+
+	timerPwmPreserveOnNewNote(): boolean {
+		return this.fields.timerPwmPreserveOnNewNote;
+	}
+
+	setTimerPwmPreserveOnNewNote(preserve: boolean): void {
+		if (!this.instrumentSupportsTimerPwm()) return;
+		this.commitFields({ ...this.fields, timerPwmPreserveOnNewNote: preserve });
+	}
+
+	setTimerPwmDuty(duty: number): void {
+		if (!this.instrumentSupportsTimerPwm()) return;
+		const pwmFields = normalizeInstrumentTimerPwmFields({
+			...this.fields,
+			timerPwmDuty: clampTimerPwmDuty(duty)
+		});
+		this.commitFields({ ...this.fields, ...pwmFields });
+	}
+
+	setTimerPwmSweepMin(min: number): void {
+		if (!this.instrumentSupportsTimerPwm() || this.fields.timerPwmSweep <= 0) return;
+		const pwmFields = normalizeInstrumentTimerPwmFields({
+			...this.fields,
+			timerPwmSweepMin: clampTimerPwmSweepMin(min, this.fields.timerPwmDuty)
+		});
+		this.commitFields({ ...this.fields, ...pwmFields });
+	}
+
+	updateTimerPwmSweep(text: string): void {
+		if (!this.instrumentSupportsTimerPwm()) return;
+		const parsed = this.parseNum(text);
+		if (parsed === null) return;
+		const pwmFields = normalizeInstrumentTimerPwmFields({
+			...this.fields,
+			timerPwmSweep: Math.max(0, Math.min(50, parsed))
+		});
+		this.commitFields({ ...this.fields, ...pwmFields });
+	}
+
+	updateSidRow(index: number, sid: boolean): void {
+		this.mapTimerRow(index, (row) =>
+			resolveExclusiveTimerEffects({
+				...row,
+				sid,
+				syncbuzzer: sid ? false : row.syncbuzzer
 			})
 		);
 	}
 
 	updateSyncbuzzerRow(index: number, syncbuzzer: boolean): void {
-		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => {
-				if (i !== index) {
-					return row;
-				}
-				return resolveExclusiveTimerEffects({
-					...row,
-					syncbuzzer,
-					sid: syncbuzzer ? false : row.sid
-				});
+		this.mapTimerRow(index, (row) =>
+			resolveExclusiveTimerEffects({
+				...row,
+				syncbuzzer,
+				sid: syncbuzzer ? false : row.sid
 			})
 		);
+		if (syncbuzzer && this.waveformEditorRowIndex === index) {
+			this.waveformEditorRowIndex = null;
+		}
 	}
 
 	setRowSidPeriodMode(index: number, mode: AySidPeriodMode): void {
-		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) =>
-				i === index ? { ...row, sidPeriodMode: mode } : row
-			)
-		);
+		this.mapTimerRow(index, (row) => ({ ...row, sidPeriodMode: mode }));
 	}
 
 	beginDragMode(index: number): void {
@@ -198,9 +283,7 @@ export class AyTimerEffectsController {
 		if (parsed === null) return;
 		if (parsed < -4095) parsed = -4095;
 		if (parsed > 4095) parsed = 4095;
-		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) => (i === index ? { ...row, detune: parsed } : row))
-		);
+		this.mapTimerRow(index, (row) => ({ ...row, detune: parsed }));
 	}
 
 	updateRowToneDetune(index: number, text: string): void {
@@ -208,38 +291,48 @@ export class AyTimerEffectsController {
 		if (parsed === null) return;
 		if (parsed < -127) parsed = -127;
 		if (parsed > 128) parsed = 128;
-		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) =>
-				i === index ? { ...row, semitone: parsed } : row
-			)
-		);
+		this.mapTimerRow(index, (row) => ({ ...row, semitone: parsed }));
 	}
 
 	updateRowPeriod(index: number, text: string): void {
 		const parsed = this.parseNum(text);
 		if (parsed === null || parsed < 1) return;
-		this.updateTimerRows(
-			this.fields.timerRows.map((row, i) =>
-				i === index ? { ...row, period: parsed & 0xffff } : row
-			)
-		);
+		this.mapTimerRow(index, (row) => ({ ...row, period: parsed & 0xffff }));
 	}
 
-	setWaveformStep(index: number, step: number): void {
-		if (index < 0) return;
+	rowTimerWaveform(rowIndex: number): number[] {
+		return effectiveRowTimerWaveform(this.fields.timerRows[rowIndex]);
+	}
+
+	rowTimerWaveformLoop(rowIndex: number): number {
+		return effectiveRowTimerWaveformLoop(this.fields.timerRows[rowIndex]);
+	}
+
+	formatRowTimerWaveform(rowIndex: number): string {
+		return formatAyTimerWaveform(this.rowTimerWaveform(rowIndex), this.getAsHex());
+	}
+
+	setRowTimerWaveform(rowIndex: number, values: number[]): void {
+		if (values.length === 0) {
+			return;
+		}
+		const nextWaveform = values
+			.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			.map((value) => Math.max(0, Math.min(15, value | 0)));
+		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: nextWaveform }));
+	}
+
+	setRowWaveformStep(rowIndex: number, stepIndex: number, step: number): void {
+		if (stepIndex < 0) return;
 		const clamped = Math.max(0, Math.min(15, step | 0));
-		const nextWaveform = [...this.fields.timerWaveform];
-		while (nextWaveform.length <= index && nextWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH) {
+		const nextWaveform = [...this.rowTimerWaveform(rowIndex)];
+		while (nextWaveform.length <= stepIndex && nextWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH) {
 			nextWaveform.push(0);
 		}
-		if (index >= nextWaveform.length) return;
-		if (nextWaveform[index] === clamped) return;
-		nextWaveform[index] = clamped;
-		this.commitFields({ ...this.fields, timerWaveform: nextWaveform });
-	}
-
-	formatTimerWaveform(): string {
-		return formatAyTimerWaveform(this.fields.timerWaveform, this.getAsHex());
+		if (stepIndex >= nextWaveform.length) return;
+		if (nextWaveform[stepIndex] === clamped) return;
+		nextWaveform[stepIndex] = clamped;
+		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: nextWaveform }));
 	}
 
 	parseTimerWaveform(text: string): number[] | null {
@@ -250,30 +343,18 @@ export class AyTimerEffectsController {
 		return parseAyTimerWaveformPartial(text, this.getAsHex());
 	}
 
-	setTimerWaveform(values: number[]): void {
-		if (values.length === 0) {
-			return;
-		}
-		const nextWaveform = values
-			.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
-			.map((value) => Math.max(0, Math.min(15, value | 0)));
-		this.commitFields({ ...this.fields, timerWaveform: nextWaveform });
-	}
-
-	appendWaveformStep(step = 0): boolean {
-		if (this.fields.timerWaveform.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
+	appendRowWaveformStep(rowIndex: number, step = 0): boolean {
+		const current = this.rowTimerWaveform(rowIndex);
+		if (current.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
 			return false;
 		}
 		const clamped = Math.max(0, Math.min(15, step | 0));
-		this.commitFields({
-			...this.fields,
-			timerWaveform: [...this.fields.timerWaveform, clamped]
-		});
+		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: [...current, clamped] }));
 		return true;
 	}
 
-	canAppendWaveformStep(): boolean {
-		return this.fields.timerWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH;
+	canAppendRowWaveformStep(rowIndex: number): boolean {
+		return this.rowTimerWaveform(rowIndex).length < AY_TIMER_WAVEFORM_MAX_LENGTH;
 	}
 
 	rowDetune(index: number): number {
@@ -298,6 +379,10 @@ export class AyTimerEffectsController {
 
 	rowSyncbuzzerEnabled(index: number): boolean {
 		return this.fields.timerRows[index]?.syncbuzzer ?? false;
+	}
+
+	rowSidStepsEnabled(index: number): boolean {
+		return !this.rowSyncbuzzerEnabled(index);
 	}
 
 	private parseNum(text: string): number | null {

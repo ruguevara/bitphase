@@ -7,7 +7,9 @@ export const TONE_CHANNELS = 3;
 
 export type HardwareSidState = {
 	enabled: boolean;
+	pwm: boolean;
 	period: number;
+	periodLow: number;
 	baseVolume: number;
 	waveform: number[];
 	waveformLoop: number;
@@ -118,6 +120,8 @@ export function sidVolumeLevel(waveformStep: number, baseVolume: number): number
 	return Math.min(15, vol);
 }
 
+export { isTimerWaveformLowPhase, timerPwmStepPeriod } from '../../chips/ay/instrument';
+
 export function extractHardwareSidStates(registerState: {
 	channels: Array<{ sid?: HardwareSidState }>;
 }): HardwareSidState[] {
@@ -126,7 +130,9 @@ export function extractHardwareSidStates(registerState: {
 		const sid = registerState.channels[channelIndex]?.sid;
 		result.push({
 			enabled: sid?.enabled ?? false,
+			pwm: sid?.pwm ?? false,
 			period: sid?.period ?? 0,
+			periodLow: sid?.periodLow ?? sid?.period ?? 0,
 			baseVolume: sid?.baseVolume ?? 0,
 			waveform: [...(sid?.waveform ?? [15, 0])],
 			waveformLoop: sid?.waveformLoop ?? 0
@@ -159,7 +165,9 @@ export function envelopeShapeRegisterApplyMask(): number {
 export function sidStatesEqual(a: HardwareSidState, b: HardwareSidState): boolean {
 	return (
 		a.enabled === b.enabled &&
+		a.pwm === b.pwm &&
 		a.period === b.period &&
+		a.periodLow === b.periodLow &&
 		a.baseVolume === b.baseVolume &&
 		a.waveformLoop === b.waveformLoop &&
 		a.waveform.length === b.waveform.length &&

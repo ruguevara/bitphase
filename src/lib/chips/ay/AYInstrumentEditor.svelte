@@ -30,6 +30,7 @@
 	import AYTimerWaveformEditor from './AYTimerWaveformEditor.svelte';
 	import AYTimerEffectsHeaderCells from './AYTimerEffectsHeaderCells.svelte';
 	import AYTimerEffectsRowCells from './AYTimerEffectsRowCells.svelte';
+	import AYTimerPwmControls from './AYTimerPwmControls.svelte';
 	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
 	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
 	import { syncAyInstrumentTimerRows, type AyInstrumentFields } from './instrument';
@@ -55,7 +56,14 @@
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
-	const tableColSpan = $derived(activeTab === 'mixer' ? 16 : 8);
+	const FIXED_TABLE_COLUMNS = 3;
+	const TIMER_EFFECT_COLUMNS = 7;
+	const MIXER_EFFECT_COLUMNS = 13;
+	const tableColSpan = $derived(
+		activeTab === 'mixer'
+			? FIXED_TABLE_COLUMNS + MIXER_EFFECT_COLUMNS
+			: FIXED_TABLE_COLUMNS + TIMER_EFFECT_COLUMNS
+	);
 
 	const timerEffects = new AyTimerEffectsController(
 		() => instrument,
@@ -578,8 +586,11 @@
 		</button>
 	</div>
 
-	{#if activeTab === 'timer'}
-		<AYTimerWaveformEditor {isExpanded} />
+	{#if activeTab === 'timer' && timerEffects.waveformEditorRowIndex !== null}
+		<AYTimerWaveformEditor
+			rowIndex={timerEffects.waveformEditorRowIndex}
+			{isExpanded}
+			onclose={() => timerEffects.closeWaveformEditor()} />
 	{/if}
 
 	<div class="mt-3 flex items-start gap-2 overflow-x-auto">
@@ -1032,6 +1043,13 @@
 						{/each}
 					</tbody>
 					<tfoot>
+						{#if activeTab === 'timer'}
+							<tr>
+								<td colspan={tableColSpan} class="border-t border-[var(--color-app-border)] px-0 py-0">
+									<AYTimerPwmControls {isExpanded} />
+								</td>
+							</tr>
+						{/if}
 						<tr>
 							<td colspan={tableColSpan} class="px-2 py-1">
 								<div class="flex items-center justify-center">

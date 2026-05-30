@@ -19,6 +19,7 @@ import {
 	volumeRegisterIndex,
 	type SongCaptureFrame
 } from '@/lib/services/file/ay-export-utils';
+import { computeTimerPwmPeriods } from '@/lib/chips/ay/instrument';
 
 function storedTimerHz(period: number, psgClockHz = 1773400): number {
 	return exportTimerFrequencyStoredFromYmPeriod(period, psgClockHz);
@@ -36,9 +37,33 @@ function disabledSidFrame(registers: number[] = new Array(14).fill(0)): SongCapt
 	return {
 		registers,
 		sid: [
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 }
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			},
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			},
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			}
 		],
 		syncbuzzer: [
 			{ enabled: false, period: 0, shape: 0 },
@@ -188,12 +213,14 @@ describe('tmr encoder', () => {
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE) & 0x0003).toBe(0);
 	});
 
-	it('reuses one event chain when only SID period changes', () => {
+	it('restarts player timer when classic sid period changes', () => {
 		const frames = [500, 520, 540, 560].map((period) => {
 			const frame = disabledSidFrame();
 			frame.sid[0] = {
 				enabled: true,
+				pwm: false,
 				period,
+				periodLow: period,
 				baseVolume: 15,
 				waveform: [0, 13],
 				waveformLoop: 0
@@ -211,9 +238,81 @@ describe('tmr encoder', () => {
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
 		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(500));
 		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 2)).toBe(storedTimerHz(520));
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2 * TMR_FRAME_SIZE + 2)).toBe(
+			storedTimerHz(540)
+		);
 	});
 
-	it('reuses event chain after stop and start with same waveform config', () => {
+	it('allocates a fresh sid event chain for each pwm duty sweep step', () => {
+		const duties = [5, 10, 15, 20, 25, 30, 35, 40, 45, 44, 43];
+		const frames = duties.map((duty) => {
+			const { highPeriod, lowPeriod } = computeTimerPwmPeriods(1000, duty);
+			const frame = disabledSidFrame();
+			frame.sid[0] = {
+				enabled: true,
+				pwm: true,
+				period: highPeriod,
+				periodLow: lowPeriod,
+				baseVolume: 15,
+				waveform: [15, 0],
+				waveformLoop: 0
+			};
+			return frame;
+		});
+
+		const encoded = encodeTMR(frames, {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(encoded.eventList.byteLength).toBe(
+			TEL_HEADER_SIZE + duties.length * 2 * TMR_ITEM_SIZE
+		);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(
+			storedTimerHz(computeTimerPwmPeriods(1000, duties[0]!).highPeriod)
+		);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 6)).toBe(2);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 2)).toBe(
+			storedTimerHz(computeTimerPwmPeriods(1000, duties[1]!).highPeriod)
+		);
+
+		const secondDuty = duties[1]!;
+		const { highPeriod, lowPeriod } = computeTimerPwmPeriods(1000, secondDuty);
+		const secondChainOffset = TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE;
+		expect(readU32LE(encoded.eventList, secondChainOffset + 16)).toBe(storedTimerHz(highPeriod));
+		expect(readU32LE(encoded.eventList, secondChainOffset + TMR_ITEM_SIZE + 16)).toBe(
+			storedTimerHz(lowPeriod)
+		);
+		expect(readU16LE(encoded.eventList, secondChainOffset + TMR_ITEM_SIZE + 20)).toBe(2);
+	});
+
+	it('reuses event chain after stop and start with same SID config', () => {
+		const sidConfig = {
+			enabled: true,
+			period: 800,
+			baseVolume: 15,
+			waveform: [0, 13],
+			waveformLoop: 0
+		};
+		const onFrame = disabledSidFrame();
+		onFrame.sid[0] = { ...sidConfig };
+		const offFrame = disabledSidFrame();
+		const onAgainFrame = disabledSidFrame();
+		onAgainFrame.sid[0] = { ...sidConfig };
+
+		const encoded = encodeTMR([onFrame, offFrame, onAgainFrame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 6)).toBe(TMR_TIMER_EVENT_STOP);
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 2 * TMR_FRAME_SIZE + 6)).toBe(0);
+	});
+
+	it('reuses the sid event chain when SID restarts with a different period', () => {
 		const sidConfig = {
 			enabled: true,
 			period: 800,
@@ -236,6 +335,59 @@ describe('tmr encoder', () => {
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 6)).toBe(TMR_TIMER_EVENT_STOP);
 		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 2 * TMR_FRAME_SIZE + 6)).toBe(0);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2 * TMR_FRAME_SIZE + 2)).toBe(storedTimerHz(900));
+	});
+
+	it('encodes sid event items with per-step timer frequencies when duty is asymmetric', () => {
+		const frame = disabledSidFrame();
+		frame.registers[8] = 0x0f;
+		const { highPeriod, lowPeriod } = computeTimerPwmPeriods(1000, 25);
+		frame.sid[0] = {
+			enabled: true,
+			pwm: true,
+			period: highPeriod,
+			periodLow: lowPeriod,
+			baseVolume: 15,
+			waveform: [15, 0],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(highPeriod));
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
+		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + 16)).toBe(storedTimerHz(highPeriod));
+		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + TMR_ITEM_SIZE + 16)).toBe(
+			storedTimerHz(lowPeriod)
+		);
+	});
+
+	it('inherits timer frequency on sid event items when high and low periods match', () => {
+		const frame = disabledSidFrame();
+		frame.registers[8] = 0x0f;
+		const { highPeriod } = computeTimerPwmPeriods(1000, 50);
+		frame.sid[0] = {
+			enabled: true,
+			pwm: true,
+			period: highPeriod,
+			periodLow: highPeriod,
+			baseVolume: 15,
+			waveform: [15, 0],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(highPeriod));
+		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + 16)).toBe(0);
+		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + TMR_ITEM_SIZE + 16)).toBe(0);
 	});
 });
 

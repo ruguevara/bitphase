@@ -30,7 +30,7 @@
 		MAX_INSTRUMENT_ID_NUM
 	} from '../../utils/instrument-id';
 	import { migrateInstrumentIdInSong } from '../../services/project/id-migration';
-	import { copyAyInstrumentFields } from '../../chips/ay/instrument';
+	import { copyAyInstrumentFields, type AyInstrumentFields } from '../../chips/ay/instrument';
 	import { editorStateStore } from '../../stores/editor-state.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import { computeGridRows } from '../../utils/compute-grid-rows';
@@ -272,28 +272,8 @@
 			instrument.name + ' (Copy)'
 		);
 		copyAyInstrumentFields(
-			instrument as Instrument & {
-				timerRows?: {
-					sid: boolean;
-					sidPeriodMode?: 'auto' | 'manual';
-					detune?: number;
-					period?: number;
-					semitone?: number;
-				}[];
-				timerWaveform?: number[];
-				timerWaveformLoop?: number;
-			},
-			copy as Instrument & {
-				timerRows?: {
-					sid: boolean;
-					sidPeriodMode?: 'auto' | 'manual';
-					detune?: number;
-					period?: number;
-					semitone?: number;
-				}[];
-				timerWaveform?: number[];
-				timerWaveformLoop?: number;
-			}
+			instrument as Instrument & Partial<AyInstrumentFields>,
+			copy as Instrument & Partial<AyInstrumentFields>
 		);
 
 		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);

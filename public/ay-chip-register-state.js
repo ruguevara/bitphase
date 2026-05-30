@@ -1,6 +1,8 @@
 const DEFAULT_SID = {
 	enabled: false,
+	pwm: false,
 	period: 100,
+	periodLow: 100,
 	baseVolume: 0,
 	waveform: [15, 0],
 	waveformLoop: 0,
@@ -79,7 +81,9 @@ class AYChipRegisterState {
 			const sid = this.channels[i].sid;
 			copy.channels[i].sid = {
 				enabled: sid.enabled,
+				pwm: sid.pwm ?? false,
 				period: sid.period,
+				periodLow: sid.periodLow ?? sid.period,
 				baseVolume: sid.baseVolume,
 				waveform: [...sid.waveform],
 				waveformLoop: sid.waveformLoop,

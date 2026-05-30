@@ -207,6 +207,11 @@ function reconstructInstrument(data: any): Instrument {
 				detune?: number;
 				period?: number;
 				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
 			}) => {
 				const timerRow: {
 					sid: boolean;
@@ -215,6 +220,11 @@ function reconstructInstrument(data: any): Instrument {
 					detune?: number;
 					period?: number;
 					semitone?: number;
+					timerWaveform?: number[];
+					timerWaveformLoop?: number;
+					timerPwmDuty?: number;
+					timerPwmSweepMin?: number;
+					timerPwmSweep?: number;
 				} = {
 					sid: row.sid ?? false,
 					syncbuzzer: row.syncbuzzer ?? false,
@@ -226,29 +236,28 @@ function reconstructInstrument(data: any): Instrument {
 				if (row.detune !== undefined) timerRow.detune = row.detune;
 				if (row.period !== undefined) timerRow.period = row.period;
 				if (row.semitone !== undefined) timerRow.semitone = row.semitone;
+				if (row.timerWaveform) timerRow.timerWaveform = [...row.timerWaveform];
+				if (row.timerWaveformLoop !== undefined) {
+					timerRow.timerWaveformLoop = row.timerWaveformLoop;
+				}
+				if (row.timerPwmDuty !== undefined) timerRow.timerPwmDuty = row.timerPwmDuty;
+				if (row.timerPwmSweepMin !== undefined) timerRow.timerPwmSweepMin = row.timerPwmSweepMin;
+				if (row.timerPwmSweep !== undefined) timerRow.timerPwmSweep = row.timerPwmSweep;
 				return timerRow;
 			}
 		);
 	}
-	if (data.timerWaveform) {
-		(instrument as Instrument & { timerWaveform?: number[] }).timerWaveform = [
-			...data.timerWaveform
-		];
-	}
-	if (data.timerWaveformLoop !== undefined) {
-		(instrument as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop =
-			data.timerWaveformLoop;
-	}
-	if (data.sidPeriodMode !== undefined) {
-		(instrument as Instrument & { sidPeriodMode?: 'auto' | 'manual' }).sidPeriodMode =
-			data.sidPeriodMode;
-	}
-	if (data.sidPeriod !== undefined) {
-		(instrument as Instrument & { sidPeriod?: number }).sidPeriod = data.sidPeriod;
-	}
-	if (data.sidPeriodDetune !== undefined) {
-		(instrument as Instrument & { sidPeriodDetune?: number }).sidPeriodDetune =
-			data.sidPeriodDetune;
+	const extended = instrument as Instrument & {
+		timerPwmDuty?: number;
+		timerPwmSweepMin?: number;
+		timerPwmSweep?: number;
+		timerPwmPreserveOnNewNote?: boolean;
+	};
+	if (data.timerPwmDuty !== undefined) extended.timerPwmDuty = data.timerPwmDuty;
+	if (data.timerPwmSweepMin !== undefined) extended.timerPwmSweepMin = data.timerPwmSweepMin;
+	if (data.timerPwmSweep !== undefined) extended.timerPwmSweep = data.timerPwmSweep;
+	if (data.timerPwmPreserveOnNewNote !== undefined) {
+		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
 	}
 	return instrument;
 }

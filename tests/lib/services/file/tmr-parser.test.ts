@@ -18,9 +18,33 @@ function disabledSidFrame(): SongCaptureFrame {
 	return {
 		registers: new Array(14).fill(0),
 		sid: [
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 },
-			{ enabled: false, period: 0, baseVolume: 0, waveform: [15, 0], waveformLoop: 0 }
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			},
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			},
+			{
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseVolume: 0,
+				waveform: [15, 0],
+				waveformLoop: 0
+			}
 		],
 		syncbuzzer: [
 			{ enabled: false, period: 0, shape: 0 },

@@ -4,6 +4,7 @@ import {
 	registersChangedMask,
 	registerApplyMask,
 	sidVolumeLevel,
+	timerPwmStepPeriod,
 	volumeRegisterIndex,
 	type HardwareSidState,
 	type HardwareSyncBuzzerState,
@@ -48,6 +49,101 @@ function encodeExportTimerFrequencyHz(ymPeriod: number, options: TmrEncodeOption
 	return exportTimerFrequencyStoredFromYmPeriod(ymPeriod, options.chipFrequency);
 }
 
+function sidStartPeriod(sid: HardwareSidState): number {
+	return timerPwmStepPeriod(sid.waveform[0] ?? 0, sid.period, sid.periodLow);
+}
+
+function normalizeSidPeriods(sid: HardwareSidState): HardwareSidState {
+	return {
+		...sid,
+		periodLow: sid.periodLow > 0 ? sid.periodLow : sid.period
+	};
+}
+
+function isSidPwmActive(sid: HardwareSidState): boolean {
+	const normalized = normalizeSidPeriods(sid);
+	return normalized.pwm || normalized.period !== normalized.periodLow;
+}
+
+function pwmDutyRatio(sid: HardwareSidState): number {
+	const normalized = normalizeSidPeriods(sid);
+	const high = Math.max(1, normalized.period);
+	const low = Math.max(1, normalized.periodLow);
+	return high / (high + low);
+}
+
+export function isSidPwmDutySweep(prev: HardwareSidState, next: HardwareSidState): boolean {
+	if (!prev.enabled || !next.enabled) {
+		return false;
+	}
+	if (!sidWaveformConfigEqual(prev, next)) {
+		return false;
+	}
+	const previous = normalizeSidPeriods(prev);
+	const current = normalizeSidPeriods(next);
+	if (previous.period === current.period && previous.periodLow === current.periodLow) {
+		return false;
+	}
+	if (!isSidPwmActive(current)) {
+		return false;
+	}
+	return pwmDutyRatio(previous) !== pwmDutyRatio(current);
+}
+
+function sidEventStepPeriod(sid: HardwareSidState, stepIndex: number): number {
+	return timerPwmStepPeriod(sid.waveform[stepIndex] ?? 0, sid.period, sid.periodLow);
+}
+
+function previousWaveformStepIndex(stepIndex: number, sid: HardwareSidState): number {
+	if (stepIndex > 0) {
+		return stepIndex - 1;
+	}
+	for (let index = sid.waveform.length - 1; index >= 0; index--) {
+		if (resolveNextWaveformIndex(index, sid) === stepIndex) {
+			return index;
+		}
+	}
+	return sid.waveform.length - 1;
+}
+
+export function encodeSidEventTimerFrequency(
+	stepIndex: number,
+	sid: HardwareSidState,
+	options: TmrEncodeOptions
+): number {
+	const currentPeriod = sidEventStepPeriod(sid, stepIndex);
+	const previousPeriod = sidEventStepPeriod(sid, previousWaveformStepIndex(stepIndex, sid));
+	if (currentPeriod === previousPeriod) {
+		return 0;
+	}
+	return encodeExportTimerFrequencyHz(currentPeriod, options);
+}
+
+function appendSidEventChain(
+	eventItems: EventItem[],
+	channelIndex: number,
+	sid: HardwareSidState,
+	options: TmrEncodeOptions
+): number {
+	const startIndex = eventItems.length;
+	const volumeReg = volumeRegisterIndex(channelIndex);
+	const volumeMask = registerApplyMask(volumeReg);
+
+	for (let stepIndex = 0; stepIndex < sid.waveform.length; stepIndex++) {
+		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+		psgData[volumeReg] = sidVolumeLevel(sid.waveform[stepIndex]!, sid.baseVolume);
+		const nextIndex = resolveNextWaveformIndex(stepIndex, sid);
+		eventItems.push({
+			psgData,
+			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
+			timerFrequency: encodeSidEventTimerFrequency(stepIndex, sid, options),
+			timerEventIndex: startIndex + nextIndex
+		});
+	}
+
+	return startIndex;
+}
+
 type TimerCommand = {
 	frequency: number;
 	eventIndex: number;
@@ -70,7 +166,9 @@ export function encodeTMR(
 	const tmrFrames: Array<{ psgMask: number; timers: TimerCommand[] }> = [];
 	const previousSid: HardwareSidState[] = Array.from({ length: 3 }, () => ({
 		enabled: false,
+		pwm: false,
 		period: 0,
+		periodLow: 0,
 		baseVolume: 0,
 		waveform: [15, 0],
 		waveformLoop: 0
@@ -89,6 +187,13 @@ export function encodeTMR(
 
 		for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
 			const sid = frame.sid[channelIndex]!;
+			const effectiveSid: HardwareSidState = sid.enabled
+				? {
+						...sid,
+						pwm: true,
+						periodLow: sid.periodLow > 0 ? sid.periodLow : sid.period
+					}
+				: sid;
 			const syncbuzzer = frame.syncbuzzer?.[channelIndex] ?? {
 				enabled: false,
 				period: 0,
@@ -124,26 +229,44 @@ export function encodeTMR(
 					timers.push({ frequency: 0, eventIndex: 0 });
 				}
 			} else if (sid.enabled) {
-				if (!prevSid.enabled || !sidWaveformConfigEqual(prevSid, sid)) {
+				const sidWaveformChanged =
+					!prevSid.enabled || !sidWaveformConfigEqual(prevSid, effectiveSid);
+				const sidPeriodChanged =
+					prevSid.period !== effectiveSid.period ||
+					prevSid.periodLow !== effectiveSid.periodLow;
+				if (sidWaveformChanged) {
 					const eventIndex = getOrCreateSidEventChain(
 						eventItems,
 						chainStartByKey,
 						channelIndex,
-						sid
+						effectiveSid,
+						options
 					);
 					timers.push({
-						frequency: encodeExportTimerFrequencyHz(sid.period, options),
+						frequency: encodeExportTimerFrequencyHz(sidStartPeriod(effectiveSid), options),
 						eventIndex
 					});
-				} else if (prevSid.period !== sid.period) {
+				} else if (sidPeriodChanged && isSidPwmDutySweep(prevSid, effectiveSid)) {
+					const eventIndex = appendSidEventChain(
+						eventItems,
+						channelIndex,
+						effectiveSid,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(sidStartPeriod(effectiveSid), options),
+						eventIndex
+					});
+				} else if (sidPeriodChanged) {
 					const eventIndex = getOrCreateSidEventChain(
 						eventItems,
 						chainStartByKey,
 						channelIndex,
-						sid
+						effectiveSid,
+						options
 					);
 					timers.push({
-						frequency: encodeExportTimerFrequencyHz(sid.period, options),
+						frequency: encodeExportTimerFrequencyHz(effectiveSid.period, options),
 						eventIndex
 					});
 				} else {
@@ -157,7 +280,9 @@ export function encodeTMR(
 
 			previousSid[channelIndex] = {
 				enabled: sid.enabled,
-				period: sid.period,
+				pwm: effectiveSid.pwm,
+				period: effectiveSid.period,
+				periodLow: effectiveSid.periodLow,
 				baseVolume: sid.baseVolume,
 				waveform: [...sid.waveform],
 				waveformLoop: sid.waveformLoop
@@ -248,7 +373,8 @@ function getOrCreateSidEventChain(
 	eventItems: EventItem[],
 	chainStartByKey: Map<string, number>,
 	channelIndex: number,
-	sid: HardwareSidState
+	sid: HardwareSidState,
+	options: TmrEncodeOptions
 ): number {
 	const key = sidEventChainKey(channelIndex, sid);
 	const existing = chainStartByKey.get(key);
@@ -264,12 +390,12 @@ function getOrCreateSidEventChain(
 	for (let stepIndex = 0; stepIndex < sid.waveform.length; stepIndex++) {
 		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
 		psgData[volumeReg] = sidVolumeLevel(sid.waveform[stepIndex]!, sid.baseVolume);
-		const relativeNext = resolveNextWaveformIndex(stepIndex, sid);
+		const nextIndex = resolveNextWaveformIndex(stepIndex, sid);
 		eventItems.push({
 			psgData,
 			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
-			timerFrequency: 0,
-			timerEventIndex: startIndex + relativeNext
+			timerFrequency: encodeSidEventTimerFrequency(stepIndex, sid, options),
+			timerEventIndex: startIndex + nextIndex
 		});
 	}
 

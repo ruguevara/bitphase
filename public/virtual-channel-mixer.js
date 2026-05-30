@@ -93,7 +93,9 @@ class VirtualChannelMixer {
 		dst.mixer.envelope = src.mixer.envelope;
 		if (src.sid && dst.sid) {
 			dst.sid.enabled = src.sid.enabled;
+			dst.sid.pwm = src.sid.pwm ?? false;
 			dst.sid.period = src.sid.period;
+			dst.sid.periodLow = src.sid.periodLow ?? src.sid.period;
 			dst.sid.baseVolume = src.sid.baseVolume;
 			dst.sid.waveform = [...src.sid.waveform];
 			dst.sid.waveformLoop = src.sid.waveformLoop;

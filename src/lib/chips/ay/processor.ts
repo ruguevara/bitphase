@@ -180,13 +180,20 @@ export class AYProcessor
 			rows: Array.from(o.rows).map((row) => ({ ...row })),
 			loop: o.loop,
 			name: o.name,
-			timerRows: (o as Instrument & { timerRows?: { sid: boolean }[] }).timerRows?.map(
-				(row) => ({ ...row })
-			),
-			timerWaveform: (o as Instrument & { timerWaveform?: number[] }).timerWaveform
-				? [...((o as Instrument & { timerWaveform?: number[] }).timerWaveform as number[])]
-				: undefined,
-			timerWaveformLoop: (o as Instrument & { timerWaveformLoop?: number }).timerWaveformLoop
+			timerPwmDuty: (o as Instrument & { timerPwmDuty?: number }).timerPwmDuty,
+			timerPwmSweepMin: (o as Instrument & { timerPwmSweepMin?: number }).timerPwmSweepMin,
+			timerPwmSweep: (o as Instrument & { timerPwmSweep?: number }).timerPwmSweep,
+			timerPwmPreserveOnNewNote: (
+				o as Instrument & { timerPwmPreserveOnNewNote?: boolean }
+			).timerPwmPreserveOnNewNote,
+			timerRows: (o as Instrument & { timerRows?: Record<string, unknown>[] }).timerRows?.map(
+				(row) => ({
+					...row,
+					timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
+						? [...((row as { timerWaveform?: number[] }).timerWaveform as number[])]
+						: undefined
+				})
+			)
 		}));
 		this.bridge.sendCommand({ type: 'init_instruments', instruments: sanitized });
 	}
@@ -266,18 +273,17 @@ export class AYProcessor
 					rows: Array.from(instrument.rows).map((row) => ({ ...row })),
 					loop: instrument.loop,
 					name: instrument.name,
-					timerRows: (instrument as Instrument & { timerRows?: { sid: boolean }[] })
-						.timerRows?.map((row) => ({ ...row })),
-					timerWaveform: (instrument as Instrument & { timerWaveform?: number[] })
-						.timerWaveform
-						? [
-								...((
-									instrument as Instrument & { timerWaveform?: number[] }
-								).timerWaveform as number[])
-							]
-						: undefined,
-					timerWaveformLoop: (instrument as Instrument & { timerWaveformLoop?: number })
-						.timerWaveformLoop
+					timerRows: (instrument as Instrument & { timerRows?: Record<string, unknown>[] })
+						.timerRows?.map((row) => ({
+							...row,
+							timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
+								? [
+										...((
+											row as { timerWaveform?: number[] }
+										).timerWaveform as number[])
+									]
+								: undefined
+						}))
 				}
 			: undefined;
 		this.bridge.sendCommand({

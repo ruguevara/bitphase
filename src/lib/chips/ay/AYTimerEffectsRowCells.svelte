@@ -18,10 +18,22 @@
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
 	const sidEnabled = $derived(controller.rowSidEnabled(index));
 	const syncbuzzerEnabled = $derived(controller.rowSyncbuzzerEnabled(index));
+	const sidStepsEnabled = $derived(controller.rowSidStepsEnabled(index));
 	const rowMode = $derived(controller.rowSidPeriodMode(index));
 	const rowToneDetune = $derived(controller.rowToneDetune(index));
 	const rowDetune = $derived(controller.rowDetune(index));
 	const rowPeriod = $derived(controller.rowPeriod(index));
+	const waveformEditorOpen = $derived(controller.waveformEditorRowIndex === index);
+
+	let waveformText = $state('');
+	let waveformInputFocused = $state(false);
+
+	$effect(() => {
+		controller.rowTimerWaveform(index);
+		if (!waveformInputFocused) {
+			waveformText = controller.formatRowTimerWaveform(index);
+		}
+	});
 
 	function numericInputClass(inactive = false): string {
 		return `w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] ${
@@ -31,6 +43,23 @@
 				? 'text-[var(--color-app-text-tertiary)] opacity-60'
 				: 'text-[var(--color-app-text-secondary)]'
 		} placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none`;
+	}
+
+	function handleWaveformFocus(event: FocusEvent): void {
+		if (!sidStepsEnabled) return;
+		waveformInputFocused = true;
+		waveformText = controller.formatRowTimerWaveform(index);
+		(event.target as HTMLInputElement).select();
+	}
+
+	function handleWaveformBlur(): void {
+		if (!sidStepsEnabled) return;
+		waveformInputFocused = false;
+		const parsed = controller.parseTimerWaveform(waveformText);
+		if (parsed !== null) {
+			controller.setRowTimerWaveform(index, parsed);
+		}
+		waveformText = controller.formatRowTimerWaveform(index);
 	}
 </script>
 
@@ -85,7 +114,7 @@
 		{/if}
 	</div>
 </td>
-<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
+<td class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 px-0.5'}>
 	<input
 		type="text"
 		class={numericInputClass(rowMode === 'manual')}
@@ -93,7 +122,7 @@
 		onfocus={(e) => (e.target as HTMLInputElement).select()}
 		oninput={(e) => controller.updateRowToneDetune(index, (e.target as HTMLInputElement).value)} />
 </td>
-<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
+<td class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 px-0.5'}>
 	<input
 		type="text"
 		class={numericInputClass(rowMode === 'manual')}
@@ -108,4 +137,38 @@
 		value={controller.formatNum(rowPeriod)}
 		onfocus={(e) => (e.target as HTMLInputElement).select()}
 		oninput={(e) => controller.updateRowPeriod(index, (e.target as HTMLInputElement).value)} />
+</td>
+<td class={isExpanded ? 'min-w-32 px-1.5' : 'min-w-24 px-0.5'}>
+	<div class="flex items-center gap-1">
+		<input
+			type="text"
+			class="{numericInputClass(!sidStepsEnabled)} min-w-0 flex-1"
+			value={waveformInputFocused ? waveformText : controller.formatRowTimerWaveform(index)}
+			placeholder="15 0"
+			spellcheck="false"
+			disabled={!sidStepsEnabled}
+			title={sidStepsEnabled
+				? 'Space-separated SID steps (0–15)'
+				: 'Disabled while syncbuzzer is active'}
+			onfocus={handleWaveformFocus}
+			oninput={(event) => (waveformText = (event.currentTarget as HTMLInputElement).value)}
+			onblur={handleWaveformBlur} />
+		<button
+			type="button"
+			class="flex shrink-0 items-center justify-center rounded p-0.5 transition-colors {waveformEditorOpen
+				? 'bg-[var(--color-pattern-note)]/15 text-[var(--color-pattern-note)]'
+				: sidStepsEnabled
+					? 'cursor-pointer text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)]'
+					: 'cursor-not-allowed text-[var(--color-app-text-tertiary)] opacity-60'}"
+			disabled={!sidStepsEnabled}
+			title={sidStepsEnabled
+				? 'Open SID steps editor'
+				: 'Disabled while syncbuzzer is active'}
+			aria-label={sidStepsEnabled
+				? 'Open SID steps editor'
+				: 'SID steps editor disabled while syncbuzzer is active'}
+			onclick={() => controller.openWaveformEditor(index)}>
+			<IconCarbonEdit class={iconSizeClass} />
+		</button>
+	</div>
 </td>

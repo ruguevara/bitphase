@@ -125,9 +125,17 @@ export class HistoryClone {
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
+				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
 			}[];
-			timerWaveform?: number[];
-			timerWaveformLoop?: number;
+			timerPwmDuty?: number;
+			timerPwmSweepMin?: number;
+			timerPwmSweep?: number;
+			timerPwmPreserveOnNewNote?: boolean;
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
@@ -137,18 +145,30 @@ export class HistoryClone {
 				detune?: number;
 				period?: number;
 				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
 			}[];
-			timerWaveform?: number[];
-			timerWaveformLoop?: number;
+			timerPwmDuty?: number;
+			timerPwmSweepMin?: number;
+			timerPwmSweep?: number;
+			timerPwmPreserveOnNewNote?: boolean;
 		};
 		if (extended.timerRows) {
-			clonedExtended.timerRows = extended.timerRows.map((row) => ({ ...row }));
+			clonedExtended.timerRows = extended.timerRows.map((row) => ({
+				...row,
+				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+			}));
 		}
-		if (extended.timerWaveform) {
-			clonedExtended.timerWaveform = [...extended.timerWaveform];
+		if (extended.timerPwmDuty !== undefined) clonedExtended.timerPwmDuty = extended.timerPwmDuty;
+		if (extended.timerPwmSweepMin !== undefined) {
+			clonedExtended.timerPwmSweepMin = extended.timerPwmSweepMin;
 		}
-		if (extended.timerWaveformLoop !== undefined) {
-			clonedExtended.timerWaveformLoop = extended.timerWaveformLoop;
+		if (extended.timerPwmSweep !== undefined) clonedExtended.timerPwmSweep = extended.timerPwmSweep;
+		if (extended.timerPwmPreserveOnNewNote !== undefined) {
+			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
 		}
 		return cloned;
 	}

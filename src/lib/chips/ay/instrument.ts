@@ -9,54 +9,191 @@ export type AyTimerRow = {
 	detune?: number;
 	period?: number;
 	semitone?: number;
+	timerWaveform?: number[];
+	timerWaveformLoop?: number;
 };
 
 export type AyInstrumentFields = {
 	timerRows: AyTimerRow[];
-	timerWaveform: number[];
-	timerWaveformLoop: number;
+	timerPwmDuty: number;
+	timerPwmSweepMin: number;
+	timerPwmSweep: number;
+	timerPwmPreserveOnNewNote: boolean;
 };
 
 export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
+export const AY_TIMER_PWM_DUTY_MIN = 0;
+export const AY_TIMER_PWM_DUTY_MAX = 50;
+export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
+export const DEFAULT_AY_TIMER_PWM_SWEEP_MIN = 0;
+export const DEFAULT_AY_TIMER_PWM_SWEEP = 0;
+export const TIMER_PWM_SWEEP_UNINITIALIZED = -1;
 export const AY_TIMER_WAVEFORM_MAX_LENGTH = 32;
 export const AY_TONE_REGISTER_PRESCALER = 16;
 export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
 
 type ExtendedInstrument = Instrument & {
 	timerRows?: AyTimerRow[];
-	timerWaveform?: number[];
-	timerWaveformLoop?: number;
-	sidPeriodMode?: AySidPeriodMode;
-	sidPeriod?: number;
-	sidPeriodDetune?: number;
+	timerPwmDuty?: number;
+	timerPwmSweepMin?: number;
+	timerPwmSweep?: number;
+	timerPwmPreserveOnNewNote?: boolean;
 };
 
-type LegacyInstrumentDefaults = {
-	sidPeriodMode: AySidPeriodMode;
-	sidPeriod: number;
-	sidPeriodDetune: number;
+type LegacyTimerRow = AyTimerRow & {
+	timerPwmDuty?: number;
+	timerPwmSweepMin?: number;
+	timerPwmSweep?: number;
 };
 
-export function createDefaultAyTimerRow(): AyTimerRow {
-	return { sid: false, syncbuzzer: false };
+export function createDefaultInstrumentTimerPwmFields(): Pick<
+	AyInstrumentFields,
+	'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'
+> {
+	return {
+		timerPwmDuty: DEFAULT_AY_TIMER_PWM_DUTY,
+		timerPwmSweepMin: DEFAULT_AY_TIMER_PWM_SWEEP_MIN,
+		timerPwmSweep: DEFAULT_AY_TIMER_PWM_SWEEP
+	};
 }
 
-export function resolveLegacyInstrumentDefaults(instrument: Instrument): LegacyInstrumentDefaults {
-	const extended = instrument as ExtendedInstrument;
-	const sidPeriodMode =
-		extended.sidPeriodMode === 'auto' || extended.sidPeriodMode === 'manual'
-			? extended.sidPeriodMode
-			: extended.sidPeriod !== undefined
-				? 'manual'
-				: 'auto';
+export function createDefaultAyTimerRow(): AyTimerRow {
 	return {
-		sidPeriodMode,
-		sidPeriod: Math.max(1, (extended.sidPeriod ?? DEFAULT_AY_SID_PERIOD) & 0xffff),
-		sidPeriodDetune: extended.sidPeriodDetune ?? DEFAULT_AY_SID_PERIOD_DETUNE
+		sid: false,
+		syncbuzzer: false,
+		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
+		timerWaveformLoop: 0
 	};
+}
+
+export function effectiveRowTimerWaveform(row: AyTimerRow | undefined): number[] {
+	const waveform = row?.timerWaveform;
+	if (waveform && waveform.length > 0) {
+		return waveform;
+	}
+	return [...DEFAULT_AY_TIMER_WAVEFORM];
+}
+
+export function effectiveRowTimerWaveformLoop(row: AyTimerRow | undefined): number {
+	return row?.timerWaveformLoop ?? 0;
+}
+
+export function isClassicSidTimerWaveform(waveform: readonly number[]): boolean {
+	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
+}
+
+export function rowSupportsTimerPwm(row: AyTimerRow | undefined): boolean {
+	if (!row || row.syncbuzzer) {
+		return false;
+	}
+	return isClassicSidTimerWaveform(effectiveRowTimerWaveform(row));
+}
+
+export function instrumentSupportsTimerPwm(fields: AyInstrumentFields): boolean {
+	return fields.timerRows.some((row) => rowSupportsTimerPwm(row));
+}
+
+export function normalizeInstrumentTimerPwmFields(
+	source: Partial<Pick<AyInstrumentFields, 'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'>>
+): Pick<AyInstrumentFields, 'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'> {
+	const timerPwmDuty = clampTimerPwmDuty(source.timerPwmDuty ?? DEFAULT_AY_TIMER_PWM_DUTY);
+	const timerPwmSweep = Math.max(0, (source.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+	return {
+		timerPwmDuty,
+		timerPwmSweepMin:
+			timerPwmSweep <= 0
+				? DEFAULT_AY_TIMER_PWM_SWEEP_MIN
+				: clampTimerPwmSweepMin(
+						source.timerPwmSweepMin ?? DEFAULT_AY_TIMER_PWM_SWEEP_MIN,
+						timerPwmDuty
+					),
+		timerPwmSweep
+	};
+}
+
+export function effectiveInstrumentTimerPwmDuty(fields: AyInstrumentFields): number {
+	return fields.timerPwmDuty;
+}
+
+export function effectiveInstrumentTimerPwmSweep(fields: AyInstrumentFields): number {
+	return fields.timerPwmSweep;
+}
+
+export function effectiveInstrumentTimerPwmSweepMin(fields: AyInstrumentFields): number {
+	return fields.timerPwmSweepMin;
+}
+
+export function effectiveRowTimerPwmDuty(
+	fields: AyInstrumentFields,
+	row: AyTimerRow | undefined
+): number {
+	if (!rowSupportsTimerPwm(row)) {
+		return DEFAULT_AY_TIMER_PWM_DUTY;
+	}
+	return clampTimerPwmDuty(fields.timerPwmDuty ?? DEFAULT_AY_TIMER_PWM_DUTY);
+}
+
+export function effectiveRowTimerPwmSweep(
+	fields: AyInstrumentFields,
+	row: AyTimerRow | undefined
+): number {
+	if (!rowSupportsTimerPwm(row)) {
+		return DEFAULT_AY_TIMER_PWM_SWEEP;
+	}
+	return Math.max(0, (fields.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+}
+
+export function effectiveRowTimerPwmSweepMin(
+	fields: AyInstrumentFields,
+	row: AyTimerRow | undefined
+): number {
+	if (!rowSupportsTimerPwm(row)) {
+		return DEFAULT_AY_TIMER_PWM_SWEEP_MIN;
+	}
+	return clampTimerPwmSweepMin(
+		fields.timerPwmSweepMin ?? DEFAULT_AY_TIMER_PWM_SWEEP_MIN,
+		fields.timerPwmDuty ?? DEFAULT_AY_TIMER_PWM_DUTY
+	);
+}
+
+export function clampTimerPwmSweepMin(min: number, maxDuty: number): number {
+	const clampedMax = clampTimerPwmDuty(maxDuty);
+	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(clampedMax, min | 0));
+}
+
+export function advanceTimerPwmSweep(
+	currentDuty: number,
+	direction: number,
+	sweepSpeed: number,
+	minDuty: number,
+	maxDuty: number
+): { duty: number; direction: number } {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+
+	if (sweepSpeed <= 0 || min >= max) {
+		return { duty: max, direction: 1 };
+	}
+
+	if (currentDuty < 0) {
+		return { duty: min, direction: 1 };
+	}
+
+	let duty = currentDuty + sweepSpeed * direction;
+	let nextDirection = direction;
+
+	if (duty >= max) {
+		duty = max;
+		nextDirection = -1;
+	} else if (duty <= min) {
+		duty = min;
+		nextDirection = 1;
+	}
+
+	return { duty, direction: nextDirection };
 }
 
 export function resolveAyTimerRowSidPeriodMode(row: AyTimerRow | undefined): AySidPeriodMode {
@@ -92,66 +229,110 @@ export function computeSidPeriod(tonePeriod: number, timerRow?: AyTimerRow): num
 	return computeTimerEffectPeriod(tonePeriod, timerRow);
 }
 
+export function clampTimerPwmDuty(duty: number): number {
+	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(AY_TIMER_PWM_DUTY_MAX, duty | 0));
+}
+
+export function computeTimerPwmPeriods(
+	basePeriod: number,
+	dutyPercent: number
+): { highPeriod: number; lowPeriod: number } {
+	const duty = clampTimerPwmDuty(dutyPercent) / 100;
+	const cyclePeriod = Math.max(2, basePeriod * 2);
+	const highPeriod = Math.max(1, Math.round(cyclePeriod * duty));
+	const lowPeriod = Math.max(1, Math.round(cyclePeriod * (1 - duty)));
+	return { highPeriod, lowPeriod };
+}
+
+export function computeTimerPwmLowPeriod(basePeriod: number, dutyPercent: number): number {
+	return computeTimerPwmPeriods(basePeriod, dutyPercent).lowPeriod;
+}
+
+export function isTimerWaveformLowPhase(stepValue: number): boolean {
+	return (stepValue & 0xf) === 0;
+}
+
+export function timerPwmStepPeriod(
+	stepValue: number,
+	highPeriod: number,
+	lowPeriod: number
+): number {
+	return isTimerWaveformLowPhase(stepValue) ? lowPeriod : highPeriod;
+}
+
 export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
-	if (row.sid && row.syncbuzzer) {
+	if (row.sid) {
 		return { ...row, syncbuzzer: false };
+	}
+	if (row.syncbuzzer) {
+		return { ...row, sid: false };
 	}
 	return row;
 }
 
-function normalizeTimerRow(
-	row: AyTimerRow | undefined,
-	legacy: LegacyInstrumentDefaults
-): AyTimerRow {
-	const sid = row?.sid ?? false;
-	const sidPeriodMode =
-		row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
-			? row.sidPeriodMode
-			: legacy.sidPeriodMode;
-	const normalized: AyTimerRow = { sid, syncbuzzer: row?.syncbuzzer ?? false, sidPeriodMode };
+function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
+	const defaults = createDefaultAyTimerRow();
+	const normalized: AyTimerRow = {
+		sid: row?.sid ?? defaults.sid,
+		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
+		sidPeriodMode:
+			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
+				? row.sidPeriodMode
+				: 'auto',
+		timerWaveform: row?.timerWaveform?.length
+			? row.timerWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			: [...defaults.timerWaveform!],
+		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop!
+	};
 	if (row?.detune !== undefined) {
 		normalized.detune = row.detune;
-	} else if (legacy.sidPeriodDetune !== DEFAULT_AY_SID_PERIOD_DETUNE) {
-		normalized.detune = legacy.sidPeriodDetune;
 	}
 	if (row?.semitone !== undefined) {
 		normalized.semitone = row.semitone;
 	}
 	if (row?.period !== undefined) {
 		normalized.period = Math.max(1, row.period & 0xffff);
-	} else if (legacy.sidPeriodMode === 'manual' && legacy.sidPeriod !== DEFAULT_AY_SID_PERIOD) {
-		normalized.period = legacy.sidPeriod;
 	}
 	return resolveExclusiveTimerEffects(normalized);
+}
+
+function resolveInstrumentTimerPwmFields(
+	extended: ExtendedInstrument,
+	sourceRows: LegacyTimerRow[]
+): Pick<AyInstrumentFields, 'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'> {
+	if (
+		extended.timerPwmDuty !== undefined ||
+		extended.timerPwmSweepMin !== undefined ||
+		extended.timerPwmSweep !== undefined
+	) {
+		return normalizeInstrumentTimerPwmFields(extended);
+	}
+
+	const legacyRow = sourceRows.find(
+		(row) =>
+			row?.timerPwmDuty !== undefined ||
+			row?.timerPwmSweepMin !== undefined ||
+			row?.timerPwmSweep !== undefined
+	);
+	if (legacyRow) {
+		return normalizeInstrumentTimerPwmFields(legacyRow);
+	}
+
+	return createDefaultInstrumentTimerPwmFields();
 }
 
 export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumentFields {
 	const rowCount = Math.max(instrument.rows.length, 1);
 	const extended = instrument as ExtendedInstrument;
-	const legacy = resolveLegacyInstrumentDefaults(instrument);
-	let timerRows = extended.timerRows;
-	if (!timerRows) {
-		timerRows = instrument.rows.map(() => createDefaultAyTimerRow());
-	}
-	timerRows = timerRows.map((row) => normalizeTimerRow(row, legacy));
-	while (timerRows.length < rowCount) {
-		timerRows.push(createDefaultAyTimerRow());
-	}
-	if (timerRows.length > rowCount) {
-		timerRows.length = rowCount;
-	}
-
-	let timerWaveform = extended.timerWaveform;
-	if (!timerWaveform || timerWaveform.length === 0) {
-		timerWaveform = [...DEFAULT_AY_TIMER_WAVEFORM];
-	}
-
-	const timerWaveformLoop = extended.timerWaveformLoop ?? 0;
+	const sourceRows = extended.timerRows ?? [];
+	const timerRows = Array.from({ length: rowCount }, (_, index) =>
+		normalizeTimerRow(sourceRows[index])
+	);
 
 	return {
 		timerRows,
-		timerWaveform,
-		timerWaveformLoop
+		...resolveInstrumentTimerPwmFields(extended, sourceRows),
+		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote === true
 	};
 }
 
@@ -224,7 +405,12 @@ export function syncAyInstrumentTimerRows(instrument: Instrument, rowCount: numb
 	if (timerRows.length > rowCount) {
 		timerRows.length = rowCount;
 	}
-	(instrument as ExtendedInstrument).timerRows = timerRows;
+	const extended = instrument as ExtendedInstrument;
+	extended.timerRows = timerRows;
+	extended.timerPwmDuty = fields.timerPwmDuty;
+	extended.timerPwmSweepMin = fields.timerPwmSweepMin;
+	extended.timerPwmSweep = fields.timerPwmSweep;
+	extended.timerPwmPreserveOnNewNote = fields.timerPwmPreserveOnNewNote;
 	return timerRows;
 }
 
@@ -232,13 +418,15 @@ export function copyAyInstrumentFields(
 	source: Instrument & Partial<AyInstrumentFields>,
 	target: Instrument & Partial<AyInstrumentFields>
 ): void {
+	const normalized = normalizeAyInstrumentFields(source as Instrument);
 	if (source.timerRows) {
-		target.timerRows = source.timerRows.map((row) => ({ ...row }));
+		target.timerRows = normalized.timerRows.map((row) => ({
+			...row,
+			timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+		}));
 	}
-	if (source.timerWaveform) {
-		target.timerWaveform = [...source.timerWaveform];
-	}
-	if (source.timerWaveformLoop !== undefined) {
-		target.timerWaveformLoop = source.timerWaveformLoop;
-	}
+	target.timerPwmDuty = normalized.timerPwmDuty;
+	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
+	target.timerPwmSweep = normalized.timerPwmSweep;
+	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
 }

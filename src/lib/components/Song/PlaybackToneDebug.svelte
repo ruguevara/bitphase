@@ -47,7 +47,7 @@
 		},
 		{
 			key: 'sid',
-			label: 'SID',
+			label: 'SID/PWM',
 			icon: IconCarbonChartWinLoss,
 			accentClass: 'text-[var(--color-pattern-instrument)]',
 			readHz: (column) => column.sidHz,

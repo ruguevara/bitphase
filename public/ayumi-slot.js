@@ -143,6 +143,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	_collectChannelPlaybackHz() {
 		const clock = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
+		const wasmModule = this.state.wasmModule;
+		const ayumiPtr = this.state.ayumiPtr;
+		const getSidActivePeriod = wasmModule?.ayumi_get_sid_active_period;
 		const toneHz = [];
 		const sidTimerHz = [];
 		const syncbuzzerTimerHz = [];
@@ -157,6 +160,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 			if (!channel?.sid?.enabled) {
 				sidTimerHz.push(null);
+			} else if (typeof getSidActivePeriod === 'function' && ayumiPtr) {
+				const activePeriod = getSidActivePeriod(ayumiPtr, i) & 0xffff;
+				sidTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
 				const sidPeriod = channel.sid.period & 0xffff;
 				sidTimerHz.push(sidPeriod > 0 ? clock / (8 * sidPeriod) : null);

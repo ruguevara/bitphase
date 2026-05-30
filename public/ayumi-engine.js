@@ -27,14 +27,49 @@ class AyumiEngine {
 	_applySid(channelIndex, sid, lastSid, forceApply = false) {
 		const enabled = sid.enabled ? 1 : 0;
 		const period = sid.period > 0 ? sid.period : 1;
+		const periodLow = sid.periodLow > 0 ? sid.periodLow : period;
+		const pwm = sid.pwm ? 1 : 0;
 		const baseVolume = sid.baseVolume & 0xf;
 		const wasEnabled = lastSid.enabled ? 1 : 0;
+		const wasPwm = lastSid.pwm ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
+		const modeChanged = pwm !== wasPwm;
 
-		if (forceApply || enableChanged || period !== lastSid.period || baseVolume !== lastSid.baseVolume) {
+		if (pwm) {
+			if (
+				forceApply ||
+				enableChanged ||
+				modeChanged ||
+				period !== lastSid.period ||
+				periodLow !== lastSid.periodLow ||
+				baseVolume !== lastSid.baseVolume
+			) {
+				this.wasmModule.ayumi_set_sid_pwm(
+					this.ayumiPtr,
+					channelIndex,
+					enabled,
+					period,
+					periodLow,
+					baseVolume
+				);
+				lastSid.enabled = sid.enabled;
+				lastSid.pwm = sid.pwm;
+				lastSid.period = period;
+				lastSid.periodLow = periodLow;
+				lastSid.baseVolume = baseVolume;
+			}
+		} else if (
+			forceApply ||
+			enableChanged ||
+			modeChanged ||
+			period !== lastSid.period ||
+			baseVolume !== lastSid.baseVolume
+		) {
 			this.wasmModule.ayumi_set_sid(this.ayumiPtr, channelIndex, enabled, period, baseVolume);
 			lastSid.enabled = sid.enabled;
+			lastSid.pwm = false;
 			lastSid.period = period;
+			lastSid.periodLow = period;
 			lastSid.baseVolume = baseVolume;
 		}
 
@@ -49,7 +84,7 @@ class AyumiEngine {
 		if (
 			sid.enabled &&
 			waveform.length > 0 &&
-			(forceApply || waveformChanged || enableChanged)
+			(forceApply || waveformChanged || enableChanged || modeChanged)
 		) {
 			const ptr = this._ensureSidWaveformBuffer(channelIndex, waveform.length);
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
