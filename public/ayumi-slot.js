@@ -70,7 +70,8 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 			const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
 			const isYM = this.state.isYM ?? 0;
-			wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate);
+			const isST = this.state.isST ?? 0;
+			wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate, isST);
 
 			this.applyPanSettings(wasmModule, ayumiPtr);
 
