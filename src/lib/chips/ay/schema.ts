@@ -96,7 +96,8 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			type: 'toggle',
 			options: [
 				{ label: 'AY', value: 'AY' },
-				{ label: 'YM', value: 'YM' }
+				{ label: 'YM', value: 'YM' },
+				{ label: 'ST', value: 'ST' }
 			],
 			defaultValue: 'AY',
 			group: 'chip',
