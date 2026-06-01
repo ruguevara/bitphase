@@ -91,7 +91,13 @@ class AyumiState extends TrackerState {
 
 	setChipVariant(chipVariant) {
 		this.isYM = chipVariant === 'YM' ? 1 : 0;
-		this.isST = chipVariant === 'ST' ? 1 : 0;
+	}
+
+	setStMixing(enabled) {
+		this.isST = enabled ? 1 : 0;
+		if (enabled) {
+			this.isYM = 1;
+		}
 	}
 
 	setInstruments(instruments) {

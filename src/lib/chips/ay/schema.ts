@@ -1,6 +1,8 @@
 import type { ChipSchema } from '../base/schema';
 import { PT3TuneTables, generate12TETTuningTable } from '../../models/pt3/tuning-tables';
 
+export const ATARI_ST_CHIP_FREQUENCY = 2_000_000;
+
 export const AY_CHIP_SCHEMA: ChipSchema = {
 	chipType: 'ay',
 	defaultTuningTable: PT3TuneTables[2],
@@ -96,12 +98,14 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			type: 'toggle',
 			options: [
 				{ label: 'AY', value: 'AY' },
-				{ label: 'YM', value: 'YM' },
-				{ label: 'ST', value: 'ST' }
+				{ label: 'YM', value: 'YM' }
 			],
 			defaultValue: 'AY',
 			group: 'chip',
-			notifyAudioService: true
+			notifyAudioService: true,
+			disabledWhen: { key: 'stMixing', value: true },
+			resolveDisplayValue: (value, context) =>
+				context.stMixing === true ? 'YM' : value
 		},
 		{
 			key: 'chipFrequency',
@@ -113,11 +117,14 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 				{ label: 'ZX Spectrum (1.7734 MHz)', value: 1773400 },
 				{ label: 'Pentagon (1.75 MHz)', value: 1750000 },
 				{ label: 'MSX (1.7897 MHz)', value: 1789700 },
-				{ label: 'Atari ST (2 MHz)', value: 2000000 }
+				{ label: 'Atari ST (2 MHz)', value: ATARI_ST_CHIP_FREQUENCY }
 			],
 			defaultValue: 1773400,
 			group: 'chip',
-			notifyAudioService: true
+			notifyAudioService: true,
+			disabledWhen: { key: 'stMixing', value: true },
+			resolveDisplayValue: (value, context) =>
+				context.stMixing === true ? ATARI_ST_CHIP_FREQUENCY : value
 		},
 		{
 			key: 'interruptFrequency',
@@ -144,7 +151,10 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			],
 			defaultValue: 'ABC',
 			group: 'chip',
-			notifyAudioService: true
+			notifyAudioService: true,
+			disabledWhen: { key: 'stMixing', value: true },
+			resolveDisplayValue: (value, context) =>
+				context.stMixing === true ? 'mono' : value
 		},
 		{
 			key: 'tuningTableIndex',
@@ -180,6 +190,19 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 			group: 'chip',
 			notifyAudioService: true,
 			showWhen: { key: 'tuningTableIndex', value: 5 }
+		},
+		{
+			key: 'stMixing',
+			label: 'ST mixing',
+			type: 'toggle',
+			options: [
+				{ label: 'Off', value: false },
+				{ label: 'On', value: true }
+			],
+			defaultValue: false,
+			group: 'chip',
+			notifyAudioService: true,
+			startNewRow: true
 		}
 	],
 	resolveTuningTable(song) {
@@ -188,7 +211,28 @@ export const AY_CHIP_SCHEMA: ChipSchema = {
 		const a4 = Math.min(880, Math.max(220, Number(song.a4TuningHz ?? 440)));
 		return resolveAYTuningTable(index, chipFreq, a4);
 	},
-	tuningTableSettingKeys: ['tuningTableIndex', 'a4TuningHz', 'chipFrequency']
+	tuningTableSettingKeys: ['tuningTableIndex', 'a4TuningHz', 'chipFrequency'],
+	applySettingSideEffects(key, value) {
+		if (key === 'stMixing' && value === true) {
+			return [
+				{ key: 'chipVariant', value: 'YM' },
+				{ key: 'stereoLayout', value: 'mono' },
+				{ key: 'chipFrequency', value: ATARI_ST_CHIP_FREQUENCY }
+			];
+		}
+		return [];
+	},
+	normalizeSettings(record) {
+		if (record.stMixing === true) {
+			return {
+				...record,
+				chipVariant: 'YM',
+				stereoLayout: 'mono',
+				chipFrequency: ATARI_ST_CHIP_FREQUENCY
+			};
+		}
+		return record;
+	}
 };
 
 export function resolveAYTuningTable(

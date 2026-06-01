@@ -79,11 +79,18 @@ export class AYChipRenderer implements ChipRenderer {
 			throw new Error('Failed to allocate Ayumi structure');
 		}
 
-		const isYM = song.chipType === 'ay' && song.chipVariant === 'YM' ? 1 : 0;
-		const isST = song.chipType === 'ay' && song.chipVariant === 'ST' ? 1 : 0;
+		const isYM =
+			song.chipType === 'ay' &&
+			(song.chipVariant === 'YM' || Boolean((song as { stMixing?: boolean }).stMixing))
+				? 1
+				: 0;
+		const stMixing = Boolean((song as { stMixing?: boolean }).stMixing);
+		const isST = song.chipType === 'ay' && stMixing ? 1 : 0;
 		wasm.ayumi_configure(ayumiPtr, isYM, chipFrequency, SAMPLE_RATE, isST);
 
-		const stereoLayout = (song as { stereoLayout?: string }).stereoLayout ?? 'ABC';
+		const stereoLayout = stMixing
+			? 'mono'
+			: ((song as { stereoLayout?: string }).stereoLayout ?? 'ABC');
 		const panSettings = getPanSettingsForLayout(stereoLayout);
 		panSettings.forEach(({ channel, pan, isEqp }) => {
 			wasm.ayumi_set_pan(ayumiPtr, channel, pan, isEqp);

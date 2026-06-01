@@ -45,6 +45,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			case 'update_chip_variant':
 				this.handleUpdateChipVariant(data);
 				break;
+			case 'update_st_mixing':
+				this.handleUpdateStMixing(data);
+				break;
 			case 'update_stereo_layout':
 				this.handleUpdateStereoLayout(data);
 				break;
@@ -71,6 +74,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
 			const isYM = this.state.isYM ?? 0;
 			const isST = this.state.isST ?? 0;
+			if (isST) {
+				this.stereoLayout = 'mono';
+			}
 			wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate, isST);
 
 			this.applyPanSettings(wasmModule, ayumiPtr);
@@ -104,6 +110,15 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	handleUpdateChipVariant(data) {
 		this.state.setChipVariant(data.chipVariant);
+		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
+	}
+
+	handleUpdateStMixing(data) {
+		this.state.setStMixing(Boolean(data.stMixing));
+		if (data.stMixing) {
+			this.state.setChipVariant('YM');
+			this.stereoLayout = 'mono';
+		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
 

@@ -3,6 +3,7 @@ import { Song } from '../../models/song';
 import type { Chip } from '../../chips/types';
 import type { AudioService } from '../audio/audio-service';
 import { applySchemaDefaults, type ChipSchema } from '../../chips/base/schema';
+import { normalizeChipSettingsRecord } from '../../chips/base/chip-settings';
 import { getChipByType } from '../../chips/registry';
 
 export class ProjectService {
@@ -86,6 +87,14 @@ export class ProjectService {
 							targetRecord[setting.key] = sourceValue;
 						}
 					}
+				}
+
+				if (chip.schema.normalizeSettings) {
+					const normalized = normalizeChipSettingsRecord(
+						chip.schema,
+						targetRecord
+					);
+					Object.assign(targetRecord, normalized);
 				}
 
 				if (target.initialSpeed !== source.initialSpeed) {

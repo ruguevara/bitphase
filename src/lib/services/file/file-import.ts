@@ -94,6 +94,12 @@ function reconstructSong(data: any, getChip: (chipType: string) => Chip | null):
 	if (schema?.defaultChipVariant !== undefined && songRecord.chipVariant === undefined) {
 		songRecord.chipVariant = schema.defaultChipVariant;
 	}
+	if (songRecord.chipVariant === 'ST') {
+		songRecord.stMixing = true;
+	}
+	if (schema?.normalizeSettings) {
+		Object.assign(songRecord, schema.normalizeSettings(songRecord));
+	}
 	const loadedSpeed = data.initialSpeed;
 	song.initialSpeed =
 		typeof loadedSpeed === 'number' && loadedSpeed >= 1 && loadedSpeed <= 255 ? loadedSpeed : 3;

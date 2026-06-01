@@ -91,6 +91,14 @@ export class AYProcessor
 		);
 
 		this.settingsUnsubscribers.push(
+			chipSettings.subscribe('stMixing', (value) => {
+				if (typeof value === 'boolean') {
+					this.sendUpdateStMixing(value);
+				}
+			})
+		);
+
+		this.settingsUnsubscribers.push(
 			chipSettings.subscribe('stereoLayout', (value) => {
 				if (typeof value === 'string') {
 					this.sendUpdateStereoLayout(value);
@@ -239,6 +247,10 @@ export class AYProcessor
 		this.bridge.sendCommand({ type: 'update_chip_variant', chipVariant });
 	}
 
+	sendUpdateStMixing(stMixing: boolean): void {
+		this.bridge.sendCommand({ type: 'update_st_mixing', stMixing });
+	}
+
 	sendUpdateStereoLayout(stereoLayout: string): void {
 		this.bridge.sendCommand({ type: 'update_stereo_layout', stereoLayout });
 	}
@@ -261,6 +273,9 @@ export class AYProcessor
 				break;
 			case 'chipVariant':
 				this.sendUpdateChipVariant(value as string);
+				break;
+			case 'stMixing':
+				this.sendUpdateStMixing(value as boolean);
 				break;
 			case 'stereoLayout':
 				this.sendUpdateStereoLayout(value as string);
