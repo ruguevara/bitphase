@@ -59,6 +59,11 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	async handleInit({ wasmBuffer }) {
 		if (!wasmBuffer) return;
 
+		if (this._isReadyForPlayback()) {
+			this._applyAyumiConfiguration();
+			return;
+		}
+
 		try {
 			const result = await WebAssembly.instantiate(wasmBuffer, {
 				env: { emscripten_notify_memory_growth: () => {} }
@@ -71,18 +76,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 					: AYUMI_STRUCT_SIZE;
 			const ayumiPtr = wasmModule.malloc(structSize);
 
-			const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
-			const isYM = this.state.isYM ?? 0;
-			const isST = this.state.isST ?? 0;
-			if (isST) {
-				this.stereoLayout = 'mono';
-			}
-			wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate, isST);
-
-			this.applyPanSettings(wasmModule, ayumiPtr);
-
 			this.state.setWasmModule(wasmModule, ayumiPtr, wasmBuffer);
 			this.state.updateSamplesPerTick(sampleRate);
+			this._applyAyumiConfiguration();
 			this.audioDriver = new AYAudioDriver();
 			this.ayumiEngine = new AyumiEngine(wasmModule, ayumiPtr);
 			this.patternProcessor = new TrackerPatternProcessor(
@@ -92,15 +88,41 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			);
 			this._applyVirtualChannelResize();
 			this.registerState.reset();
-			this.ayumiEngine.applyRegisterState(this.registerState);
+			this._applyRegisterStateToEngine();
 			this.initialized = true;
 		} catch (error) {
 			console.error('Failed to initialize Ayumi:', error);
 		}
 	}
 
+	_applyAyumiConfiguration() {
+		const wasmModule = this.state.wasmModule;
+		const ayumiPtr = this.state.ayumiPtr;
+		if (!wasmModule || !ayumiPtr) {
+			return false;
+		}
+
+		const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
+		const isYM = this.state.isYM ?? 0;
+		const isST = this.state.isST ?? 0;
+		if (isST) {
+			this.stereoLayout = 'mono';
+		}
+		wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate, isST);
+		this.applyPanSettings(wasmModule, ayumiPtr);
+		this.state.updateSamplesPerTick(sampleRate);
+		if (this.ayumiEngine) {
+			this.ayumiEngine.forceFullApply = true;
+			this._applyRegisterStateToEngine();
+		}
+		return true;
+	}
+
 	handleUpdateAyFrequency(data) {
 		this.state.setAymFrequency(data.aymFrequency);
+		if (this._applyAyumiConfiguration()) {
+			return;
+		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
 
@@ -110,6 +132,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	handleUpdateChipVariant(data) {
 		this.state.setChipVariant(data.chipVariant);
+		if (this._applyAyumiConfiguration()) {
+			return;
+		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
 
@@ -118,6 +143,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		if (data.stMixing) {
 			this.state.setChipVariant('YM');
 			this.stereoLayout = 'mono';
+		}
+		if (this._applyAyumiConfiguration()) {
+			return;
 		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
