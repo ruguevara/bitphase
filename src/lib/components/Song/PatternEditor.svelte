@@ -1569,6 +1569,36 @@
 		return remove;
 	});
 
+	function stopPreviewForKey(key: string): void {
+		const channel = pressedKeyChannels.get(key);
+		if (channel === undefined) return;
+		if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
+			const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+			previewService.stopNote(processor, channel === -1 ? undefined : channel);
+		}
+		services.audioService.setPreviewActiveForChips(null);
+		pressedKeyChannels.delete(key);
+	}
+
+	function releaseAllPressedPreviewNotes(): void {
+		if (pressedKeyChannels.size === 0) return;
+		if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
+			const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+			previewService.stopNote(processor, undefined);
+		}
+		services.audioService.setPreviewActiveForChips(null);
+		pressedKeyChannels.clear();
+	}
+
+	function releaseHeldInputOnFocusLoss(): void {
+		releaseAllPressedPreviewNotes();
+		if (isEnterKeyHeld) {
+			isEnterKeyHeld = false;
+			playbackStore.isPlaying = false;
+			pausePlayback();
+		}
+	}
+
 	function handleKeyUp(event: KeyboardEvent) {
 		if (isPlayFromRowShortcut(event) && isEnterKeyHeld) {
 			isEnterKeyHeld = false;
@@ -1577,16 +1607,26 @@
 			return;
 		}
 
-		const channel = pressedKeyChannels.get(event.key);
-		if (channel !== undefined) {
-			if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
-				const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
-				previewService.stopNote(processor, channel === -1 ? undefined : channel);
-			}
-			services.audioService.setPreviewActiveForChips(null);
-			pressedKeyChannels.delete(event.key);
-		}
+		stopPreviewForKey(event.key);
 	}
+
+	function handleCanvasBlur(): void {
+		releaseHeldInputOnFocusLoss();
+	}
+
+	$effect(() => {
+		const onWindowKeyUp = (event: KeyboardEvent) => {
+			if (canvas && document.activeElement === canvas) return;
+			stopPreviewForKey(event.key);
+			if (isPlayFromRowShortcut(event) && isEnterKeyHeld) {
+				isEnterKeyHeld = false;
+				playbackStore.isPlaying = false;
+				pausePlayback();
+			}
+		};
+		window.addEventListener('keyup', onWindowKeyUp);
+		return () => window.removeEventListener('keyup', onWindowKeyUp);
+	});
 
 	function handleWheel(event: WheelEvent) {
 		if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
@@ -2968,6 +3008,7 @@
 			tabindex="0"
 			onkeydown={handleKeyDown}
 			onkeyup={handleKeyUp}
+			onblur={handleCanvasBlur}
 			onwheel={handleWheel}
 			onmouseenter={handleMouseEnter}
 			onmouseleave={handleMouseLeave}
