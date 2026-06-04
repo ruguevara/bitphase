@@ -19,6 +19,7 @@ import {
 	resolveExclusiveTimerEffects,
 	clampTimerPwmDuty,
 	clampTimerPwmSweepMin,
+	AY_TIMER_WAVEFORM_MIN_LENGTH,
 	AY_TIMER_WAVEFORM_MAX_LENGTH,
 	type AyInstrumentFields,
 	type AySidPeriodMode,
@@ -355,6 +356,19 @@ export class AyTimerEffectsController {
 
 	canAppendRowWaveformStep(rowIndex: number): boolean {
 		return this.rowTimerWaveform(rowIndex).length < AY_TIMER_WAVEFORM_MAX_LENGTH;
+	}
+
+	removeRowWaveformStep(rowIndex: number): boolean {
+		const current = this.rowTimerWaveform(rowIndex);
+		if (current.length <= AY_TIMER_WAVEFORM_MIN_LENGTH) {
+			return false;
+		}
+		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: current.slice(0, -1) }));
+		return true;
+	}
+
+	canRemoveRowWaveformStep(rowIndex: number): boolean {
+		return this.rowTimerWaveform(rowIndex).length > AY_TIMER_WAVEFORM_MIN_LENGTH;
 	}
 
 	rowDetune(index: number): number {

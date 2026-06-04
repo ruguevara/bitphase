@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { AyTimerEffectsController } from '@/lib/chips/ay/ay-timer-effects-controller.svelte.ts';
-import { AY_TIMER_WAVEFORM_MAX_LENGTH } from '@/lib/chips/ay/instrument';
+import {
+	AY_TIMER_WAVEFORM_MIN_LENGTH,
+	AY_TIMER_WAVEFORM_MAX_LENGTH
+} from '@/lib/chips/ay/instrument';
 import { Instrument } from '@/lib/models/song';
 import { HistoryClone } from '@/lib/services/history/history-clone';
 
@@ -56,6 +59,24 @@ describe('AyTimerEffectsController', () => {
 		);
 		controller.handleInstrumentChange(restored);
 		expect(controller.fields.timerRows[0]?.sid).toBe(false);
+	});
+
+	it('removes waveform steps for a row down to the minimum length', () => {
+		let current = createInstrument([{ sid: false, timerWaveform: [15, 0, 1] }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.removeRowWaveformStep(0)).toBe(true);
+		expect(controller.rowTimerWaveform(0)).toEqual([15, 0]);
+
+		controller.setRowTimerWaveform(0, Array.from({ length: AY_TIMER_WAVEFORM_MIN_LENGTH }, () => 1));
+		expect(controller.removeRowWaveformStep(0)).toBe(false);
+		expect(controller.rowTimerWaveform(0)).toHaveLength(AY_TIMER_WAVEFORM_MIN_LENGTH);
 	});
 
 	it('appends waveform steps for a row up to the maximum length', () => {

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import IconCarbonAdd from '~icons/carbon/add';
+	import IconCarbonSubtract from '~icons/carbon/subtract';
 	import IconCarbonClose from '~icons/carbon/close';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getContext } from 'svelte';
@@ -11,7 +12,7 @@
 		sidStepToAmplitude,
 		SID_WAVEFORM_PREVIEW_BASE_VOLUME
 	} from './sid-waveform-volume';
-	import { AY_TIMER_WAVEFORM_MAX_LENGTH } from './instrument';
+	import { AY_TIMER_WAVEFORM_MAX_LENGTH, AY_TIMER_WAVEFORM_MIN_LENGTH } from './instrument';
 
 	let {
 		rowIndex,
@@ -53,6 +54,8 @@
 	);
 
 	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex));
+	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex));
+	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
 
 	const waveformGraphic = $derived.by(() => {
 		const steps = waveform.length;
@@ -253,6 +256,16 @@
 		}
 		activeStepIndex = controller.rowTimerWaveform(rowIndex).length - 1;
 	}
+
+	function handleRemoveStep(): void {
+		if (!controller.removeRowWaveformStep(rowIndex)) {
+			return;
+		}
+		const length = controller.rowTimerWaveform(rowIndex).length;
+		if (activeStepIndex !== null && activeStepIndex >= length) {
+			activeStepIndex = length > 0 ? length - 1 : null;
+		}
+	}
 </script>
 
 <div
@@ -395,14 +408,28 @@
 			{/each}
 		</svg>
 		</div>
-		<button
-			type="button"
-			class="flex w-9 shrink-0 cursor-pointer flex-col items-center justify-center gap-0.5 border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
-			disabled={!canAppendStep}
-			title={canAppendStep ? 'Add SID step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} SID steps`}
-			aria-label="Add waveform step"
-			onclick={handleAppendStep}>
-			<IconCarbonAdd class={isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5'} />
-		</button>
+		<div
+			class="flex w-9 shrink-0 flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]">
+			<button
+				type="button"
+				class="flex flex-1 cursor-pointer items-center justify-center border-b border-[var(--color-app-border)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
+				disabled={!canRemoveStep}
+				title={canRemoveStep
+					? 'Remove last SID step'
+					: `Minimum ${AY_TIMER_WAVEFORM_MIN_LENGTH} SID step`}
+				aria-label="Remove waveform step"
+				onclick={handleRemoveStep}>
+				<IconCarbonSubtract class={stepButtonIconClass} />
+			</button>
+			<button
+				type="button"
+				class="flex flex-1 cursor-pointer items-center justify-center text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
+				disabled={!canAppendStep}
+				title={canAppendStep ? 'Add SID step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} SID steps`}
+				aria-label="Add waveform step"
+				onclick={handleAppendStep}>
+				<IconCarbonAdd class={stepButtonIconClass} />
+			</button>
+		</div>
 	</div>
 </div>
