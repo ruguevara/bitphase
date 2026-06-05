@@ -198,11 +198,141 @@ describe('AYAudioDriver', () => {
 			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
 		});
 
+		it('does not retrigger sample playback on new note with portamento command', () => {
+			const driver = new AYAudioDriver();
+			const state = {
+				channelMuted: [false],
+				channelSoundEnabled: [true],
+				channelInstruments: [0],
+				instruments: [
+					{
+						sampleData: [0, 64, 128, 192],
+						sampleStart: 0,
+						sampleEnd: 3,
+						sampleLoopStart: 0
+					}
+				],
+				instrumentPositions: [2],
+				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 - i),
+				channelSamplePositions: [2],
+				channelSamplePhase: [0.5],
+				channelPortamentoActive: [false],
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [0],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0]
+			};
+			const registerState = {
+				channels: [{ tone: 0 }]
+			};
+			const row = {
+				note: { name: 5, octave: 2 },
+				instrument: 0,
+				effects: [{ effect: EffectAlgorithms.PORTAMENTO, delay: 1, parameter: 5 }]
+			};
+
+			driver._processNote(state, 0, row, registerState);
+
+			expect(state.channelSamplePositions[0]).toBe(2);
+			expect(state.channelSamplePhase[0]).toBe(0.5);
+			expect(state.instrumentPositions[0]).toBe(2);
+		});
+
+		it('does not retrigger sample playback while portamento is active', () => {
+			const driver = new AYAudioDriver();
+			const state = {
+				channelMuted: [false],
+				channelSoundEnabled: [true],
+				channelInstruments: [0],
+				instruments: [
+					{
+						sampleData: [0, 64, 128, 192],
+						sampleStart: 0,
+						sampleEnd: 3,
+						sampleLoopStart: 0
+					}
+				],
+				instrumentPositions: [1],
+				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 - i),
+				channelSamplePositions: [3],
+				channelSamplePhase: [0.25],
+				channelPortamentoActive: [true],
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [1],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0]
+			};
+			const registerState = {
+				channels: [{ tone: 0 }]
+			};
+			const row = {
+				note: { name: 6, octave: 2 },
+				instrument: 0,
+				effects: [{ effect: 0, delay: 0, parameter: 0 }]
+			};
+
+			driver._processNote(state, 0, row, registerState);
+
+			expect(state.channelSamplePositions[0]).toBe(3);
+			expect(state.channelSamplePhase[0]).toBe(0.25);
+			expect(state.instrumentPositions[0]).toBe(1);
+		});
+
+		it('restarts sample playback on a normal new note', () => {
+			const driver = new AYAudioDriver();
+			const state = {
+				channelMuted: [false],
+				channelSoundEnabled: [true],
+				channelInstruments: [0],
+				instruments: [
+					{
+						sampleData: [0, 64, 128, 192],
+						sampleStart: 1,
+						sampleEnd: 3,
+						sampleLoopStart: 1
+					}
+				],
+				instrumentPositions: [2],
+				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 - i),
+				channelSamplePositions: [3],
+				channelSamplePhase: [0.25],
+				channelPortamentoActive: [false],
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [0],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0]
+			};
+			const registerState = {
+				channels: [{ tone: 0 }]
+			};
+			const row = {
+				note: { name: 5, octave: 2 },
+				instrument: 0,
+				effects: [{ effect: 0, delay: 0, parameter: 0 }]
+			};
+
+			driver._processNote(state, 0, row, registerState);
+
+			expect(state.channelSamplePositions[0]).toBe(1);
+			expect(state.channelSamplePhase[0]).toBe(0);
+			expect(state.instrumentPositions[0]).toBe(0);
+		});
+
 		it('resets timer pwm sweep on new note without portamento', () => {
 			const driver = new AYAudioDriver();
 			const state = {
 				channelMuted: [false],
 				channelSoundEnabled: [true],
+				channelInstruments: [-1],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
 				channelTimerPwmSweep: [30],

@@ -1,4 +1,4 @@
-export const SAMPLE_PITCH_REFERENCE_NOTE_INDEX = 36;
+export const SAMPLE_PITCH_REFERENCE_HZ = 261.63;
 
 export function instrumentHasSample(source: { sampleData?: number[] } | null | undefined): boolean {
 	return Array.isArray(source?.sampleData) && source.sampleData.length > 0;
@@ -77,19 +77,18 @@ export function resolveSampleLoopEnabled(source: { sampleLoopEnabled?: boolean }
 	return source.sampleLoopEnabled !== false;
 }
 
-export function resolveSamplePitchReferenceTone(tuningTable: readonly number[]): number {
-	if (SAMPLE_PITCH_REFERENCE_NOTE_INDEX >= tuningTable.length) {
+export function resolveSamplePitchReferencePeriod(clockHz: number): number {
+	if (!clockHz || clockHz <= 0) {
 		return 0;
 	}
-	const tone = tuningTable[SAMPLE_PITCH_REFERENCE_NOTE_INDEX];
-	return tone > 0 ? tone : 0;
+	return clockHz / (16 * SAMPLE_PITCH_REFERENCE_HZ);
 }
 
-export function computeSamplePitchScale(referenceTone: number, effectiveTone: number): number {
-	if (referenceTone <= 0 || effectiveTone <= 0) {
+export function computeSamplePitchScale(referencePeriod: number, effectiveTone: number): number {
+	if (referencePeriod <= 0 || effectiveTone <= 0) {
 		return 1;
 	}
-	return referenceTone / effectiveTone;
+	return referencePeriod / effectiveTone;
 }
 
 export function clampSamplePlaybackPosition(bounds: SamplePlaybackBounds, position: number): number {

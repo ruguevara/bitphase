@@ -272,7 +272,7 @@
 				return;
 			}
 			if (action === ACTION_OCTAVE_DOWN) {
-				if (editorStateStore.octave > 0) {
+				if (editorStateStore.octave > 1) {
 					editorStateStore.setOctave(editorStateStore.octave - 1);
 				}
 				return;

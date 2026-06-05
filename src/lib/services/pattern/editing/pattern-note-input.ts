@@ -1,6 +1,11 @@
 import { NoteName } from '../../../models/song';
 import type { Pattern } from '../../../models/song';
-import { formatNoteFromEnum, midiNoteToNoteString } from '../../../utils/note-utils';
+import {
+	formatNoteFromEnum,
+	isNoteInTuningTable,
+	isTrackerNoteStringInTuningTable,
+	midiNoteToNoteString
+} from '../../../utils/note-utils';
 import type { EditingContext, FieldInfo, PatternEditingResult } from './editing-context';
 import { PatternValueUpdates } from './pattern-value-updates';
 import { editorStateStore } from '../../../stores/editor-state.svelte';
@@ -111,6 +116,9 @@ export class PatternNoteInput {
 		fieldInfo: FieldInfo,
 		noteStr: string
 	): PatternEditingResult | null {
+		if (!isTrackerNoteStringInTuningTable(noteStr)) {
+			return null;
+		}
 		if (PatternValueUpdates.getFieldValue(context, fieldInfo) === noteStr) {
 			return { updatedPattern: context.pattern, shouldMoveNext: false, didChange: false };
 		}
@@ -166,7 +174,7 @@ export class PatternNoteInput {
 		const currentOctave = editorStateStore.octave;
 		const calculatedOctave = currentOctave + keyMapping.octaveOffset;
 
-		if (calculatedOctave < 0 || calculatedOctave > 8) {
+		if (!isNoteInTuningTable(keyMapping.noteName, calculatedOctave)) {
 			return null;
 		}
 

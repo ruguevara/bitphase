@@ -170,6 +170,7 @@ class AYAudioDriver {
 		if (state.channelMuted[channelIndex]) return;
 
 		const preserveTimerPwmSweep = this.shouldPreserveTimerPwmSweep(state, channelIndex, row);
+		const preserveSamplePlayback = this.shouldPreserveSamplePlayback(state, channelIndex, row);
 
 		if (row.note.name === 1) {
 			state.channelSoundEnabled[channelIndex] = false;
@@ -194,18 +195,20 @@ class AYAudioDriver {
 				const regValue = state.currentTuningTable[noteValue];
 				registerState.channels[channelIndex].tone = regValue;
 			}
-			if (state.instrumentPositions) {
-				state.instrumentPositions[channelIndex] = 0;
-			}
 			const instrumentIndex = state.channelInstruments[channelIndex];
 			const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
-			if (instrumentHasSample(instrument)) {
-				resetChannelSamplePlayback(state, channelIndex, instrument);
-			} else if (state.channelSamplePositions) {
-				state.channelSamplePositions[channelIndex] = 0;
+			if (state.instrumentPositions && !(preserveSamplePlayback && instrumentHasSample(instrument))) {
+				state.instrumentPositions[channelIndex] = 0;
 			}
-			if (state.channelSamplePhase) {
-				state.channelSamplePhase[channelIndex] = 0;
+			if (!preserveSamplePlayback) {
+				if (instrumentHasSample(instrument)) {
+					resetChannelSamplePlayback(state, channelIndex, instrument);
+				} else if (state.channelSamplePositions) {
+					state.channelSamplePositions[channelIndex] = 0;
+				}
+				if (state.channelSamplePhase) {
+					state.channelSamplePhase[channelIndex] = 0;
+				}
 			}
 			this.resetInstrumentAccumulators(state, channelIndex, { preserveTimerPwmSweep });
 		}
@@ -220,8 +223,11 @@ class AYAudioDriver {
 			if (instrumentIndex !== undefined && state.instruments[instrumentIndex]) {
 				const instrument = state.instruments[instrumentIndex];
 				state.channelInstruments[channelIndex] = instrumentIndex;
-				state.instrumentPositions[channelIndex] = 0;
-				if (instrumentHasSample(instrument)) {
+				const preserveSamplePlayback = this.shouldPreserveSamplePlayback(state, channelIndex, row);
+				if (!(preserveSamplePlayback && instrumentHasSample(instrument))) {
+					state.instrumentPositions[channelIndex] = 0;
+				}
+				if (instrumentHasSample(instrument) && !preserveSamplePlayback) {
 					resetChannelSamplePlayback(state, channelIndex, instrument);
 				}
 				const preserveTimerPwmSweep = this.shouldPreserveTimerPwmSweep(state, channelIndex, row);
@@ -260,11 +266,15 @@ class AYAudioDriver {
 		return normalizeAyInstrumentFields(instrument).timerPwmPreserveOnNewNote === true;
 	}
 
-	shouldPreserveTimerPwmSweep(state, channelIndex, row) {
+	shouldPreserveSamplePlayback(state, channelIndex, row) {
 		if (this.rowHasPortamentoCommand(row)) {
 			return true;
 		}
-		if (state.channelPortamentoActive?.[channelIndex] ?? false) {
+		return state.channelPortamentoActive?.[channelIndex] ?? false;
+	}
+
+	shouldPreserveTimerPwmSweep(state, channelIndex, row) {
+		if (this.shouldPreserveSamplePlayback(state, channelIndex, row)) {
 			return true;
 		}
 		const instrumentIndex = this.resolveInstrumentIndexForPreserve(state, channelIndex, row);

@@ -1,4 +1,7 @@
+import { DEFAULT_AYM_FREQUENCY } from './ayumi-constants.js';
 import { mapUint8SampleToVolumeLevel } from './ay-sample-lut.js';
+
+export const SAMPLE_PITCH_REFERENCE_HZ = 261.63;
 
 export function instrumentHasSample(instrument) {
 	return (
@@ -87,20 +90,18 @@ export function mapSampleByteAtPosition(instrument, position, isYM) {
 	return mapUint8SampleToVolumeLevel(data[index], isYM);
 }
 
-export function resolveSamplePitchReferenceTone(tuningTable) {
-	const refNoteIndex = 36;
-	if (!tuningTable || refNoteIndex >= tuningTable.length) {
+export function resolveSamplePitchReferencePeriod(clockHz) {
+	if (!clockHz || clockHz <= 0) {
 		return 0;
 	}
-	const tone = tuningTable[refNoteIndex];
-	return tone > 0 ? tone : 0;
+	return clockHz / (16 * SAMPLE_PITCH_REFERENCE_HZ);
 }
 
-export function computeSamplePitchScale(referenceTone, effectiveTone) {
-	if (referenceTone <= 0 || effectiveTone <= 0) {
+export function computeSamplePitchScale(referencePeriod, effectiveTone) {
+	if (referencePeriod <= 0 || effectiveTone <= 0) {
 		return 1;
 	}
-	return referenceTone / effectiveTone;
+	return referencePeriod / effectiveTone;
 }
 
 export function advanceSamplePosition(
@@ -123,8 +124,9 @@ export function advanceSamplePosition(
 
 	const volume = mapSampleByteAtPosition(instrument, position, state.isYM);
 	const rate = resolveSamplePlaybackRate(instrument, outputSampleRate);
-	const referenceTone = resolveSamplePitchReferenceTone(state.currentTuningTable);
-	const pitchScale = computeSamplePitchScale(referenceTone, effectiveTone);
+	const clockHz = state.aymFrequency > 0 ? state.aymFrequency : DEFAULT_AYM_FREQUENCY;
+	const referencePeriod = resolveSamplePitchReferencePeriod(clockHz);
+	const pitchScale = computeSamplePitchScale(referencePeriod, effectiveTone);
 	let phase = state.channelSamplePhase[channelIndex] + (rate / outputSampleRate) * pitchScale;
 
 	while (phase >= 1) {

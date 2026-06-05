@@ -5,16 +5,19 @@ import {
 	defaultSampleRegionFields,
 	instrumentHasSample,
 	normalizeSamplePlaybackBounds,
-	resolveSamplePitchReferenceTone
+	resolveSamplePitchReferencePeriod
 } from '@/lib/chips/ay/sample-region';
 
 describe('sample-region', () => {
-	it('scales playback speed from tone period relative to C-4', () => {
-		const tuningTable = Array(96).fill(100);
-		tuningTable[36] = 1000;
-		expect(resolveSamplePitchReferenceTone(tuningTable)).toBe(1000);
-		expect(computeSamplePitchScale(1000, 500)).toBe(2);
-		expect(computeSamplePitchScale(1000, 2000)).toBe(0.5);
+	it('scales playback speed from fixed C-4 reference frequency and note period', () => {
+		const referencePeriod = resolveSamplePitchReferencePeriod(1_773_400);
+		expect(referencePeriod).toBeCloseTo(423.64, 1);
+		expect(computeSamplePitchScale(referencePeriod, 411)).not.toBeCloseTo(
+			computeSamplePitchScale(referencePeriod, 360),
+			2
+		);
+		expect(computeSamplePitchScale(referencePeriod, referencePeriod / 2)).toBe(2);
+		expect(computeSamplePitchScale(referencePeriod, referencePeriod * 2)).toBe(0.5);
 	});
 
 	it('detects when an instrument has sample data', () => {

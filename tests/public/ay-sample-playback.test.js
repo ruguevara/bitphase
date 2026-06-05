@@ -5,8 +5,12 @@ import {
 	advanceSamplePosition,
 	mapSampleByteAtPosition,
 	resolveSamplePlaybackBounds,
-	resetChannelSamplePlayback
+	resetChannelSamplePlayback,
+	resolveSamplePitchReferencePeriod
 } from '../../public/ay-sample-playback.js';
+
+const DEFAULT_CLOCK_HZ = 1_773_400;
+const REFERENCE_PERIOD = resolveSamplePitchReferencePeriod(DEFAULT_CLOCK_HZ);
 
 describe('ay-sample-playback', () => {
 	it('detects instruments with sample data', () => {
@@ -38,6 +42,7 @@ describe('ay-sample-playback', () => {
 	it('plays from sample start before advancing', () => {
 		const state = {
 			isYM: 0,
+			aymFrequency: DEFAULT_CLOCK_HZ,
 			channelSamplePositions: [0],
 			channelSamplePhase: [0]
 		};
@@ -48,17 +53,15 @@ describe('ay-sample-playback', () => {
 			sampleEnd: 2,
 			sampleLoopStart: 1
 		};
-		const first = advanceSamplePosition(state, 0, instrument, 3, 500);
+		const first = advanceSamplePosition(state, 0, instrument, 3, REFERENCE_PERIOD);
 		expect(first.active).toBe(true);
 		expect(state.channelSamplePositions[0]).toBe(1);
 	});
 
 	it('loops from loop start after reaching sample end', () => {
-		const tuningTable = Array(96).fill(0);
-		tuningTable[36] = 1000;
 		const state = {
 			isYM: 0,
-			currentTuningTable: tuningTable,
+			aymFrequency: DEFAULT_CLOCK_HZ,
 			channelSamplePositions: [3],
 			channelSamplePhase: [0]
 		};
@@ -69,7 +72,7 @@ describe('ay-sample-playback', () => {
 			sampleEnd: 3,
 			sampleLoopStart: 2
 		};
-		const result = advanceSamplePosition(state, 0, instrument, 10, 1000);
+		const result = advanceSamplePosition(state, 0, instrument, 10, REFERENCE_PERIOD);
 		expect(result.active).toBe(true);
 		expect(state.channelSamplePositions[0]).toBe(2);
 	});
@@ -77,6 +80,7 @@ describe('ay-sample-playback', () => {
 	it('stops at sample end when looping is disabled', () => {
 		const state = {
 			isYM: 0,
+			aymFrequency: DEFAULT_CLOCK_HZ,
 			channelSamplePositions: [2],
 			channelSamplePhase: [0]
 		};
@@ -88,7 +92,7 @@ describe('ay-sample-playback', () => {
 			sampleLoopStart: 1,
 			sampleLoopEnabled: false
 		};
-		const result = advanceSamplePosition(state, 0, instrument, 10, 500);
+		const result = advanceSamplePosition(state, 0, instrument, 10, REFERENCE_PERIOD);
 		expect(result.active).toBe(false);
 		expect(state.channelSamplePositions[0]).toBe(3);
 	});
@@ -115,12 +119,10 @@ describe('ay-sample-playback', () => {
 		expect(mapSampleByteAtPosition(instrument, 0, 0)).toBe(15);
 	});
 
-	it('advances one sample byte per output frame when rates match', () => {
-		const tuningTable = Array(96).fill(0);
-		tuningTable[36] = 1000;
+	it('advances one sample byte per output frame when rates match at reference pitch', () => {
 		const state = {
 			isYM: 0,
-			currentTuningTable: tuningTable,
+			aymFrequency: DEFAULT_CLOCK_HZ,
 			channelSamplePositions: [0],
 			channelSamplePhase: [0]
 		};
@@ -133,19 +135,42 @@ describe('ay-sample-playback', () => {
 		};
 
 		for (let i = 0; i < 25; i++) {
-			advanceSamplePosition(state, 0, instrument, 100, 1000);
+			advanceSamplePosition(state, 0, instrument, 100, REFERENCE_PERIOD);
 		}
 
 		expect(state.channelSamplePositions[0]).toBe(25);
 		expect(state.channelSamplePhase[0]).toBeCloseTo(0, 5);
 	});
 
-	it('scales playback speed with output sample rate', () => {
-		const tuningTable = Array(96).fill(0);
-		tuningTable[36] = 1000;
+	it('plays faster on tuning tables with lower C-4 period', () => {
 		const state = {
 			isYM: 0,
-			currentTuningTable: tuningTable,
+			aymFrequency: DEFAULT_CLOCK_HZ,
+			channelSamplePositions: [0, 0],
+			channelSamplePhase: [0, 0]
+		};
+		const instrument = {
+			sampleData: new Array(100).fill(128),
+			sampleRate: 100,
+			sampleStart: 0,
+			sampleEnd: 99,
+			sampleLoopStart: 0
+		};
+		const pt3C4Period = 411;
+		const naturalC4Period = 360;
+
+		for (let i = 0; i < 50; i++) {
+			advanceSamplePosition(state, 0, instrument, 100, pt3C4Period);
+			advanceSamplePosition(state, 1, instrument, 100, naturalC4Period);
+		}
+
+		expect(state.channelSamplePositions[1]).toBeGreaterThan(state.channelSamplePositions[0]);
+	});
+
+	it('scales playback speed with output sample rate', () => {
+		const state = {
+			isYM: 0,
+			aymFrequency: DEFAULT_CLOCK_HZ,
 			channelSamplePositions: [0],
 			channelSamplePhase: [0]
 		};
@@ -158,7 +183,7 @@ describe('ay-sample-playback', () => {
 		};
 
 		for (let i = 0; i < 4_410; i++) {
-			advanceSamplePosition(state, 0, instrument, 44_100, 1000);
+			advanceSamplePosition(state, 0, instrument, 44_100, REFERENCE_PERIOD);
 		}
 
 		expect(state.channelSamplePositions[0]).toBe(800);
