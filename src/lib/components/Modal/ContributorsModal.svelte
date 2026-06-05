@@ -9,11 +9,11 @@
 
 	const credits = [
 		'Main code: Pator',
-		'Contributors: CyberL1, dualjack',
+		'Contributors: Alex Winston, spkr, CyberL1, dualjack',
 		'Testers: phase-mod, Abyxus',
 		'Ayumi emulator by Peter Sovietov',
 		'Bitphase logo by Grongy',
-		'Special thanks to Otomata Labs, Megus, Jammer, Tygrys, spkr, e!ghtbm, Tomarkus, arabek, RuGrantez, MmcM, nq, KK, AceMan, MaV, Jakim, LiSU, Volutar, MameXLIII',
+		'Special thanks to Otomata Labs, Megus, Jammer, Tygrys, e!ghtbm, Tomarkus, arabek, RuGrantez, MmcM, nq, KK, AceMan, MaV, Jakim, LiSU, Volutar, MameXLIII',
 		"and everyone else I've forgot to mention",
 		'Thank you for using Bitphase'
 	];

@@ -1,4 +1,6 @@
 import type { Instrument } from '../../models/song';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from './sample-region';
 
 export type AySidPeriodMode = 'auto' | 'manual';
 
@@ -19,6 +21,14 @@ export type AyInstrumentFields = {
 	timerPwmSweepMin: number;
 	timerPwmSweep: number;
 	timerPwmPreserveOnNewNote: boolean;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
 };
 
 export const DEFAULT_AY_SID_PERIOD = 100;
@@ -42,6 +52,14 @@ type ExtendedInstrument = Instrument & {
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
 };
 
 type LegacyTimerRow = AyTimerRow & {
@@ -430,4 +448,36 @@ export function copyAyInstrumentFields(
 	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
 	target.timerPwmSweep = normalized.timerPwmSweep;
 	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
+	if (
+		source.sampleData?.length &&
+		isValidInstrumentSampleByteLength(source.sampleData.length)
+	) {
+		target.sampleData = source.sampleData.map((value) => value & 0xff);
+		target.sampleRate = source.sampleRate;
+		const bounds = normalizeSamplePlaybackBounds({
+			sampleData: target.sampleData,
+			sampleStart: source.sampleStart,
+			sampleEnd: source.sampleEnd,
+			sampleLoopStart: source.sampleLoopStart,
+			sampleLength: source.sampleLength,
+			sampleLoop: source.sampleLoop
+		});
+		if (bounds) {
+			target.sampleStart = bounds.start;
+			target.sampleEnd = bounds.end;
+			target.sampleLoopStart = bounds.loopStart;
+		}
+		target.sampleLoopEnabled = source.sampleLoopEnabled !== false;
+		delete target.sampleLength;
+		delete target.sampleLoop;
+	} else {
+		delete target.sampleData;
+		delete target.sampleRate;
+		delete target.sampleStart;
+		delete target.sampleEnd;
+		delete target.sampleLoopStart;
+		delete target.sampleLength;
+		delete target.sampleLoopEnabled;
+		delete target.sampleLoop;
+	}
 }

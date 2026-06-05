@@ -13,6 +13,8 @@ import {
 	Instrument,
 	InstrumentRow
 } from '../../models/song';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from '../../chips/ay/sample-region';
 import type { ChipSchema } from '../../chips/base/schema';
 import { computeEffectiveChannelLabels } from '../../models/virtual-channels';
 
@@ -264,6 +266,45 @@ function reconstructInstrument(data: any): Instrument {
 	if (data.timerPwmSweep !== undefined) extended.timerPwmSweep = data.timerPwmSweep;
 	if (data.timerPwmPreserveOnNewNote !== undefined) {
 		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
+	}
+	const withSample = extended as Instrument & {
+		sampleData?: number[];
+		sampleRate?: number;
+		sampleStart?: number;
+		sampleEnd?: number;
+		sampleLoopStart?: number;
+		sampleLength?: number;
+		sampleLoopEnabled?: boolean;
+		sampleLoop?: number;
+	};
+	if (Array.isArray(data.sampleData) && data.sampleData.length > 0) {
+		const sampleBytes = data.sampleData.map((value: number) => value & 0xff);
+		if (isValidInstrumentSampleByteLength(sampleBytes.length)) {
+			withSample.sampleData = sampleBytes;
+		}
+	}
+	if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
+		withSample.sampleRate = data.sampleRate;
+	}
+	if (withSample.sampleData?.length) {
+		const bounds = normalizeSamplePlaybackBounds({
+			sampleData: withSample.sampleData,
+			sampleStart: data.sampleStart ?? data.sampleLoop,
+			sampleEnd: data.sampleEnd,
+			sampleLoopStart: data.sampleLoopStart ?? data.sampleLoop,
+			sampleLength: data.sampleLength,
+			sampleLoop: data.sampleLoop
+		});
+		if (bounds) {
+			withSample.sampleStart = bounds.start;
+			withSample.sampleEnd = bounds.end;
+			withSample.sampleLoopStart = bounds.loopStart;
+		}
+		if (data.sampleLoopEnabled === false) {
+			withSample.sampleLoopEnabled = false;
+		} else {
+			withSample.sampleLoopEnabled = true;
+		}
 	}
 	return instrument;
 }

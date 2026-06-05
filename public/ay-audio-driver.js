@@ -2,6 +2,14 @@ import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
 import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY } from './ay-instrument-utils.js';
+import {
+	instrumentHasSample,
+	computeSampleSidPeriod,
+	resolveSamplePlaybackRate,
+	advanceSamplePosition,
+	resetChannelSamplePlayback,
+	clampSamplePlaybackPosition
+} from './ay-sample-playback.js';
 
 class AYAudioDriver {
 	constructor(channelCount = 3) {
@@ -139,11 +147,22 @@ class AYAudioDriver {
 
 	_applySamplePosition(state, channelIndex, row) {
 		const effect = row.effects?.[0];
-		if (
-			effect?.effect === EffectAlgorithms.SAMPLE_POSITION &&
-			state.instrumentPositions
-		) {
-			state.instrumentPositions[channelIndex] = effect.parameter & 0xff;
+		if (effect?.effect !== EffectAlgorithms.SAMPLE_POSITION) {
+			return;
+		}
+		const instrumentIndex = state.channelInstruments[channelIndex];
+		const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
+		if (!instrumentHasSample(instrument)) {
+			return;
+		}
+		if (state.channelSamplePositions) {
+			state.channelSamplePositions[channelIndex] = clampSamplePlaybackPosition(
+				instrument,
+				effect.parameter & 0xffffff
+			);
+			if (state.channelSamplePhase) {
+				state.channelSamplePhase[channelIndex] = 0;
+			}
 		}
 	}
 
@@ -157,6 +176,17 @@ class AYAudioDriver {
 			registerState.channels[channelIndex].tone = 0;
 			this.resetInstrumentAccumulators(state, channelIndex);
 			state.instrumentPositions[channelIndex] = 0;
+			const offInstrumentIndex = state.channelInstruments[channelIndex];
+			const offInstrument =
+				offInstrumentIndex >= 0 ? state.instruments[offInstrumentIndex] : null;
+			if (instrumentHasSample(offInstrument)) {
+				resetChannelSamplePlayback(state, channelIndex, offInstrument);
+			} else if (state.channelSamplePositions) {
+				state.channelSamplePositions[channelIndex] = 0;
+			}
+			if (state.channelSamplePhase) {
+				state.channelSamplePhase[channelIndex] = 0;
+			}
 		} else if (row.note.name !== 0) {
 			state.channelSoundEnabled[channelIndex] = true;
 			const noteValue = row.note.name - 2 + (row.note.octave - 1) * 12;
@@ -166,6 +196,16 @@ class AYAudioDriver {
 			}
 			if (state.instrumentPositions) {
 				state.instrumentPositions[channelIndex] = 0;
+			}
+			const instrumentIndex = state.channelInstruments[channelIndex];
+			const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
+			if (instrumentHasSample(instrument)) {
+				resetChannelSamplePlayback(state, channelIndex, instrument);
+			} else if (state.channelSamplePositions) {
+				state.channelSamplePositions[channelIndex] = 0;
+			}
+			if (state.channelSamplePhase) {
+				state.channelSamplePhase[channelIndex] = 0;
 			}
 			this.resetInstrumentAccumulators(state, channelIndex, { preserveTimerPwmSweep });
 		}
@@ -178,8 +218,12 @@ class AYAudioDriver {
 		if (row.instrument > 0) {
 			const instrumentIndex = state.instrumentIdToIndex.get(row.instrument);
 			if (instrumentIndex !== undefined && state.instruments[instrumentIndex]) {
+				const instrument = state.instruments[instrumentIndex];
 				state.channelInstruments[channelIndex] = instrumentIndex;
 				state.instrumentPositions[channelIndex] = 0;
+				if (instrumentHasSample(instrument)) {
+					resetChannelSamplePlayback(state, channelIndex, instrument);
+				}
 				const preserveTimerPwmSweep = this.shouldPreserveTimerPwmSweep(state, channelIndex, row);
 				this.resetInstrumentAccumulators(state, channelIndex, { preserveTimerPwmSweep });
 			} else {
@@ -516,6 +560,187 @@ class AYAudioDriver {
 		}
 	}
 
+	processSampleInstrument(
+		state,
+		registerState,
+		channelIndex,
+		instrument,
+		isSoundEnabled,
+		onOffHalted
+	) {
+		const hasRows = instrument.rows && instrument.rows.length > 0;
+		const defaultInstrumentRow = {
+			tone: false,
+			noise: false,
+			envelope: false,
+			retriggerEnvelope: false,
+			toneAdd: 0,
+			noiseAdd: 0,
+			envelopeAdd: 0,
+			volume: 15,
+			amplitudeSliding: false,
+			amplitudeSlideUp: false,
+			toneAccumulation: false,
+			noiseAccumulation: false,
+			envelopeAccumulation: false
+		};
+		const effectiveRows = hasRows ? instrument.rows : [defaultInstrumentRow];
+		const effectiveRowsLength = effectiveRows.length;
+		const effectiveLoop = hasRows ? instrument.loop : 0;
+		const rowIndex = state.instrumentPositions[channelIndex] % effectiveRowsLength;
+		const instrumentRow = effectiveRows[rowIndex];
+		if (!instrumentRow) {
+			registerState.channels[channelIndex].mixer.tone = false;
+			registerState.channels[channelIndex].mixer.noise = false;
+			registerState.channels[channelIndex].mixer.envelope = false;
+			this.channelMixerState[channelIndex].tone = false;
+			this.channelMixerState[channelIndex].noise = false;
+			this.channelMixerState[channelIndex].envelope = false;
+			registerState.channels[channelIndex].sid.enabled = false;
+			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+			if (!onOffHalted) {
+				state.instrumentPositions[channelIndex]++;
+				if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
+					if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
+						state.instrumentPositions[channelIndex] = effectiveLoop;
+					} else {
+						state.instrumentPositions[channelIndex] = 0;
+					}
+				}
+			}
+			return;
+		}
+
+		if (instrumentRow.volume >= 0) {
+			state.channelInstrumentVolumes[channelIndex] = instrumentRow.volume;
+		}
+
+		if (instrumentRow.amplitudeSliding) {
+			if (instrumentRow.amplitudeSlideUp) {
+				if (state.channelAmplitudeSliding[channelIndex] < 15) {
+					state.channelAmplitudeSliding[channelIndex]++;
+				}
+			} else if (state.channelAmplitudeSliding[channelIndex] > -15) {
+				state.channelAmplitudeSliding[channelIndex]--;
+			}
+		}
+
+		const patternVolume = state.channelPatternVolumes[channelIndex];
+		const instrumentVolume = state.channelInstrumentVolumes[channelIndex];
+		const amplitudeSliding = state.channelAmplitudeSliding[channelIndex];
+		const envelopeOnOffActive = state.envelopeOnOffCounter > 0;
+		const envelopeDisabledByOnOff = envelopeOnOffActive && !state.envelopeOnOffEnabled;
+		const finalVolume = this.calculateVolume(
+			patternVolume,
+			instrumentVolume,
+			amplitudeSliding,
+			false,
+			false,
+			false,
+			envelopeDisabledByOnOff
+		);
+
+		if (!isSoundEnabled) {
+			registerState.channels[channelIndex].volume = 0;
+			registerState.channels[channelIndex].mixer.tone = false;
+			registerState.channels[channelIndex].mixer.noise = false;
+			registerState.channels[channelIndex].mixer.envelope = false;
+			registerState.channels[channelIndex].sid.enabled = false;
+			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+			this.channelMixerState[channelIndex].tone = false;
+			this.channelMixerState[channelIndex].noise = false;
+			this.channelMixerState[channelIndex].envelope = false;
+		} else {
+			registerState.channels[channelIndex].mixer.tone = false;
+			registerState.channels[channelIndex].mixer.noise = false;
+			registerState.channels[channelIndex].mixer.envelope = false;
+			this.channelMixerState[channelIndex].tone = false;
+			this.channelMixerState[channelIndex].noise = false;
+			this.channelMixerState[channelIndex].envelope = false;
+			state.channelEnvelopeEnabled[channelIndex] = false;
+			registerState.channels[channelIndex].volume = finalVolume;
+
+			const sidPeriod = computeSampleSidPeriod(
+				state.aymFrequency,
+				resolveSamplePlaybackRate(instrument, 44100)
+			);
+			const sidBaseVolume = getAySidBaseVolume(finalVolume);
+			registerState.channels[channelIndex].sid = {
+				enabled: true,
+				pwm: false,
+				period: sidPeriod,
+				periodLow: sidPeriod,
+				baseVolume: sidBaseVolume,
+				waveform: [15, 0],
+				waveformLoop: 0,
+				resetPhase: state.channelSidReset?.[channelIndex] ?? false
+			};
+			if (state.channelSidReset) {
+				state.channelSidReset[channelIndex] = false;
+			}
+			registerState.channels[channelIndex].syncbuzzer = {
+				enabled: false,
+				period: sidPeriod,
+				shape: 0,
+				resetPhase: false
+			};
+		}
+
+		if (!onOffHalted) {
+			state.instrumentPositions[channelIndex]++;
+			if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
+				if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
+					state.instrumentPositions[channelIndex] = effectiveLoop;
+				} else {
+					state.instrumentPositions[channelIndex] = 0;
+				}
+			}
+		}
+	}
+
+	updateSamplePlayback(state, registerState, ayumiEngine, outputSampleRate) {
+		if (!ayumiEngine || !outputSampleRate) {
+			return;
+		}
+
+		for (let channelIndex = 0; channelIndex < state.channelInstruments.length; channelIndex++) {
+			if (state.channelMuted[channelIndex] || !state.channelSoundEnabled[channelIndex]) {
+				continue;
+			}
+
+			const instrumentIndex = state.channelInstruments[channelIndex];
+			const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
+			if (!instrumentHasSample(instrument)) {
+				continue;
+			}
+
+			const sid = registerState.channels[channelIndex]?.sid;
+			if (!sid?.enabled) {
+				continue;
+			}
+
+			const effectiveTone = this.getEffectiveTone(state, channelIndex);
+			if (effectiveTone <= 0) {
+				continue;
+			}
+
+			const playback = advanceSamplePosition(
+				state,
+				channelIndex,
+				instrument,
+				outputSampleRate,
+				effectiveTone
+			);
+			if (!playback.active) {
+				registerState.channels[channelIndex].sid.enabled = false;
+				state.channelSoundEnabled[channelIndex] = false;
+				continue;
+			}
+
+			ayumiEngine.applySampleSidVolume(channelIndex, playback.volume);
+		}
+	}
+
 	processInstruments(state, registerState) {
 		state.envelopeAddValue = 0;
 		if (state.autoEnvelopeActive) {
@@ -547,6 +772,18 @@ class AYAudioDriver {
 
 			const instrumentIndex = state.channelInstruments[channelIndex];
 			const instrument = state.instruments[instrumentIndex];
+
+			if (instrumentHasSample(instrument)) {
+				this.processSampleInstrument(
+					state,
+					registerState,
+					channelIndex,
+					instrument,
+					isSoundEnabled,
+					onOffHalted
+				);
+				continue;
+			}
 
 			if (instrumentIndex < 0 || !instrument) {
 				registerState.channels[channelIndex].volume = 0;

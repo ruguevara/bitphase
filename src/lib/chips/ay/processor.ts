@@ -11,6 +11,8 @@ import type {
 import type { ChipSettings } from '../../services/audio/chip-settings';
 import type { CatchUpSegment } from '../../services/audio/play-from-position';
 import { MixerWorkletBridge } from '../../services/audio/mixer-worklet-bridge';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from './sample-region';
 
 type WorkletInstrument = Instrument & {
 	timerRows?: Record<string, unknown>[];
@@ -18,10 +20,23 @@ type WorkletInstrument = Instrument & {
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
 };
 
 export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletInstrument {
 	const extended = instrument as WorkletInstrument;
+	const sampleData =
+		extended.sampleData?.length &&
+		isValidInstrumentSampleByteLength(extended.sampleData.length)
+			? extended.sampleData.map((value) => value & 0xff)
+			: undefined;
 	return {
 		id: instrument.id,
 		rows: Array.from(instrument.rows).map((row) => ({ ...row })),
@@ -36,7 +51,27 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 			timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
 				? [...((row as { timerWaveform?: number[] }).timerWaveform as number[])]
 				: undefined
-		}))
+		})),
+		...(sampleData?.length
+			? (() => {
+					const bounds = normalizeSamplePlaybackBounds({
+						sampleData,
+						sampleStart: extended.sampleStart,
+						sampleEnd: extended.sampleEnd,
+						sampleLoopStart: extended.sampleLoopStart,
+						sampleLength: extended.sampleLength,
+						sampleLoop: extended.sampleLoop
+					});
+					return {
+						sampleData,
+						sampleRate: extended.sampleRate,
+						sampleStart: bounds?.start ?? 0,
+						sampleEnd: bounds?.end ?? sampleData.length - 1,
+						sampleLoopStart: bounds?.loopStart ?? 0,
+						sampleLoopEnabled: extended.sampleLoopEnabled !== false
+					};
+				})()
+			: {})
 	};
 }
 

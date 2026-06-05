@@ -241,6 +241,14 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	}
 
 	accumulateStereoOutput(sampleIndex, mix) {
+		if (this.audioDriver && this.ayumiEngine) {
+			this.audioDriver.updateSamplePlayback(
+				this.state,
+				this.registerState,
+				this.ayumiEngine,
+				sampleRate
+			);
+		}
 		this.ayumiEngine.process();
 		this.ayumiEngine.removeDC();
 
