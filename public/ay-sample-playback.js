@@ -125,7 +125,7 @@ export function advanceSamplePosition(
 	const rate = resolveSamplePlaybackRate(instrument, outputSampleRate);
 	const referenceTone = resolveSamplePitchReferenceTone(state.currentTuningTable);
 	const pitchScale = computeSamplePitchScale(referenceTone, effectiveTone);
-	let phase = state.channelSamplePhase[channelIndex] + (outputSampleRate / rate) * pitchScale;
+	let phase = state.channelSamplePhase[channelIndex] + (rate / outputSampleRate) * pitchScale;
 
 	while (phase >= 1) {
 		position++;

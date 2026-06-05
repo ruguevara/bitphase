@@ -114,4 +114,54 @@ describe('ay-sample-playback', () => {
 		const instrument = { sampleData: [255] };
 		expect(mapSampleByteAtPosition(instrument, 0, 0)).toBe(15);
 	});
+
+	it('advances one sample byte per output frame when rates match', () => {
+		const tuningTable = Array(96).fill(0);
+		tuningTable[36] = 1000;
+		const state = {
+			isYM: 0,
+			currentTuningTable: tuningTable,
+			channelSamplePositions: [0],
+			channelSamplePhase: [0]
+		};
+		const instrument = {
+			sampleData: new Array(100).fill(128),
+			sampleRate: 100,
+			sampleStart: 0,
+			sampleEnd: 99,
+			sampleLoopStart: 0
+		};
+
+		for (let i = 0; i < 25; i++) {
+			advanceSamplePosition(state, 0, instrument, 100, 1000);
+		}
+
+		expect(state.channelSamplePositions[0]).toBe(25);
+		expect(state.channelSamplePhase[0]).toBeCloseTo(0, 5);
+	});
+
+	it('scales playback speed with output sample rate', () => {
+		const tuningTable = Array(96).fill(0);
+		tuningTable[36] = 1000;
+		const state = {
+			isYM: 0,
+			currentTuningTable: tuningTable,
+			channelSamplePositions: [0],
+			channelSamplePhase: [0]
+		};
+		const instrument = {
+			sampleData: new Array(1_000).fill(128),
+			sampleRate: 8_000,
+			sampleStart: 0,
+			sampleEnd: 999,
+			sampleLoopStart: 0
+		};
+
+		for (let i = 0; i < 4_410; i++) {
+			advanceSamplePosition(state, 0, instrument, 44_100, 1000);
+		}
+
+		expect(state.channelSamplePositions[0]).toBe(800);
+		expect(state.channelSamplePhase[0]).toBeCloseTo(0, 5);
+	});
 });

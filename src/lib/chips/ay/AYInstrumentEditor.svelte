@@ -607,7 +607,8 @@
 		</button>
 		<button
 			type="button"
-			class="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-xs {activeTab === 'sample'
+			class="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-xs {activeTab ===
+			'sample'
 				? 'bg-[var(--color-app-primary)] text-white'
 				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)]'}"
 			onclick={() => {
