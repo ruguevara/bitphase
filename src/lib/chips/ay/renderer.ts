@@ -337,6 +337,12 @@ export class AYChipRenderer implements ChipRenderer {
 				state.timeline.tickAccumulator -= 1.0;
 			}
 
+			audioDriver.updateSamplePlayback(
+				state,
+				registerState,
+				ayumiEngine,
+				SAMPLE_RATE
+			);
 			ayumiEngine.process();
 			ayumiEngine.removeDC();
 
@@ -485,6 +491,12 @@ export class AYChipRenderer implements ChipRenderer {
 			}
 
 			for (const ctx of contexts) {
+				ctx.audioDriver.updateSamplePlayback(
+					ctx.state,
+					ctx.registerState,
+					ctx.ayumiEngine,
+					SAMPLE_RATE
+				);
 				ctx.ayumiEngine.process();
 				ctx.ayumiEngine.removeDC();
 			}

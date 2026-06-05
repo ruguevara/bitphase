@@ -91,7 +91,8 @@
 		total: number,
 		start: number,
 		end: number,
-		loopPoint: number
+		loopPoint: number,
+		showLoop: boolean
 	): void {
 		if (total < 1 || end < start) return;
 
@@ -110,19 +111,21 @@
 		ctx.fillStyle = playFill;
 		ctx.fillRect(playStartX, 0, playEndX - playStartX, canvasHeight);
 
-		if (loopPoint > start) {
+		if (showLoop && loopPoint > start) {
 			ctx.fillStyle = loopFill;
 			ctx.fillRect(loopStartX, 0, playEndX - loopStartX, canvasHeight);
 		}
 
-		ctx.strokeStyle = 'rgba(250, 179, 135, 0.95)';
-		ctx.lineWidth = Math.max(1, Math.floor((window.devicePixelRatio ?? 1) * 1.5));
-		ctx.setLineDash([4 * (window.devicePixelRatio ?? 1), 3 * (window.devicePixelRatio ?? 1)]);
-		ctx.beginPath();
-		ctx.moveTo(loopStartX, 0);
-		ctx.lineTo(loopStartX, canvasHeight);
-		ctx.stroke();
-		ctx.setLineDash([]);
+		if (showLoop) {
+			ctx.strokeStyle = 'rgba(250, 179, 135, 0.95)';
+			ctx.lineWidth = Math.max(1, Math.floor((window.devicePixelRatio ?? 1) * 1.5));
+			ctx.setLineDash([4 * (window.devicePixelRatio ?? 1), 3 * (window.devicePixelRatio ?? 1)]);
+			ctx.beginPath();
+			ctx.moveTo(loopStartX, 0);
+			ctx.lineTo(loopStartX, canvasHeight);
+			ctx.stroke();
+			ctx.setLineDash([]);
+		}
 	}
 
 	function sampleToCanvasY(
@@ -252,7 +255,8 @@
 			editorBounds.dataLength,
 			editorBounds.start,
 			editorBounds.end,
-			editorBounds.loopStart
+			editorBounds.loopStart,
+			loopEnabled
 		);
 	}
 
@@ -412,6 +416,7 @@
 		regionStart;
 		regionEnd;
 		loopStart;
+		loopEnabled;
 		totalSamples;
 
 		const el = canvasEl;
@@ -442,6 +447,12 @@
 	});
 
 	$effect(() => {
+		if (!loopEnabled && dragMode === 'loop') {
+			finishDrag();
+		}
+	});
+
+	$effect(() => {
 		return () => {
 			stopWindowDragListeners();
 		};
@@ -467,19 +478,21 @@
 				class="pointer-events-none absolute inset-y-0 border-y border-[var(--color-app-primary)]/35 bg-[var(--color-app-primary)]/5"
 				style="left: {startPercent}%; width: {endPercent - startPercent}%;"></div>
 
-			<button
-				type="button"
-				class="absolute top-0 bottom-0 z-30 flex w-4 -translate-x-1/2 cursor-ew-resize items-center justify-center border-0 bg-transparent p-0"
-				style="left: {loopPercent}%"
-				aria-label="Adjust loop start"
-				onpointerdown={(event) => beginDrag('loop', event)}>
-				<span
-					class="flex h-10 w-2 flex-col items-center justify-center gap-0.5 rounded-sm bg-[#f9b384] shadow-[0_0_0_1px_rgba(0,0,0,0.35)] ring-2 ring-[var(--color-app-surface)]">
-					<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
-					<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
-					<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
-				</span>
-			</button>
+			{#if loopEnabled}
+				<button
+					type="button"
+					class="absolute top-0 bottom-0 z-30 flex w-4 -translate-x-1/2 cursor-ew-resize items-center justify-center border-0 bg-transparent p-0"
+					style="left: {loopPercent}%"
+					aria-label="Adjust loop start"
+					onpointerdown={(event) => beginDrag('loop', event)}>
+					<span
+						class="flex h-10 w-2 flex-col items-center justify-center gap-0.5 rounded-sm bg-[#f9b384] shadow-[0_0_0_1px_rgba(0,0,0,0.35)] ring-2 ring-[var(--color-app-surface)]">
+						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
+						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
+						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
+					</span>
+				</button>
+			{/if}
 
 			<div
 				class="absolute inset-y-0"
