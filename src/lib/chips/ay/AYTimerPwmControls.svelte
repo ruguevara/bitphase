@@ -8,7 +8,7 @@
 	const minInputEnabled = $derived(pwmSupported && controller.timerPwmSweep() > 0);
 	const pwmDisclaimer = $derived.by(() => {
 		if (!pwmSupported) {
-			return 'PWM min %, max %, and sweep are disabled until at least one non-syncbuzzer row uses classic SID steps (15 0).';
+			return 'PWM min %, max %, and sweep need classic SID steps (15 0) or syncbuzzer with exactly two envelope shapes.';
 		}
 		if (!minInputEnabled) {
 			return 'Min % is disabled while sweep is 0; max % sets the static pulse width.';
@@ -70,7 +70,7 @@
 					value={pwmSweepMinInput}
 					disabled={!minInputEnabled}
 					title={!pwmSupported
-						? 'Disabled: requires classic SID steps (15 0) on at least one non-syncbuzzer row'
+						? 'Disabled: requires classic SID steps (15 0) or syncbuzzer with exactly two envelope shapes'
 						: minInputEnabled
 							? 'Sweep min pulse width (0–50%, must be ≤ max)'
 							: 'Disabled while sweep is 0; only max % is used for static pulse width'}
@@ -92,8 +92,8 @@
 					value={pwmDutyInput}
 					disabled={!pwmSupported}
 					title={pwmSupported
-						? 'Pulse width max (0–50%, 50 = symmetric SID). Static duty when sweep is off.'
-						: 'Disabled: requires classic SID steps (15 0) on at least one non-syncbuzzer row'}
+						? 'Pulse width max (0–50%, 50 = symmetric). Static duty when sweep is off.'
+						: 'Disabled: requires classic SID steps (15 0) or syncbuzzer with exactly two envelope shapes'}
 					onfocus={(e) => (e.target as HTMLInputElement).select()}
 					oninput={(event) => (pwmDutyInput = (event.currentTarget as HTMLInputElement).value)}
 					onchange={commitPwmDuty}
@@ -112,7 +112,7 @@
 				disabled={!pwmSupported}
 				title={pwmSupported
 					? 'Pulse width sweep speed (auto PWM bounce between min and max, 0 = off)'
-					: 'Disabled: requires classic SID steps (15 0) on at least one non-syncbuzzer row'}
+					: 'Disabled: requires classic SID steps (15 0) or syncbuzzer with exactly two envelope shapes'}
 				onfocus={(e) => (e.target as HTMLInputElement).select()}
 				oninput={(e) =>
 					controller.updateTimerPwmSweep((e.target as HTMLInputElement).value)} />
@@ -129,7 +129,7 @@
 			disabled={!pwmSupported}
 			title={pwmSupported
 				? 'Keep PWM sweep position when retriggering notes or switching to this instrument'
-				: 'Disabled: requires classic SID steps (15 0) on at least one non-syncbuzzer row'}
+				: 'Disabled: requires classic SID steps (15 0) or syncbuzzer with exactly two envelope shapes'}
 			onchange={(event) =>
 				controller.setTimerPwmPreserveOnNewNote(
 					(event.currentTarget as HTMLInputElement).checked

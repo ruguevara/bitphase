@@ -7,6 +7,8 @@ class AyumiEngine {
 		this.lastState = new AYChipRegisterState();
 		this.sidWaveformPtrs = [0, 0, 0];
 		this.sidWaveformLengths = [0, 0, 0];
+		this.syncbuzzerWaveformPtrs = [0, 0, 0];
+		this.syncbuzzerWaveformLengths = [0, 0, 0];
 		this.forceFullApply = false;
 		this.lastSampleSidVolumes = [-1, -1, -1];
 	}
@@ -110,16 +112,58 @@ class AyumiEngine {
 		}
 	}
 
+	_ensureSyncbuzzerWaveformBuffer(channelIndex, length) {
+		const needed = Math.max(length, 1) * 4;
+		if (
+			this.syncbuzzerWaveformPtrs[channelIndex] &&
+			this.syncbuzzerWaveformLengths[channelIndex] >= length
+		) {
+			return this.syncbuzzerWaveformPtrs[channelIndex];
+		}
+		if (this.syncbuzzerWaveformPtrs[channelIndex]) {
+			this.wasmModule.free(this.syncbuzzerWaveformPtrs[channelIndex]);
+		}
+		const ptr = this.wasmModule.malloc(needed);
+		this.syncbuzzerWaveformPtrs[channelIndex] = ptr;
+		this.syncbuzzerWaveformLengths[channelIndex] = length;
+		return ptr;
+	}
+
 	_applySyncbuzzer(channelIndex, syncbuzzer, lastSyncbuzzer, forceApply = false) {
 		const enabled = syncbuzzer.enabled ? 1 : 0;
 		const period = syncbuzzer.period > 0 ? syncbuzzer.period : 1;
+		const periodLow = syncbuzzer.periodLow > 0 ? syncbuzzer.periodLow : period;
+		const pwm = syncbuzzer.pwm ? 1 : 0;
 		const shape = syncbuzzer.shape & 0xf;
 		const wasEnabled = lastSyncbuzzer.enabled ? 1 : 0;
+		const wasPwm = lastSyncbuzzer.pwm ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
+		const modeChanged = pwm !== wasPwm;
 
-		if (
+		if (pwm) {
+			if (
+				forceApply ||
+				enableChanged ||
+				modeChanged ||
+				period !== lastSyncbuzzer.period ||
+				periodLow !== lastSyncbuzzer.periodLow
+			) {
+				this.wasmModule.ayumi_set_syncbuzzer_pwm(
+					this.ayumiPtr,
+					channelIndex,
+					enabled,
+					period,
+					periodLow
+				);
+				lastSyncbuzzer.enabled = syncbuzzer.enabled;
+				lastSyncbuzzer.pwm = syncbuzzer.pwm;
+				lastSyncbuzzer.period = period;
+				lastSyncbuzzer.periodLow = periodLow;
+			}
+		} else if (
 			forceApply ||
 			enableChanged ||
+			modeChanged ||
 			period !== lastSyncbuzzer.period ||
 			shape !== lastSyncbuzzer.shape
 		) {
@@ -131,8 +175,41 @@ class AyumiEngine {
 				shape
 			);
 			lastSyncbuzzer.enabled = syncbuzzer.enabled;
+			lastSyncbuzzer.pwm = false;
 			lastSyncbuzzer.period = period;
+			lastSyncbuzzer.periodLow = period;
 			lastSyncbuzzer.shape = shape;
+		}
+
+		const waveform = syncbuzzer.waveform ?? [shape];
+		const waveformLoop = syncbuzzer.waveformLoop ?? 0;
+		const lastWaveform = lastSyncbuzzer.waveform ?? [lastSyncbuzzer.shape & 0xf];
+		const waveformChanged =
+			waveform.length !== lastWaveform.length ||
+			waveformLoop !== (lastSyncbuzzer.waveformLoop ?? 0) ||
+			waveform.some((value, index) => value !== lastWaveform[index]);
+
+		if (
+			syncbuzzer.enabled &&
+			waveform.length > 0 &&
+			(forceApply || waveformChanged || enableChanged || modeChanged)
+		) {
+			const ptr = this._ensureSyncbuzzerWaveformBuffer(channelIndex, waveform.length);
+			const memory = new Int32Array(this.wasmModule.memory.buffer);
+			const offset = ptr >> 2;
+			for (let i = 0; i < waveform.length; i++) {
+				memory[offset + i] = waveform[i] & 0xf;
+			}
+			this.wasmModule.ayumi_set_syncbuzzer_waveform(
+				this.ayumiPtr,
+				channelIndex,
+				ptr,
+				waveform.length,
+				waveformLoop
+			);
+			lastSyncbuzzer.waveform = [...waveform];
+			lastSyncbuzzer.waveformLoop = waveformLoop;
+			lastSyncbuzzer.shape = waveform[0] & 0xf;
 		}
 
 		if (syncbuzzer.resetPhase) {

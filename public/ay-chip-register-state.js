@@ -12,7 +12,11 @@ const DEFAULT_SID = {
 const DEFAULT_SYNCBUZZER = {
 	enabled: false,
 	period: 100,
+	periodLow: 100,
+	pwm: false,
 	shape: 0,
+	waveform: [13, 9],
+	waveformLoop: 0,
 	resetPhase: false
 };
 
@@ -93,7 +97,11 @@ class AYChipRegisterState {
 			copy.channels[i].syncbuzzer = {
 				enabled: syncbuzzer.enabled,
 				period: syncbuzzer.period,
+				periodLow: syncbuzzer.periodLow ?? syncbuzzer.period,
+				pwm: syncbuzzer.pwm ?? false,
 				shape: syncbuzzer.shape,
+				waveform: [...(syncbuzzer.waveform ?? [syncbuzzer.shape & 0xf])],
+				waveformLoop: syncbuzzer.waveformLoop ?? 0,
 				resetPhase: syncbuzzer.resetPhase
 			};
 		}

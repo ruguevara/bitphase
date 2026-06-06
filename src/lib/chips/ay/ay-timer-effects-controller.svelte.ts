@@ -1,6 +1,7 @@
 import { Instrument } from '../../models/song';
 import {
 	createDefaultAyTimerRow,
+	DEFAULT_AY_SYNCBUZZER_WAVEFORM,
 	effectiveRowDetune,
 	effectiveRowPeriod,
 	effectiveInstrumentTimerPwmDuty,
@@ -11,6 +12,7 @@ import {
 	instrumentSupportsTimerPwm,
 	effectiveRowToneDetune,
 	formatAyTimerWaveform,
+	isDefaultSidTimerWaveform,
 	normalizeAyInstrumentFields,
 	normalizeInstrumentTimerPwmFields,
 	parseAyTimerWaveform,
@@ -117,9 +119,6 @@ export class AyTimerEffectsController {
 		if (rowIndex < 0 || rowIndex >= this.fields.timerRows.length) {
 			return;
 		}
-		if (this.fields.timerRows[rowIndex]?.syncbuzzer) {
-			return;
-		}
 		this.waveformEditorRowIndex =
 			this.waveformEditorRowIndex === rowIndex ? null : rowIndex;
 	}
@@ -218,16 +217,23 @@ export class AyTimerEffectsController {
 	}
 
 	updateSyncbuzzerRow(index: number, syncbuzzer: boolean): void {
-		this.mapTimerRow(index, (row) =>
-			resolveExclusiveTimerEffects({
+		this.mapTimerRow(index, (row) => {
+			const resolved = resolveExclusiveTimerEffects({
 				...row,
 				syncbuzzer,
 				sid: syncbuzzer ? false : row.sid
-			})
-		);
-		if (syncbuzzer && this.waveformEditorRowIndex === index) {
-			this.waveformEditorRowIndex = null;
-		}
+			});
+			if (!syncbuzzer) {
+				return resolved;
+			}
+			if (isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved))) {
+				return {
+					...resolved,
+					timerWaveform: [...DEFAULT_AY_SYNCBUZZER_WAVEFORM]
+				};
+			}
+			return resolved;
+		});
 	}
 
 	setRowSidPeriodMode(index: number, mode: AySidPeriodMode): void {
@@ -395,8 +401,8 @@ export class AyTimerEffectsController {
 		return this.fields.timerRows[index]?.syncbuzzer ?? false;
 	}
 
-	rowSidStepsEnabled(index: number): boolean {
-		return !this.rowSyncbuzzerEnabled(index);
+	rowTimerWaveformUsesEnvelopeShapes(index: number): boolean {
+		return this.rowSyncbuzzerEnabled(index);
 	}
 
 	private parseNum(text: string): number | null {

@@ -13,6 +13,9 @@ describe('export engine register sync', () => {
 		ayumi_set_sid: ReturnType<typeof vi.fn>;
 		ayumi_set_sid_waveform: ReturnType<typeof vi.fn>;
 		ayumi_set_syncbuzzer: ReturnType<typeof vi.fn>;
+		ayumi_set_syncbuzzer_pwm: ReturnType<typeof vi.fn>;
+		ayumi_set_syncbuzzer_waveform: ReturnType<typeof vi.fn>;
+		ayumi_syncbuzzer_reset: ReturnType<typeof vi.fn>;
 		memory: { buffer: ArrayBuffer };
 		malloc: ReturnType<typeof vi.fn>;
 	};
@@ -30,6 +33,9 @@ describe('export engine register sync', () => {
 			ayumi_set_sid: vi.fn(),
 			ayumi_set_sid_waveform: vi.fn(),
 			ayumi_set_syncbuzzer: vi.fn(),
+			ayumi_set_syncbuzzer_pwm: vi.fn(),
+			ayumi_set_syncbuzzer_waveform: vi.fn(),
+			ayumi_syncbuzzer_reset: vi.fn(),
 			memory: { buffer: new ArrayBuffer(4096) },
 			malloc: vi.fn(() => 256)
 		};

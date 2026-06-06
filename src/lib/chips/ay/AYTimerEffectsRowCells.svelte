@@ -18,7 +18,16 @@
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
 	const sidEnabled = $derived(controller.rowSidEnabled(index));
 	const syncbuzzerEnabled = $derived(controller.rowSyncbuzzerEnabled(index));
-	const sidStepsEnabled = $derived(controller.rowSidStepsEnabled(index));
+	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(index));
+	const waveformPlaceholder = $derived(usesEnvelopeShapes ? 'D 9' : '15 0');
+	const waveformTitle = $derived(
+		usesEnvelopeShapes
+			? 'Space-separated envelope shapes (0–15 hex). Pattern envelope digit overrides when set.'
+			: 'Space-separated SID steps (0–15)'
+	);
+	const waveformEditorTitle = $derived(
+		usesEnvelopeShapes ? 'Open envelope shapes editor' : 'Open SID steps editor'
+	);
 	const rowMode = $derived(controller.rowSidPeriodMode(index));
 	const rowToneDetune = $derived(controller.rowToneDetune(index));
 	const rowDetune = $derived(controller.rowDetune(index));
@@ -46,14 +55,12 @@
 	}
 
 	function handleWaveformFocus(event: FocusEvent): void {
-		if (!sidStepsEnabled) return;
 		waveformInputFocused = true;
 		waveformText = controller.formatRowTimerWaveform(index);
 		(event.target as HTMLInputElement).select();
 	}
 
 	function handleWaveformBlur(): void {
-		if (!sidStepsEnabled) return;
 		waveformInputFocused = false;
 		const parsed = controller.parseTimerWaveform(waveformText);
 		if (parsed !== null) {
@@ -142,14 +149,11 @@
 	<div class="flex items-center gap-1">
 		<input
 			type="text"
-			class="{numericInputClass(!sidStepsEnabled)} min-w-0 flex-1"
+			class="{numericInputClass()} min-w-0 flex-1"
 			value={waveformInputFocused ? waveformText : controller.formatRowTimerWaveform(index)}
-			placeholder="15 0"
+			placeholder={waveformPlaceholder}
 			spellcheck="false"
-			disabled={!sidStepsEnabled}
-			title={sidStepsEnabled
-				? 'Space-separated SID steps (0–15)'
-				: 'Disabled while syncbuzzer is active'}
+			title={waveformTitle}
 			onfocus={handleWaveformFocus}
 			oninput={(event) => (waveformText = (event.currentTarget as HTMLInputElement).value)}
 			onblur={handleWaveformBlur} />
@@ -157,16 +161,9 @@
 			type="button"
 			class="flex shrink-0 items-center justify-center rounded p-0.5 transition-colors {waveformEditorOpen
 				? 'bg-[var(--color-pattern-note)]/15 text-[var(--color-pattern-note)]'
-				: sidStepsEnabled
-					? 'cursor-pointer text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)]'
-					: 'cursor-not-allowed text-[var(--color-app-text-tertiary)] opacity-60'}"
-			disabled={!sidStepsEnabled}
-			title={sidStepsEnabled
-				? 'Open SID steps editor'
-				: 'Disabled while syncbuzzer is active'}
-			aria-label={sidStepsEnabled
-				? 'Open SID steps editor'
-				: 'SID steps editor disabled while syncbuzzer is active'}
+				: 'cursor-pointer text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)]'}"
+			title={waveformEditorTitle}
+			aria-label={waveformEditorTitle}
 			onclick={() => controller.openWaveformEditor(index)}>
 			<IconCarbonEdit class={iconSizeClass} />
 		</button>

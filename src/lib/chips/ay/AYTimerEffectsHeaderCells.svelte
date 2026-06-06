@@ -59,9 +59,9 @@
 </th>
 <th
 	class={isExpanded ? 'min-w-32 px-1.5' : 'min-w-24 px-0.5 text-[0.65rem]'}
-	title="SID steps (0–15). Disabled while syncbuzzer is active.">
+	title="SID steps or envelope shapes (0–15), depending on row mode.">
 	<div class="flex items-center justify-center gap-0.5">
 		<IconCarbonWaveform class={iconSizeClass} />
-		<span>SID steps</span>
+		<span>Steps</span>
 	</div>
 </th>

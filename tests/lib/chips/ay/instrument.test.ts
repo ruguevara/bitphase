@@ -17,6 +17,7 @@ import {
 	effectiveInstrumentTimerPwmDuty,
 	isClassicSidTimerWaveform,
 	rowSupportsTimerPwm,
+	rowUsesSyncbuzzerPwmDuty,
 	instrumentSupportsTimerPwm,
 	normalizeInstrumentTimerPwmFields,
 	advanceTimerPwmSweep,
@@ -103,13 +104,17 @@ describe('ay instrument timer fields', () => {
 		expect(fields.timerRows[0]?.syncbuzzer).toBe(false);
 	});
 
-	it('enables pwm settings only for classic sid waveform', () => {
+	it('enables pwm settings for classic sid or syncbuzzer waveforms', () => {
 		expect(isClassicSidTimerWaveform([15, 0])).toBe(true);
 		expect(isClassicSidTimerWaveform([15, 0, 0])).toBe(false);
 		expect(isClassicSidTimerWaveform([15, 1])).toBe(false);
 		expect(rowSupportsTimerPwm({ sid: true, timerWaveform: [15, 0] })).toBe(true);
 		expect(rowSupportsTimerPwm({ sid: true, timerWaveform: [15, 14, 13] })).toBe(false);
-		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [15, 0] })).toBe(false);
+		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
+		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [8] })).toBe(false);
+		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
+		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
+		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
 	});
 
 	it('uses instrument-level pwm values for classic sid rows only', () => {

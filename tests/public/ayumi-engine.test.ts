@@ -13,6 +13,9 @@ describe('AyumiEngine', () => {
 		ayumi_set_sid: ReturnType<typeof vi.fn>;
 		ayumi_set_sid_waveform: ReturnType<typeof vi.fn>;
 		ayumi_set_syncbuzzer: ReturnType<typeof vi.fn>;
+		ayumi_set_syncbuzzer_pwm: ReturnType<typeof vi.fn>;
+		ayumi_set_syncbuzzer_waveform: ReturnType<typeof vi.fn>;
+		ayumi_syncbuzzer_reset: ReturnType<typeof vi.fn>;
 		ayumi_process: ReturnType<typeof vi.fn>;
 		ayumi_remove_dc: ReturnType<typeof vi.fn>;
 		memory: { buffer: ArrayBuffer };
@@ -32,6 +35,9 @@ describe('AyumiEngine', () => {
 			ayumi_set_sid: vi.fn(),
 			ayumi_set_sid_waveform: vi.fn(),
 			ayumi_set_syncbuzzer: vi.fn(),
+			ayumi_set_syncbuzzer_pwm: vi.fn(),
+			ayumi_set_syncbuzzer_waveform: vi.fn(),
+			ayumi_syncbuzzer_reset: vi.fn(),
 			ayumi_process: vi.fn(),
 			ayumi_remove_dc: vi.fn(),
 			memory: { buffer: new ArrayBuffer(4096) },
@@ -141,6 +147,34 @@ describe('AyumiEngine', () => {
 			engine.applyRegisterState(state);
 			expect(mockWasm.ayumi_set_sid).toHaveBeenCalledWith(mockPtr, 0, 1, 503, 15);
 			expect(mockWasm.ayumi_set_sid_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				256,
+				2,
+				0
+			);
+		});
+
+		it('uploads syncbuzzer waveform and pwm when syncbuzzer is enabled', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].mixer.envelope = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].syncbuzzer = {
+				enabled: true,
+				period: 40,
+				periodLow: 60,
+				pwm: true,
+				shape: 13,
+				waveform: [13, 9],
+				waveformLoop: 0,
+				resetPhase: false
+			};
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_syncbuzzer_pwm).toHaveBeenCalledWith(mockPtr, 0, 1, 40, 60);
+			expect(mockWasm.ayumi_set_syncbuzzer_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
 				256,
