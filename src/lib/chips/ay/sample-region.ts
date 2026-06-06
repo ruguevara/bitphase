@@ -1,4 +1,16 @@
 export const SAMPLE_PITCH_REFERENCE_HZ = 261.63;
+export const MIN_INSTRUMENT_SAMPLE_RATE = 1_000;
+export const MAX_INSTRUMENT_SAMPLE_RATE = 65_535;
+
+export function clampInstrumentSampleRate(rate: number): number {
+	if (!Number.isFinite(rate)) {
+		return MIN_INSTRUMENT_SAMPLE_RATE;
+	}
+	return Math.max(
+		MIN_INSTRUMENT_SAMPLE_RATE,
+		Math.min(MAX_INSTRUMENT_SAMPLE_RATE, Math.round(rate))
+	);
+}
 
 export function instrumentHasSample(source: { sampleData?: number[] } | null | undefined): boolean {
 	return Array.isArray(source?.sampleData) && source.sampleData.length > 0;

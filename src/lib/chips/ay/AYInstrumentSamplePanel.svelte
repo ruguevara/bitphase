@@ -4,6 +4,7 @@
 	import IconCarbonDocumentImport from '~icons/carbon/document-import';
 	import IconCarbonRenew from '~icons/carbon/renew';
 	import IconCarbonRepeat from '~icons/carbon/repeat';
+	import IconCarbonSettingsAdjust from '~icons/carbon/settings-adjust';
 	import IconCarbonTime from '~icons/carbon/time';
 	import IconCarbonTrashCan from '~icons/carbon/trash-can';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
@@ -18,7 +19,10 @@
 	} from './ay-sample-lut';
 	import { resolveAyChipVariant } from './sid-waveform-volume';
 	import {
+		clampInstrumentSampleRate,
 		defaultSampleRegionFields,
+		MAX_INSTRUMENT_SAMPLE_RATE,
+		MIN_INSTRUMENT_SAMPLE_RATE,
 		normalizeSamplePlaybackBounds,
 		resolveSampleLoopEnabled
 	} from './sample-region';
@@ -55,8 +59,15 @@
 	let regionEnd = $state(0);
 	let loopStart = $state(0);
 	let loopEnabled = $state(true);
+	let loadedSampleRate = $state<number | null>(null);
 
 	const previewHeight = $derived(isExpanded ? 168 : 128);
+	const instrumentSampleRate = $derived(
+		clampInstrumentSampleRate(instrument.sampleRate ?? loadedSampleRate ?? 44_100)
+	);
+	const isSampleRateTuned = $derived(
+		loadedSampleRate != null && instrumentSampleRate !== loadedSampleRate
+	);
 
 	const sampleBounds = $derived(normalizeSamplePlaybackBounds(instrument));
 
@@ -85,17 +96,19 @@
 			if (decodedSample !== null) {
 				decodedSample = null;
 			}
+			loadedSampleRate = null;
 			return;
 		}
+		if (loadedSampleRate == null && instrument.sampleRate && instrument.sampleRate > 0) {
+			loadedSampleRate = Math.round(instrument.sampleRate);
+		}
 		const data = Uint8Array.from(sampleData);
-		const durationSeconds =
-			instrument.sampleRate && instrument.sampleRate > 0
-				? data.length / instrument.sampleRate
-				: 0;
+		const rate = instrumentSampleRate;
+		const durationSeconds = rate > 0 ? data.length / rate : 0;
 		const nextSample: DecodedAudioSample = {
 			fileName: instrument.name || 'Sample',
 			data,
-			sampleRate: instrument.sampleRate ?? 44100,
+			sampleRate: rate,
 			durationSeconds,
 			channelCount: 1,
 			peaks: buildWaveformPeaksFromUint8MonoWithLut(data, chipVariant)
@@ -154,6 +167,32 @@
 		commitInstrumentSampleFields(start, end, loopPoint, loopEnabled);
 	}
 
+	function commitSampleRate(rawValue: number): void {
+		if (!instrument.sampleData?.length) return;
+		const nextRate = clampInstrumentSampleRate(rawValue);
+		if (instrument.sampleRate === nextRate) return;
+		onInstrumentChange({
+			...instrument,
+			sampleRate: nextRate
+		});
+	}
+
+	function handleSampleRateCommit(event: Event): void {
+		const input = event.currentTarget as HTMLInputElement;
+		commitSampleRate(Number.parseInt(input.value, 10));
+	}
+
+	function handleSampleRateKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Enter') return;
+		handleSampleRateCommit(event);
+		(event.currentTarget as HTMLInputElement).blur();
+	}
+
+	function resetSampleRate(): void {
+		if (loadedSampleRate == null) return;
+		commitSampleRate(loadedSampleRate);
+	}
+
 	$effect(() => {
 		const loop = loopEnabled;
 		if (!instrument.sampleData?.length) return;
@@ -175,11 +214,12 @@
 			onInstrumentChange(next);
 			return;
 		}
+		loadedSampleRate = Math.round(sample.sampleRate);
 		const regionDefaults = defaultSampleRegionFields(sample.data.length);
 		onInstrumentChange({
 			...instrument,
 			sampleData: Array.from(sample.data),
-			sampleRate: sample.sampleRate,
+			sampleRate: loadedSampleRate,
 			sampleStart: regionDefaults.sampleStart,
 			sampleEnd: regionDefaults.sampleEnd,
 			sampleLoopStart: regionDefaults.sampleLoopStart,
@@ -193,6 +233,7 @@
 
 	function clearSample(): void {
 		decodedSample = null;
+		loadedSampleRate = null;
 		loadError = null;
 		if (fileInputEl) {
 			fileInputEl.value = '';
@@ -276,7 +317,7 @@
 					</span>
 					<span class="inline-flex items-center gap-1">
 						<IconCarbonWaveform class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
-						{decodedSample.data.length.toLocaleString()} @ {decodedSample.sampleRate.toLocaleString()} Hz
+						{decodedSample.data.length.toLocaleString()} samples
 					</span>
 				</div>
 			</div>
@@ -300,6 +341,35 @@
 				bind:loopEnabled
 				onRegionCommit={handleRegionCommit} />
 		{/key}
+
+		<div class="px-0.5">
+			<label class="flex min-w-0 flex-col gap-1">
+				<span class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
+					<IconCarbonSettingsAdjust class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
+					Sample rate
+				</span>
+				<div class="flex flex-wrap items-center gap-2">
+					<input
+						type="number"
+						class="w-[6.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
+						min={MIN_INSTRUMENT_SAMPLE_RATE}
+						max={MAX_INSTRUMENT_SAMPLE_RATE}
+						step={1}
+						value={instrumentSampleRate}
+						onchange={handleSampleRateCommit}
+						onkeydown={handleSampleRateKeydown} />
+					<span class="text-xs text-[var(--color-app-text-tertiary)]">Hz</span>
+					{#if isSampleRateTuned}
+						<button
+							type="button"
+							class="cursor-pointer border-0 bg-transparent p-0 text-xs text-[var(--color-app-primary)] hover:underline"
+							onclick={resetSampleRate}>
+							Reset ({loadedSampleRate?.toLocaleString()} Hz)
+						</button>
+					{/if}
+				</div>
+			</label>
+		</div>
 	{:else if !isLoading && !loadError}
 		<div
 			class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]/40 px-4 text-center"

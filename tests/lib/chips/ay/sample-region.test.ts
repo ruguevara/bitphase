@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	clampInstrumentSampleRate,
 	clampSamplePlaybackPosition,
 	computeSamplePitchScale,
 	defaultSampleRegionFields,
 	instrumentHasSample,
+	MAX_INSTRUMENT_SAMPLE_RATE,
+	MIN_INSTRUMENT_SAMPLE_RATE,
 	normalizeSamplePlaybackBounds,
 	resolveSamplePitchReferencePeriod
 } from '@/lib/chips/ay/sample-region';
@@ -18,6 +21,12 @@ describe('sample-region', () => {
 		);
 		expect(computeSamplePitchScale(referencePeriod, referencePeriod / 2)).toBe(2);
 		expect(computeSamplePitchScale(referencePeriod, referencePeriod * 2)).toBe(0.5);
+	});
+
+	it('clamps instrument sample rate for pitch tuning', () => {
+		expect(clampInstrumentSampleRate(8_000)).toBe(8_000);
+		expect(clampInstrumentSampleRate(500)).toBe(MIN_INSTRUMENT_SAMPLE_RATE);
+		expect(clampInstrumentSampleRate(99_999)).toBe(MAX_INSTRUMENT_SAMPLE_RATE);
 	});
 
 	it('detects when an instrument has sample data', () => {
