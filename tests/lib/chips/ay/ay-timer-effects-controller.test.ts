@@ -191,8 +191,8 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.timerPwmDuty()).toBe(20);
 	});
 
-	it('disables pwm editing when only syncbuzzer rows use classic sid steps', () => {
-		let current = createInstrument([{ syncbuzzer: true, timerWaveform: [15, 0] }], {
+	it('disables pwm editing when syncbuzzer rows use more than two envelope shapes', () => {
+		let current = createInstrument([{ syncbuzzer: true, timerWaveform: [8, 12, 8] }], {
 			timerPwmDuty: 20,
 			timerPwmSweepMin: 5,
 			timerPwmSweep: 4
@@ -208,6 +208,25 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.instrumentSupportsTimerPwm()).toBe(false);
 		controller.setTimerPwmDuty(10);
 		expect(controller.timerPwmDuty()).toBe(20);
+	});
+
+	it('enables pwm editing when syncbuzzer rows use exactly two envelope shapes', () => {
+		let current = createInstrument([{ syncbuzzer: true, timerWaveform: [13, 9] }], {
+			timerPwmDuty: 20,
+			timerPwmSweepMin: 5,
+			timerPwmSweep: 4
+		});
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
+		controller.setTimerPwmDuty(10);
+		expect(controller.timerPwmDuty()).toBe(10);
 	});
 
 	it('tracks instrument-level pwm preserve on new note', () => {
@@ -247,7 +266,7 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.waveformEditorRowIndex).toBeNull();
 	});
 
-	it('disables sid steps while syncbuzzer is active', () => {
+	it('keeps waveform editing available for syncbuzzer rows', () => {
 		let current = createInstrument([{ sid: false, syncbuzzer: false }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
@@ -257,12 +276,12 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		expect(controller.rowSidStepsEnabled(0)).toBe(true);
+		expect(controller.rowTimerWaveformUsesEnvelopeShapes(0)).toBe(false);
 		controller.openWaveformEditor(0);
 		expect(controller.waveformEditorRowIndex).toBe(0);
 		controller.updateSyncbuzzerRow(0, true);
-		expect(controller.rowSidStepsEnabled(0)).toBe(false);
-		expect(controller.waveformEditorRowIndex).toBeNull();
+		expect(controller.rowTimerWaveformUsesEnvelopeShapes(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('13 9');
 		controller.openWaveformEditor(0);
 		expect(controller.waveformEditorRowIndex).toBeNull();
 	});

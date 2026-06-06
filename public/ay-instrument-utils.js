@@ -2,6 +2,7 @@ export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
+export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [13, 9];
 export const AY_TIMER_PWM_DUTY_MIN = 0;
 export const AY_TIMER_PWM_DUTY_MAX = 50;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
@@ -76,11 +77,37 @@ export function isClassicSidTimerWaveform(waveform) {
 	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
 }
 
+export function isPatternEnvelopeShapeSet(envelopeShape) {
+	return envelopeShape !== 0 && envelopeShape !== 15;
+}
+
+export function isDefaultSidTimerWaveform(waveform) {
+	return (
+		waveform.length === DEFAULT_AY_TIMER_WAVEFORM.length &&
+		waveform.every((value, index) => (value & 0xf) === (DEFAULT_AY_TIMER_WAVEFORM[index] & 0xf))
+	);
+}
+
+export function resolveSyncbuzzerWaveform(timerRow, patternShapeOverride, patternEnvelopeShape) {
+	if (patternShapeOverride) {
+		return [patternEnvelopeShape & 0xf];
+	}
+	return effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+}
+
 export function rowSupportsTimerPwm(row) {
-	if (!row || row.syncbuzzer) {
+	if (!row) {
 		return false;
 	}
-	return isClassicSidTimerWaveform(effectiveRowTimerWaveform(row));
+	const waveform = effectiveRowTimerWaveform(row);
+	if (row.syncbuzzer) {
+		return waveform.length === 2;
+	}
+	return isClassicSidTimerWaveform(waveform);
+}
+
+export function rowUsesSyncbuzzerPwmDuty(row) {
+	return !!row?.syncbuzzer && rowSupportsTimerPwm(row);
 }
 
 export function effectiveRowTimerPwmDuty(fields, row) {

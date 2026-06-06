@@ -104,7 +104,11 @@ class VirtualChannelMixer {
 		if (src.syncbuzzer && dst.syncbuzzer) {
 			dst.syncbuzzer.enabled = src.syncbuzzer.enabled;
 			dst.syncbuzzer.period = src.syncbuzzer.period;
+			dst.syncbuzzer.periodLow = src.syncbuzzer.periodLow ?? src.syncbuzzer.period;
+			dst.syncbuzzer.pwm = src.syncbuzzer.pwm ?? false;
 			dst.syncbuzzer.shape = src.syncbuzzer.shape;
+			dst.syncbuzzer.waveform = [...(src.syncbuzzer.waveform ?? [src.syncbuzzer.shape & 0xf])];
+			dst.syncbuzzer.waveformLoop = src.syncbuzzer.waveformLoop ?? 0;
 			dst.syncbuzzer.resetPhase = src.syncbuzzer.resetPhase;
 		}
 	}

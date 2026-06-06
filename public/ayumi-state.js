@@ -15,7 +15,10 @@ const AY_CHANNEL_ARRAY_SPECS = [
 	['channelMuted', false],
 	['channelSoundEnabled', false],
 	['channelSidReset', false],
-	['channelSyncbuzzerReset', false]
+	['channelSyncbuzzerReset', false],
+	['channelPatternEnvelopeShapeOverride', false],
+	['channelSamplePositions', 0],
+	['channelSamplePhase', 0]
 ];
 
 class AyumiState extends TrackerState {

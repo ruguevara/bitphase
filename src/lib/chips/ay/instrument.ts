@@ -1,4 +1,6 @@
 import type { Instrument } from '../../models/song';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from './sample-region';
 
 export type AySidPeriodMode = 'auto' | 'manual';
 
@@ -19,12 +21,21 @@ export type AyInstrumentFields = {
 	timerPwmSweepMin: number;
 	timerPwmSweep: number;
 	timerPwmPreserveOnNewNote: boolean;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
 };
 
 export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
+export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [13, 9];
 export const AY_TIMER_PWM_DUTY_MIN = 0;
 export const AY_TIMER_PWM_DUTY_MAX = 50;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
@@ -42,6 +53,14 @@ type ExtendedInstrument = Instrument & {
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
 };
 
 type LegacyTimerRow = AyTimerRow & {
@@ -86,11 +105,41 @@ export function isClassicSidTimerWaveform(waveform: readonly number[]): boolean 
 	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
 }
 
+export function isPatternEnvelopeShapeSet(envelopeShape: number): boolean {
+	return envelopeShape !== 0 && envelopeShape !== 15;
+}
+
+export function isDefaultSidTimerWaveform(waveform: readonly number[]): boolean {
+	return (
+		waveform.length === DEFAULT_AY_TIMER_WAVEFORM.length &&
+		waveform.every((value, index) => (value & 0xf) === (DEFAULT_AY_TIMER_WAVEFORM[index]! & 0xf))
+	);
+}
+
+export function resolveSyncbuzzerWaveform(
+	timerRow: AyTimerRow | undefined,
+	patternShapeOverride: boolean,
+	patternEnvelopeShape: number
+): number[] {
+	if (patternShapeOverride) {
+		return [patternEnvelopeShape & 0xf];
+	}
+	return effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+}
+
 export function rowSupportsTimerPwm(row: AyTimerRow | undefined): boolean {
-	if (!row || row.syncbuzzer) {
+	if (!row) {
 		return false;
 	}
-	return isClassicSidTimerWaveform(effectiveRowTimerWaveform(row));
+	const waveform = effectiveRowTimerWaveform(row);
+	if (row.syncbuzzer) {
+		return waveform.length === 2;
+	}
+	return isClassicSidTimerWaveform(waveform);
+}
+
+export function rowUsesSyncbuzzerPwmDuty(row: AyTimerRow | undefined): boolean {
+	return !!row?.syncbuzzer && rowSupportsTimerPwm(row);
 }
 
 export function instrumentSupportsTimerPwm(fields: AyInstrumentFields): boolean {
@@ -430,4 +479,36 @@ export function copyAyInstrumentFields(
 	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
 	target.timerPwmSweep = normalized.timerPwmSweep;
 	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
+	if (
+		source.sampleData?.length &&
+		isValidInstrumentSampleByteLength(source.sampleData.length)
+	) {
+		target.sampleData = source.sampleData.map((value) => value & 0xff);
+		target.sampleRate = source.sampleRate;
+		const bounds = normalizeSamplePlaybackBounds({
+			sampleData: target.sampleData,
+			sampleStart: source.sampleStart,
+			sampleEnd: source.sampleEnd,
+			sampleLoopStart: source.sampleLoopStart,
+			sampleLength: source.sampleLength,
+			sampleLoop: source.sampleLoop
+		});
+		if (bounds) {
+			target.sampleStart = bounds.start;
+			target.sampleEnd = bounds.end;
+			target.sampleLoopStart = bounds.loopStart;
+		}
+		target.sampleLoopEnabled = source.sampleLoopEnabled !== false;
+		delete target.sampleLength;
+		delete target.sampleLoop;
+	} else {
+		delete target.sampleData;
+		delete target.sampleRate;
+		delete target.sampleStart;
+		delete target.sampleEnd;
+		delete target.sampleLoopStart;
+		delete target.sampleLength;
+		delete target.sampleLoopEnabled;
+		delete target.sampleLoop;
+	}
 }

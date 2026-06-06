@@ -56,10 +56,10 @@
 
 	function commitOctave() {
 		const octave = parseInt(editorStateStore.octave.toString(), 10);
-		if (!isNaN(octave) && octave >= 0 && octave <= 8) {
+		if (!isNaN(octave) && octave >= 1 && octave <= 8) {
 			editorStateStore.setOctave(octave);
 		} else {
-			editorStateStore.setOctave(0);
+			editorStateStore.setOctave(1);
 		}
 	}
 
@@ -79,7 +79,7 @@
 	}
 
 	function decrementOctave() {
-		if (editorStateStore.octave > 0) {
+		if (editorStateStore.octave > 1) {
 			editorStateStore.setOctave(editorStateStore.octave - 1);
 		}
 	}
@@ -154,7 +154,7 @@
 					bind:value={editorStateStore.octave}
 					id="octave-input"
 					type="number"
-					min={0}
+					min={1}
 					max={8}
 					class="h-6 w-10 border-0 bg-transparent text-center font-mono text-xs focus:ring-0"
 					onblur={commitOctave}

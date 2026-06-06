@@ -15,7 +15,7 @@ import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 23472;
+const AYUMI_STRUCT_SIZE = 23928;
 const AYUMI_STRUCT_LEFT_OFFSET = AYUMI_STRUCT_SIZE - 40;
 const AYUMI_STRUCT_RIGHT_OFFSET = AYUMI_STRUCT_SIZE - 32;
 const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = AYUMI_STRUCT_SIZE - 24;
@@ -337,6 +337,12 @@ export class AYChipRenderer implements ChipRenderer {
 				state.timeline.tickAccumulator -= 1.0;
 			}
 
+			audioDriver.updateSamplePlayback(
+				state,
+				registerState,
+				ayumiEngine,
+				SAMPLE_RATE
+			);
 			ayumiEngine.process();
 			ayumiEngine.removeDC();
 
@@ -485,6 +491,12 @@ export class AYChipRenderer implements ChipRenderer {
 			}
 
 			for (const ctx of contexts) {
+				ctx.audioDriver.updateSamplePlayback(
+					ctx.state,
+					ctx.registerState,
+					ctx.ayumiEngine,
+					SAMPLE_RATE
+				);
 				ctx.ayumiEngine.process();
 				ctx.ayumiEngine.removeDC();
 			}

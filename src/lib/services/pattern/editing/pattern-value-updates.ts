@@ -1,6 +1,12 @@
 import type { Pattern } from '../../../models/song';
 import { NoteName } from '../../../models/song';
-import { formatNoteFromEnum, parseNoteFromString } from '../../../utils/note-utils';
+import {
+	formatNoteFromEnum,
+	noteToTuningTableIndex,
+	parseNoteFromString,
+	TUNING_TABLE_NOTE_COUNT,
+	tuningTableIndexToNote
+} from '../../../utils/note-utils';
 import { formatHex, formatSymbol } from '../../../chips/base/field-formatters';
 import {
 	envelopePeriodToNote,
@@ -130,22 +136,21 @@ export class PatternValueUpdates {
 			return currentValue;
 		}
 
-		const noteToSemitone = (note: NoteName, oct: number): number => {
-			return oct * 12 + (note - NoteName.C);
-		};
+		const currentIndex = noteToTuningTableIndex(noteName, octave);
+		if (currentIndex === null) {
+			return currentValue;
+		}
 
-		const semitoneToNote = (semitone: number): { noteName: NoteName; octave: number } => {
-			const octave = Math.floor(semitone / 12);
-			const noteIndex = semitone % 12;
-			const noteName = (NoteName.C + noteIndex) as NoteName;
-			return { noteName, octave };
-		};
+		const newIndex = Math.max(
+			0,
+			Math.min(TUNING_TABLE_NOTE_COUNT - 1, currentIndex + delta)
+		);
+		const nextNote = tuningTableIndexToNote(newIndex);
+		if (!nextNote) {
+			return currentValue;
+		}
 
-		const currentSemitone = noteToSemitone(noteName, octave);
-		const newSemitone = Math.max(0, Math.min(107, currentSemitone + delta));
-
-		const { noteName: newNoteName, octave: newOctave } = semitoneToNote(newSemitone);
-		return formatNoteFromEnum(newNoteName, newOctave);
+		return formatNoteFromEnum(nextNote.noteName, nextNote.octave);
 	}
 
 	static incrementNumericValue(

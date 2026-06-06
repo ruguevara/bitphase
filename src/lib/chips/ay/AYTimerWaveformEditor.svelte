@@ -56,6 +56,21 @@
 	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex));
 	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex));
 	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
+	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(rowIndex));
+	const editorTitle = $derived(
+		`${usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
+	);
+	const editorSubtitle = $derived(
+		usesEnvelopeShapes ? 'R13 values (0–15)' : `${chipVariant} DAC curve`
+	);
+	const stepCountLabel = $derived(
+		`${waveform.length} ${usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
+	);
+	const editorAriaLabel = $derived(
+		usesEnvelopeShapes ? 'Envelope shapes editor' : 'SID steps editor'
+	);
+	const stepSingularLabel = $derived(usesEnvelopeShapes ? 'envelope shape' : 'SID step');
+	const stepsPluralLabel = $derived(usesEnvelopeShapes ? 'envelope shapes' : 'SID steps');
 
 	const waveformGraphic = $derived.by(() => {
 		const steps = waveform.length;
@@ -273,18 +288,20 @@
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<div
 			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title="SID steps (0–15). Y axis uses {chipVariant} DAC curve.">
+			title={usesEnvelopeShapes
+				? 'Envelope shapes (0–15 hex R13 values)'
+				: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}>
 			<span
 				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
 				<IconCarbonWaveform class={iconSizeClass} />
 			</span>
 			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">SID steps · row {rowIndex + 1}</div>
-				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{chipVariant} DAC curve</div>
+				<div class="text-[var(--color-app-text-secondary)]">{editorTitle}</div>
+				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{editorSubtitle}</div>
 			</div>
 		</div>
 		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
-			<span>{waveform.length} SID steps</span>
+			<span>{stepCountLabel}</span>
 			{#if activeStepValue !== null && highlightedStepIndex !== null}
 				<span
 					class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
@@ -312,7 +329,7 @@
 			preserveAspectRatio="none"
 			class="block h-full w-full cursor-crosshair touch-none"
 			role="img"
-			aria-label="SID steps editor"
+			aria-label={editorAriaLabel}
 			onpointerdown={handlePointerDown}
 			onpointermove={handlePointerMove}
 			onpointerup={stopDrawing}
@@ -415,8 +432,8 @@
 				class="flex flex-1 cursor-pointer items-center justify-center border-b border-[var(--color-app-border)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
 				disabled={!canRemoveStep}
 				title={canRemoveStep
-					? 'Remove last SID step'
-					: `Minimum ${AY_TIMER_WAVEFORM_MIN_LENGTH} SID step`}
+					? `Remove last ${stepSingularLabel}`
+					: `Minimum ${AY_TIMER_WAVEFORM_MIN_LENGTH} ${stepSingularLabel}`}
 				aria-label="Remove waveform step"
 				onclick={handleRemoveStep}>
 				<IconCarbonSubtract class={stepButtonIconClass} />
@@ -425,7 +442,9 @@
 				type="button"
 				class="flex flex-1 cursor-pointer items-center justify-center text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"
 				disabled={!canAppendStep}
-				title={canAppendStep ? 'Add SID step' : `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} SID steps`}
+				title={canAppendStep
+					? `Add ${stepSingularLabel}`
+					: `Maximum ${AY_TIMER_WAVEFORM_MAX_LENGTH} ${stepsPluralLabel}`}
 				aria-label="Add waveform step"
 				onclick={handleAppendStep}>
 				<IconCarbonAdd class={stepButtonIconClass} />
