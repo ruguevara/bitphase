@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
+	import IconCarbonAlignHorizontalLeft from '~icons/carbon/align-horizontal-left';
+	import IconCarbonAlignHorizontalRight from '~icons/carbon/align-horizontal-right';
 	import IconCarbonRepeat from '~icons/carbon/repeat';
 	import type { AyChipVariant } from '../../chips/ay/ay-sample-lut';
 	import { sampleByteToDisplayFloat } from '../../chips/ay/ay-sample-lut';
@@ -302,6 +304,33 @@
 		onRegionCommit?.(regionStart, regionEnd, loopStart);
 	}
 
+	const maxSampleIndex = $derived(Math.max(0, totalSamples - 1));
+
+	function commitManualField(field: 'start' | 'end' | 'loop', rawValue: number): void {
+		if (!Number.isFinite(rawValue) || totalSamples < 1) return;
+		if (field === 'start') {
+			commitBounds(rawValue, regionEnd, loopStart);
+		} else if (field === 'end') {
+			commitBounds(regionStart, rawValue, loopStart);
+		} else {
+			commitBounds(regionStart, regionEnd, rawValue);
+		}
+		notifyRegionCommit();
+	}
+
+	function handleManualFieldCommit(event: Event): void {
+		const input = event.currentTarget as HTMLInputElement;
+		const field = input.dataset.field as 'start' | 'end' | 'loop' | undefined;
+		if (!field) return;
+		commitManualField(field, Number.parseInt(input.value, 10));
+	}
+
+	function handleManualFieldKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Enter') return;
+		handleManualFieldCommit(event);
+		(event.currentTarget as HTMLInputElement).blur();
+	}
+
 	function applyDrag(sampleIndex: number): void {
 		if (!dragMode || totalSamples < 1) return;
 
@@ -522,7 +551,65 @@
 		{/if}
 	</div>
 
-	<div class="flex justify-end px-0.5">
+	<div class="flex flex-wrap items-end justify-between gap-3 px-0.5">
+		{#if totalSamples > 0}
+			<div class="flex flex-wrap items-end gap-2">
+				<label class="flex flex-col gap-1">
+					<span
+						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
+						<IconCarbonAlignHorizontalLeft
+							class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
+						Start
+					</span>
+					<input
+						type="number"
+						data-field="start"
+						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
+						min={0}
+						max={maxSampleIndex}
+						step={1}
+						value={regionStart}
+						onchange={handleManualFieldCommit}
+						onkeydown={handleManualFieldKeydown} />
+				</label>
+				<label class="flex flex-col gap-1">
+					<span
+						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
+						<IconCarbonAlignHorizontalRight
+							class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
+						End
+					</span>
+					<input
+						type="number"
+						data-field="end"
+						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
+						min={0}
+						max={maxSampleIndex}
+						step={1}
+						value={regionEnd}
+						onchange={handleManualFieldCommit}
+						onkeydown={handleManualFieldKeydown} />
+				</label>
+				<label class="flex flex-col gap-1 {loopEnabled ? '' : 'opacity-50'}">
+					<span
+						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
+						<IconCarbonRepeat class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
+						Loop
+					</span>
+					<input
+						type="number"
+						data-field="loop"
+						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none disabled:cursor-not-allowed"
+						min={0}
+						max={maxSampleIndex}
+						step={1}
+						value={loopStart}
+						disabled={!loopEnabled}
+						onchange={handleManualFieldCommit}
+						onkeydown={handleManualFieldKeydown} />
+				</label>
+			</div>
+		{/if}
 		<label
 			class="flex cursor-pointer items-center gap-2 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2.5 py-1.5 select-none">
 			<input
