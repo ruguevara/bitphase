@@ -361,6 +361,48 @@ describe('AYAudioDriver', () => {
 			expect(state.channelTimerPwmSweepDirection[0]).toBe(1);
 		});
 
+		it('resets timer pwm sweep direction to -1 on new note when reverse sweep is enabled', () => {
+			const driver = new AYAudioDriver();
+			const state = {
+				channelMuted: [false],
+				channelSoundEnabled: [true],
+				channelInstruments: [0],
+				instrumentIdToIndex: new Map([[1, 0]]),
+				instruments: [
+					{
+						rows: [{ tone: true, volume: 15 }],
+						timerRows: [{ sid: true, timerWaveform: [15, 0] }],
+						timerPwmReverseSweep: true
+					}
+				],
+				instrumentPositions: [0],
+				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
+				channelTimerPwmSweep: [30],
+				channelTimerPwmSweepDirection: [1],
+				channelPortamentoActive: [false],
+				channelToneAccumulator: [0],
+				channelNoiseAccumulator: [0],
+				channelEnvelopeAccumulator: [0],
+				channelAmplitudeSliding: [0],
+				channelSlideStep: [0],
+				channelToneSliding: [0],
+				channelVibratoSliding: [0]
+			};
+			const registerState = {
+				channels: [{ tone: 0 }]
+			};
+			const row = {
+				note: { name: 5, octave: 2 },
+				instrument: 0,
+				effects: [{ effect: 0, delay: 0, parameter: 0 }]
+			};
+
+			driver._processNote(state, 0, row, registerState);
+
+			expect(state.channelTimerPwmSweep[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+		});
+
 		it('preserves timer pwm sweep on new note when instrument requests it', () => {
 			const driver = new AYAudioDriver();
 			const state = {

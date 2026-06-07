@@ -19,6 +19,9 @@ const SHARED_CONSTANTS = [
 	'DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE',
 	'DEFAULT_AY_TIMER_WAVEFORM',
 	'DEFAULT_AY_SYNCBUZZER_WAVEFORM',
+	'DEFAULT_AY_FM_WAVEFORM',
+	'AY_FM_SEMITONE_MIN',
+	'AY_FM_SEMITONE_MAX',
 	'AY_TIMER_PWM_DUTY_MIN',
 	'AY_TIMER_PWM_DUTY_MAX',
 	'DEFAULT_AY_TIMER_PWM_DUTY',
@@ -38,7 +41,9 @@ const ROW_CASES: Array<Record<string, unknown> | undefined> = [
 	{ syncbuzzer: true, timerWaveform: [15, 0] },
 	{ sid: true, syncbuzzer: true, timerWaveform: [15, 0] },
 	{ sid: true, timerWaveform: [14, 0] },
-	{ sid: true, timerWaveform: [15, 0, 0] }
+	{ sid: true, timerWaveform: [15, 0, 0] },
+	{ fm: true, timerWaveform: [0, 12] },
+	{ fm: true, timerWaveform: [0, 1, 0, -1] }
 ];
 
 const FIELD_CASES = [
@@ -60,7 +65,8 @@ const INSTRUMENT_CASES: InstrumentInput[] = [
 		timerPwmDuty: 25,
 		timerPwmSweepMin: 8,
 		timerPwmSweep: 4,
-		timerPwmPreserveOnNewNote: true
+		timerPwmPreserveOnNewNote: true,
+		timerPwmReverseSweep: true
 	} as unknown as InstrumentInput,
 	{
 		id: '03',
@@ -136,22 +142,27 @@ describe('ay-instrument-utils TS/JS parity', () => {
 	});
 
 	it('advanceTimerPwmSweep matches across all parameter combinations', () => {
-		for (const current of CURRENT_DUTIES) {
-			for (const direction of DIRECTIONS) {
-				for (const sweep of SWEEP_INPUTS) {
-					for (const min of [0, 5, 25, 50]) {
-						for (const max of [0, 10, 25, 50]) {
-							const label = `c=${current} dir=${direction} s=${sweep} min=${min} max=${max}`;
-							expect(
-								js.advanceTimerPwmSweep(
-									current as never,
-									direction as never,
-									sweep as never,
-									min as never,
-									max as never
-								),
-								label
-							).toEqual(ts.advanceTimerPwmSweep(current, direction, sweep, min, max));
+		for (const reverseSweep of [false, true]) {
+			for (const current of CURRENT_DUTIES) {
+				for (const direction of DIRECTIONS) {
+					for (const sweep of SWEEP_INPUTS) {
+						for (const min of [0, 5, 25, 50]) {
+							for (const max of [0, 10, 25, 50]) {
+								const label = `reverse=${reverseSweep} c=${current} dir=${direction} s=${sweep} min=${min} max=${max}`;
+								expect(
+									js.advanceTimerPwmSweep(
+										current as never,
+										direction as never,
+										sweep as never,
+										min as never,
+										max as never,
+										reverseSweep as never
+									),
+									label
+								).toEqual(
+									ts.advanceTimerPwmSweep(current, direction, sweep, min, max, reverseSweep)
+								);
+							}
 						}
 					}
 				}

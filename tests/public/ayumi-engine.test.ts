@@ -156,7 +156,8 @@ describe('AyumiEngine', () => {
 				TIMER_PWM_MODE_OFF,
 				503,
 				503,
-				15
+				15,
+				1
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
@@ -192,7 +193,8 @@ describe('AyumiEngine', () => {
 				TIMER_PWM_MODE_BY_DUTY_INDEX,
 				40,
 				60,
-				0
+				0,
+				1
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,

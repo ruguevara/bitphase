@@ -62,7 +62,7 @@
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
 	const FIXED_TABLE_COLUMNS = 3;
-	const TIMER_EFFECT_COLUMNS = 7;
+	const TIMER_EFFECT_COLUMNS = 6;
 	const MIXER_EFFECT_COLUMNS = 13;
 	const tableColSpan = $derived(
 		activeTab === 'mixer'
@@ -182,8 +182,8 @@
 	let rows = $state(ensureNonEmptyRows([...instrument.rows]));
 	let loopRow = $state(instrument.loop);
 	let name = $state(instrument.name);
-	let loopColumnRef: HTMLTableCellElement | null = $state(null);
 	let tableRef: HTMLTableElement | null = $state(null);
+	let loopMarkerStyle = $state<{ left: number; top: number; height: number } | null>(null);
 	let editorContainerRef: HTMLDivElement | null = $state(null);
 	let lastInstrumentId = $state(instrument.id);
 	let lastSyncedName = $state(instrument.name);
@@ -400,6 +400,65 @@
 		loopRow = index;
 		updateInstrument({ loop: loopRow });
 	}
+
+	const timerTableLayoutKey = $derived(
+		activeTab === 'timer'
+			? timerEffects.fields.timerRows
+					.map((row) => `${row.sid ? 1 : 0}${row.syncbuzzer ? 1 : 0}${row.fm ? 1 : 0}`)
+					.join('')
+			: ''
+	);
+
+	$effect(() => {
+		const table = tableRef;
+		const container = table?.parentElement;
+		const currentLoopRow = loopRow;
+		const rowCount = rows.length;
+		void isExpanded;
+		void activeTab;
+		void timerTableLayoutKey;
+		void timerEffects.waveformEditorRowIndex;
+
+		if (!table || !container || currentLoopRow < 0 || currentLoopRow >= rowCount) {
+			loopMarkerStyle = null;
+			return;
+		}
+
+		const measureLoopMarker = () => {
+			if (!tableRef || !container) {
+				loopMarkerStyle = null;
+				return;
+			}
+
+			const tbody = tableRef.querySelector('tbody');
+			const loopCell = tbody?.querySelector(
+				`tr:nth-child(${currentLoopRow + 1}) > td:nth-of-type(3)`
+			) as HTMLTableCellElement | null;
+			const lastRow = tbody?.querySelector(
+				`tr:nth-child(${rowCount})`
+			) as HTMLTableRowElement | null;
+			if (!loopCell || !lastRow) {
+				loopMarkerStyle = null;
+				return;
+			}
+
+			const containerRect = container.getBoundingClientRect();
+			const loopRect = loopCell.getBoundingClientRect();
+			const lastRowRect = lastRow.getBoundingClientRect();
+
+			loopMarkerStyle = {
+				left: loopRect.left - containerRect.left + loopRect.width / 2,
+				top: loopRect.top - containerRect.top,
+				height: lastRowRect.bottom - loopRect.top
+			};
+		};
+
+		measureLoopMarker();
+		const observer = new ResizeObserver(measureLoopMarker);
+		observer.observe(table);
+		observer.observe(container);
+		return () => observer.disconnect();
+	});
 
 	export function addRowExternal() {
 		addRow();
@@ -633,18 +692,15 @@
 		</div>
 	{:else}
 		<div class="mt-3 flex items-start gap-2 overflow-x-auto">
-			{#key isExpanded}
-				<div class="relative flex flex-col">
-					{#if loopRow >= 0 && loopRow < rows.length && loopColumnRef && tableRef}
-						{@const tbody = tableRef.querySelector('tbody')}
-						{@const firstRow = tbody?.querySelector('tr') as HTMLTableRowElement | null}
-						{@const rowTop = firstRow ? firstRow.offsetTop : 0}
-						{@const rowHeight = isExpanded ? '2rem' : '1.75rem'}
-						{@const leftOffset = isExpanded ? '1rem' : '0.65rem'}
+			{#key `${isExpanded}-${activeTab}`}
+				<div
+					class="relative flex flex-col {activeTab === 'timer'
+						? 'w-full min-w-0'
+						: ''}">
+					{#if loopMarkerStyle}
 						<div
-							class="pointer-events-none absolute top-0 z-0"
-							style="left: calc({loopColumnRef.offsetLeft}px + {leftOffset}); margin-top: calc({rowTop}px + {rowHeight} * {loopRow}); height: calc({rowHeight} * {rows.length -
-								loopRow});">
+							class="pointer-events-none absolute z-0 -translate-x-1/2"
+							style="left: {loopMarkerStyle.left}px; top: {loopMarkerStyle.top}px; height: {loopMarkerStyle.height}px;">
 							<div class="relative h-full">
 								<div
 									class="absolute top-0 left-0 h-full w-0.5 border-l-2 border-[var(--color-app-primary)]">
@@ -660,15 +716,20 @@
 					{/if}
 					<table
 						bind:this={tableRef}
-						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none">
+						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none {activeTab ===
+						'timer'
+							? 'w-full'
+							: ''}">
 						<thead>
 							<tr>
-								<th class={isExpanded ? 'w-14 min-w-14 px-2 py-1.5' : 'px-1 py-1'}
-									>row</th>
-								<th class={isExpanded ? 'w-8 px-1.5' : 'w-6 px-0.5'}></th>
 								<th
-									class={isExpanded ? 'w-6 px-1.5' : 'w-4 px-0.5'}
-									bind:this={loopColumnRef}>{isExpanded ? 'loop' : 'lp'}</th>
+									class={isExpanded
+										? 'w-14 min-w-14 px-2 py-1.5'
+										: 'w-8 min-w-8 px-1 py-1'}>row</th>
+								<th class={isExpanded ? 'w-8 min-w-8 px-1.5' : 'w-6 min-w-6 px-0.5'}></th>
+								<th
+									class={isExpanded ? 'w-6 min-w-6 px-1.5' : 'w-4 min-w-4 px-0.5'}
+									>{isExpanded ? 'loop' : 'lp'}</th>
 								{#if activeTab === 'mixer'}
 									<th
 										class={isExpanded
@@ -833,14 +894,14 @@
 										{selected}
 										sizeClass={isExpanded
 											? 'w-14 min-w-14 px-2 py-1.5'
-											: 'px-1 py-1 text-[0.65rem]'}
+											: 'w-8 min-w-8 px-1 py-1 text-[0.65rem]'}
 										onmousedown={(e) => handleRowSelect(index, e)} />
 									<td
 										class="border border-[var(--color-app-border)] {selected
 											? ROW_SELECTION_STYLES.cell
 											: 'bg-[var(--color-app-surface-secondary)]'} {isExpanded
-											? 'px-1.5'
-											: 'px-0.5'}">
+											? 'w-8 px-1.5'
+											: 'w-6 px-0.5'}">
 										<div
 											class="flex items-center justify-center {isExpanded
 												? 'gap-1'
@@ -875,8 +936,8 @@
 									</td>
 									<td
 										class="{isExpanded
-											? 'w-6 cursor-pointer px-1.5 text-center text-sm'
-											: 'w-4 cursor-pointer px-0.5 text-center text-[0.65rem]'} {selected
+											? 'w-6 min-w-6 cursor-pointer px-1.5 text-center text-sm'
+											: 'w-4 min-w-4 cursor-pointer px-0.5 text-center text-[0.65rem]'} {selected
 											? ROW_SELECTION_STYLES.cell
 											: ''}"
 										onclick={() => setLoop(index)}>

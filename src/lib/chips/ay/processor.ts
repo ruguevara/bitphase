@@ -20,6 +20,7 @@ type WorkletInstrument = Instrument & {
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
+	timerPwmReverseSweep?: boolean;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -46,6 +47,7 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 		timerPwmSweepMin: extended.timerPwmSweepMin,
 		timerPwmSweep: extended.timerPwmSweep,
 		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote,
+		timerPwmReverseSweep: extended.timerPwmReverseSweep,
 		timerRows: extended.timerRows?.map((row) => ({
 			...row,
 			timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform

@@ -116,7 +116,7 @@ describe('AyTimerEffectsController', () => {
 	});
 
 	it('tracks instrument-level pwm duty globally', () => {
-		let current = createInstrument([{ sid: false }], { timerPwmDuty: 50 });
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], { timerPwmDuty: 50 });
 		const controller = new AyTimerEffectsController(
 			() => current,
 			(instrument) => {
@@ -133,7 +133,7 @@ describe('AyTimerEffectsController', () => {
 	});
 
 	it('updates pwm sweep speed globally with non-negative values only', () => {
-		let current = createInstrument([{ sid: false }]);
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
 			(instrument) => {
@@ -151,10 +151,12 @@ describe('AyTimerEffectsController', () => {
 		controller.updateTimerPwmSweep('0');
 		expect(controller.timerPwmSweep()).toBe(0);
 		expect(controller.timerPwmSweepMin()).toBe(0);
+		controller.updateTimerPwmSweep('99');
+		expect(controller.timerPwmSweep()).toBe(50);
 	});
 
 	it('tracks instrument sweep min globally', () => {
-		let current = createInstrument([{ sid: false }], {
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], {
 			timerPwmDuty: 25,
 			timerPwmSweep: 4
 		});
@@ -172,7 +174,7 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.timerPwmSweepMin()).toBe(25);
 	});
 
-	it('disables pwm editing when no row uses classic sid waveform', () => {
+	it('disables pwm editing when no row has a two-step pwm-eligible waveform', () => {
 		let current = createInstrument([{ sid: false, timerWaveform: [15, 14] }], {
 			timerPwmDuty: 20,
 			timerPwmSweepMin: 5,
@@ -208,6 +210,44 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.instrumentSupportsTimerPwm()).toBe(false);
 		controller.setTimerPwmDuty(10);
 		expect(controller.timerPwmDuty()).toBe(20);
+	});
+
+	it('enables pwm editing when sid rows use exactly two steps', () => {
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 14] }], {
+			timerPwmDuty: 20,
+			timerPwmSweepMin: 5,
+			timerPwmSweep: 4
+		});
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
+		controller.setTimerPwmDuty(10);
+		expect(controller.timerPwmDuty()).toBe(10);
+	});
+
+	it('enables pwm editing when fm rows use exactly two semitone steps', () => {
+		let current = createInstrument([{ fm: true, timerWaveform: [0, 12] }], {
+			timerPwmDuty: 20,
+			timerPwmSweepMin: 5,
+			timerPwmSweep: 4
+		});
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
+		controller.setTimerPwmDuty(10);
+		expect(controller.timerPwmDuty()).toBe(10);
 	});
 
 	it('enables pwm editing when syncbuzzer rows use exactly two envelope shapes', () => {
@@ -247,6 +287,26 @@ describe('AyTimerEffectsController', () => {
 		).toBe(true);
 	});
 
+	it('tracks instrument-level reverse pwm sweep', () => {
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], {
+			timerPwmSweep: 4
+		});
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.timerPwmReverseSweep()).toBe(false);
+		controller.setTimerPwmReverseSweep(true);
+		expect(controller.timerPwmReverseSweep()).toBe(true);
+		expect(
+			(current as Instrument & { timerPwmReverseSweep?: boolean }).timerPwmReverseSweep
+		).toBe(true);
+	});
+
 	it('opens and closes the waveform editor for a row', () => {
 		let current = createInstrument([{ sid: false }]);
 		const controller = new AyTimerEffectsController(
@@ -266,6 +326,23 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.waveformEditorRowIndex).toBeNull();
 	});
 
+	it('resets waveform to syncbuzzer default when switching from fm', () => {
+		let current = createInstrument([{ fm: true, timerWaveform: [15, 7] }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.formatRowTimerWaveform(0)).toBe('15 7');
+		controller.updateSyncbuzzerRow(0, true);
+		expect(controller.rowFmEnabled(0)).toBe(false);
+		expect(controller.rowSyncbuzzerEnabled(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('8');
+	});
+
 	it('keeps waveform editing available for syncbuzzer rows', () => {
 		let current = createInstrument([{ sid: false, syncbuzzer: false }]);
 		const controller = new AyTimerEffectsController(
@@ -281,7 +358,7 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.waveformEditorRowIndex).toBe(0);
 		controller.updateSyncbuzzerRow(0, true);
 		expect(controller.rowTimerWaveformUsesEnvelopeShapes(0)).toBe(true);
-		expect(controller.formatRowTimerWaveform(0)).toBe('13 9');
+		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 		controller.openWaveformEditor(0);
 		expect(controller.waveformEditorRowIndex).toBeNull();
 	});

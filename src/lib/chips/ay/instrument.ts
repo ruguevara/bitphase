@@ -7,6 +7,7 @@ export type AySidPeriodMode = 'auto' | 'manual';
 export type AyTimerRow = {
 	sid: boolean;
 	syncbuzzer?: boolean;
+	fm?: boolean;
 	sidPeriodMode?: AySidPeriodMode;
 	detune?: number;
 	period?: number;
@@ -21,6 +22,7 @@ export type AyInstrumentFields = {
 	timerPwmSweepMin: number;
 	timerPwmSweep: number;
 	timerPwmPreserveOnNewNote: boolean;
+	timerPwmReverseSweep: boolean;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -35,9 +37,13 @@ export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
-export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [13, 9];
+export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [8];
+export const DEFAULT_AY_FM_WAVEFORM = [0, 7];
+export const AY_FM_SEMITONE_MIN = -127;
+export const AY_FM_SEMITONE_MAX = 128;
 export const AY_TIMER_PWM_DUTY_MIN = 0;
 export const AY_TIMER_PWM_DUTY_MAX = 50;
+export const AY_TIMER_PWM_PERCENT_MAX_DIGITS = 2;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
 export const DEFAULT_AY_TIMER_PWM_SWEEP_MIN = 0;
 export const DEFAULT_AY_TIMER_PWM_SWEEP = 0;
@@ -53,6 +59,7 @@ type ExtendedInstrument = Instrument & {
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
+	timerPwmReverseSweep?: boolean;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -84,9 +91,40 @@ export function createDefaultAyTimerRow(): AyTimerRow {
 	return {
 		sid: false,
 		syncbuzzer: false,
+		fm: false,
 		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
 		timerWaveformLoop: 0
 	};
+}
+
+export function clampFmSemitone(value: number): number {
+	return Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, value | 0));
+}
+
+export function normalizeFmWaveform(waveform: readonly number[]): number[] {
+	return waveform
+		.map((value) => clampFmSemitone(value))
+		.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH);
+}
+
+export function effectiveRowFmWaveform(row: AyTimerRow | undefined): number[] {
+	if (!row?.fm) {
+		return [...DEFAULT_AY_FM_WAVEFORM];
+	}
+	const waveform = row.timerWaveform;
+	if (waveform && waveform.length > 0) {
+		return normalizeFmWaveform(waveform);
+	}
+	return [...DEFAULT_AY_FM_WAVEFORM];
+}
+
+export function isDefaultFmTimerWaveform(waveform: readonly number[]): boolean {
+	return (
+		waveform.length === DEFAULT_AY_FM_WAVEFORM.length &&
+		waveform.every(
+			(value, index) => clampFmSemitone(value) === clampFmSemitone(DEFAULT_AY_FM_WAVEFORM[index]!)
+		)
+	);
 }
 
 export function effectiveRowTimerWaveform(row: AyTimerRow | undefined): number[] {
@@ -128,14 +166,11 @@ export function resolveSyncbuzzerWaveform(
 }
 
 export function rowSupportsTimerPwm(row: AyTimerRow | undefined): boolean {
-	if (!row) {
+	if (!row || (!row.sid && !row.syncbuzzer && !row.fm)) {
 		return false;
 	}
-	const waveform = effectiveRowTimerWaveform(row);
-	if (row.syncbuzzer) {
-		return waveform.length === 2;
-	}
-	return isClassicSidTimerWaveform(waveform);
+	const waveform = row.fm ? effectiveRowFmWaveform(row) : effectiveRowTimerWaveform(row);
+	return waveform.length === 2;
 }
 
 export function rowUsesSyncbuzzerPwmDuty(row: AyTimerRow | undefined): boolean {
@@ -143,14 +178,16 @@ export function rowUsesSyncbuzzerPwmDuty(row: AyTimerRow | undefined): boolean {
 }
 
 export function instrumentSupportsTimerPwm(fields: AyInstrumentFields): boolean {
-	return fields.timerRows.some((row) => rowSupportsTimerPwm(row));
+	return fields.timerRows.some(
+		(row) => (row.sid || row.syncbuzzer || row.fm) && rowSupportsTimerPwm(row)
+	);
 }
 
 export function normalizeInstrumentTimerPwmFields(
 	source: Partial<Pick<AyInstrumentFields, 'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'>>
 ): Pick<AyInstrumentFields, 'timerPwmDuty' | 'timerPwmSweepMin' | 'timerPwmSweep'> {
 	const timerPwmDuty = clampTimerPwmDuty(source.timerPwmDuty ?? DEFAULT_AY_TIMER_PWM_DUTY);
-	const timerPwmSweep = Math.max(0, (source.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+	const timerPwmSweep = clampTimerPwmSweep(source.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP);
 	return {
 		timerPwmDuty,
 		timerPwmSweepMin:
@@ -193,7 +230,7 @@ export function effectiveRowTimerPwmSweep(
 	if (!rowSupportsTimerPwm(row)) {
 		return DEFAULT_AY_TIMER_PWM_SWEEP;
 	}
-	return Math.max(0, (fields.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+	return clampTimerPwmSweep(fields.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP);
 }
 
 export function effectiveRowTimerPwmSweepMin(
@@ -219,7 +256,8 @@ export function advanceTimerPwmSweep(
 	direction: number,
 	sweepSpeed: number,
 	minDuty: number,
-	maxDuty: number
+	maxDuty: number,
+	reverseSweep = false
 ): { duty: number; direction: number } {
 	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
 	const max = clampTimerPwmDuty(maxDuty);
@@ -229,7 +267,9 @@ export function advanceTimerPwmSweep(
 	}
 
 	if (currentDuty < 0) {
-		return { duty: min, direction: 1 };
+		return reverseSweep
+			? { duty: max, direction: -1 }
+			: { duty: min, direction: 1 };
 	}
 
 	let duty = currentDuty + sweepSpeed * direction;
@@ -283,6 +323,51 @@ export function clampTimerPwmDuty(duty: number): number {
 	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(AY_TIMER_PWM_DUTY_MAX, duty | 0));
 }
 
+export function clampTimerPwmSweep(sweep: number): number {
+	return Math.max(0, Math.min(AY_TIMER_PWM_DUTY_MAX, sweep | 0));
+}
+
+export function sanitizeTimerPwmPercentInput(
+	raw: string,
+	max: number,
+	maxDigits = AY_TIMER_PWM_PERCENT_MAX_DIGITS
+): string {
+	const digits = raw.replace(/\D/g, '').slice(0, maxDigits);
+	if (digits === '') {
+		return '';
+	}
+	const parsed = Number.parseInt(digits, 10);
+	if (!Number.isFinite(parsed)) {
+		return '';
+	}
+	if (parsed > max) {
+		return String(max);
+	}
+	return digits;
+}
+
+export function sanitizeTimerPwmSweepInput(
+	raw: string,
+	max: number,
+	asHex: boolean,
+	maxDigits = AY_TIMER_PWM_PERCENT_MAX_DIGITS
+): string {
+	const digits = asHex
+		? raw.replace(/[^0-9a-fA-F]/g, '').slice(0, maxDigits)
+		: raw.replace(/\D/g, '').slice(0, maxDigits);
+	if (digits === '') {
+		return '';
+	}
+	const parsed = asHex ? Number.parseInt(digits, 16) : Number.parseInt(digits, 10);
+	if (!Number.isFinite(parsed)) {
+		return '';
+	}
+	if (parsed > max) {
+		return asHex ? max.toString(16).toUpperCase() : String(max);
+	}
+	return asHex ? digits.toUpperCase() : digits;
+}
+
 export function computeTimerPwmPeriods(
 	basePeriod: number,
 	dutyPercent: number
@@ -312,26 +397,35 @@ export function timerPwmStepPeriod(
 
 export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
 	if (row.sid) {
-		return { ...row, syncbuzzer: false };
+		return { ...row, syncbuzzer: false, fm: false };
 	}
 	if (row.syncbuzzer) {
-		return { ...row, sid: false };
+		return { ...row, sid: false, fm: false };
+	}
+	if (row.fm) {
+		return { ...row, sid: false, syncbuzzer: false };
 	}
 	return row;
 }
 
 function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
 	const defaults = createDefaultAyTimerRow();
+	const fm = row?.fm ?? defaults.fm ?? false;
 	const normalized: AyTimerRow = {
 		sid: row?.sid ?? defaults.sid,
 		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
+		fm,
 		sidPeriodMode:
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
 		timerWaveform: row?.timerWaveform?.length
-			? row.timerWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
-			: [...defaults.timerWaveform!],
+			? fm
+				? normalizeFmWaveform(row.timerWaveform)
+				: row.timerWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			: fm
+				? [...DEFAULT_AY_FM_WAVEFORM]
+				: [...defaults.timerWaveform!],
 		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop!
 	};
 	if (row?.detune !== undefined) {
@@ -382,7 +476,8 @@ export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumen
 	return {
 		timerRows,
 		...resolveInstrumentTimerPwmFields(extended, sourceRows),
-		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote === true
+		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote === true,
+		timerPwmReverseSweep: extended.timerPwmReverseSweep === true
 	};
 }
 
@@ -390,6 +485,79 @@ export function formatAyTimerWaveform(waveform: readonly number[], asHex: boolea
 	return waveform
 		.map((value) => (asHex ? (value & 0xf).toString(16).toUpperCase() : String(value & 0xf)))
 		.join(' ');
+}
+
+export function formatAyFmWaveform(waveform: readonly number[], asHex: boolean): string {
+	return waveform
+		.map((value) => {
+			const clamped = clampFmSemitone(value);
+			if (asHex) {
+				const sign = clamped < 0 ? '-' : '';
+				return sign + Math.abs(clamped).toString(16).toUpperCase();
+			}
+			return String(clamped);
+		})
+		.join(' ');
+}
+
+function parseFmWaveformToken(part: string, asHex: boolean): number | null {
+	if (asHex) {
+		let sign = 1;
+		let temp = part;
+		if (temp.startsWith('-')) {
+			sign = -1;
+			temp = temp.substring(1);
+		}
+		if (!/^[0-9a-fA-F]+$/.test(temp)) {
+			return null;
+		}
+		return sign * parseInt(temp, 16);
+	}
+	if (!/^-?\d+$/.test(part)) {
+		return null;
+	}
+	return parseInt(part, 10);
+}
+
+export function parseAyFmWaveformPartial(text: string, asHex: boolean): number[] | null {
+	if (!text.trim()) {
+		return null;
+	}
+	const parts = text.trimEnd().split(/\s+/).filter((part) => part.length > 0);
+	const values: number[] = [];
+	for (const part of parts) {
+		const parsed = parseFmWaveformToken(part, asHex);
+		if (parsed === null || parsed < AY_FM_SEMITONE_MIN || parsed > AY_FM_SEMITONE_MAX) {
+			break;
+		}
+		values.push(parsed);
+		if (values.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
+			break;
+		}
+	}
+	return values.length > 0 ? values : null;
+}
+
+export function parseAyFmWaveform(text: string, asHex: boolean): number[] | null {
+	const values = parseAyFmWaveformPartial(text, asHex);
+	if (!values) {
+		return null;
+	}
+	const trimmed = text.trim();
+	if (!trimmed) {
+		return null;
+	}
+	const parts = trimmed.split(/\s+/).filter((part) => part.length > 0);
+	if (parts.length !== values.length) {
+		return null;
+	}
+	for (let index = 0; index < parts.length; index++) {
+		const parsed = parseFmWaveformToken(parts[index], asHex);
+		if (parsed === null || parsed !== values[index]) {
+			return null;
+		}
+	}
+	return values;
 }
 
 function parseWaveformToken(part: string, asHex: boolean): number | null {
@@ -461,6 +629,7 @@ export function syncAyInstrumentTimerRows(instrument: Instrument, rowCount: numb
 	extended.timerPwmSweepMin = fields.timerPwmSweepMin;
 	extended.timerPwmSweep = fields.timerPwmSweep;
 	extended.timerPwmPreserveOnNewNote = fields.timerPwmPreserveOnNewNote;
+	extended.timerPwmReverseSweep = fields.timerPwmReverseSweep;
 	return timerRows;
 }
 
@@ -479,6 +648,7 @@ export function copyAyInstrumentFields(
 	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
 	target.timerPwmSweep = normalized.timerPwmSweep;
 	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
+	target.timerPwmReverseSweep = normalized.timerPwmReverseSweep;
 	if (
 		source.sampleData?.length &&
 		isValidInstrumentSampleByteLength(source.sampleData.length)

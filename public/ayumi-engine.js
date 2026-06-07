@@ -1,5 +1,8 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
-import { TIMER_EFFECT_KIND_NONE } from './ay-timer-effect-constants.js';
+import {
+	TIMER_EFFECT_KIND_NONE,
+	TIMER_EFFECT_KIND_TONE
+} from './ay-timer-effect-constants.js';
 
 class AyumiEngine {
 	constructor(wasmModule, ayumiPtr) {
@@ -36,10 +39,12 @@ class AyumiEngine {
 		const period = timerEffect.period > 0 ? timerEffect.period : 1;
 		const periodLow = timerEffect.periodLow > 0 ? timerEffect.periodLow : period;
 		const baseVolume = timerEffect.baseVolume & 0xf;
+		const baseTonePeriod = Math.max(1, timerEffect.baseTonePeriod & 0xfff);
 		const wasEnabled = lastTimerEffect.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
 		const kindChanged = kind !== (lastTimerEffect.kind ?? TIMER_EFFECT_KIND_NONE);
 		const pwmModeChanged = pwmMode !== (lastTimerEffect.pwmMode ?? 0);
+		const lastBaseTonePeriod = lastTimerEffect.baseTonePeriod ?? 1;
 
 		if (
 			forceApply ||
@@ -48,7 +53,8 @@ class AyumiEngine {
 			pwmModeChanged ||
 			period !== lastTimerEffect.period ||
 			periodLow !== lastTimerEffect.periodLow ||
-			baseVolume !== lastTimerEffect.baseVolume
+			baseVolume !== lastTimerEffect.baseVolume ||
+			baseTonePeriod !== lastBaseTonePeriod
 		) {
 			this.wasmModule.ayumi_set_timer_effect(
 				this.ayumiPtr,
@@ -58,7 +64,8 @@ class AyumiEngine {
 				pwmMode,
 				period,
 				periodLow,
-				baseVolume
+				baseVolume,
+				baseTonePeriod
 			);
 			lastTimerEffect.enabled = timerEffect.enabled;
 			lastTimerEffect.kind = kind;
@@ -66,6 +73,7 @@ class AyumiEngine {
 			lastTimerEffect.period = period;
 			lastTimerEffect.periodLow = periodLow;
 			lastTimerEffect.baseVolume = baseVolume;
+			lastTimerEffect.baseTonePeriod = baseTonePeriod;
 		}
 
 		const waveform = timerEffect.waveform ?? [15, 0];
@@ -85,7 +93,12 @@ class AyumiEngine {
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
 			const offset = ptr >> 2;
 			for (let i = 0; i < waveform.length; i++) {
-				memory[offset + i] = waveform[i] & 0xf;
+				const raw = waveform[i] | 0;
+				if (kind === TIMER_EFFECT_KIND_TONE) {
+					memory[offset + i] = Math.max(-127, Math.min(128, raw));
+				} else {
+					memory[offset + i] = raw & 0xf;
+				}
 			}
 			this.wasmModule.ayumi_set_timer_effect_waveform(
 				this.ayumiPtr,
