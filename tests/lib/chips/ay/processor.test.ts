@@ -14,12 +14,14 @@ describe('sanitizeInstrumentForWorklet', () => {
 			timerPwmSweepMin?: number;
 			timerPwmSweep?: number;
 			timerPwmPreserveOnNewNote?: boolean;
+			timerPwmReverseSweep?: boolean;
 		};
 		extended.timerRows = [{ sid: true, timerWaveform: [15, 0] }];
 		extended.timerPwmDuty = 25;
 		extended.timerPwmSweepMin = 5;
 		extended.timerPwmSweep = 3;
 		extended.timerPwmPreserveOnNewNote = true;
+		extended.timerPwmReverseSweep = true;
 
 		const sanitized = sanitizeInstrumentForWorklet(instrument);
 
@@ -27,6 +29,7 @@ describe('sanitizeInstrumentForWorklet', () => {
 		expect(sanitized.timerPwmSweepMin).toBe(5);
 		expect(sanitized.timerPwmSweep).toBe(3);
 		expect(sanitized.timerPwmPreserveOnNewNote).toBe(true);
+		expect(sanitized.timerPwmReverseSweep).toBe(true);
 		expect(sanitized.timerRows?.[0]?.timerWaveform).toEqual([15, 0]);
 	});
 

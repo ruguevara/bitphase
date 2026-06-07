@@ -91,25 +91,17 @@ class VirtualChannelMixer {
 		dst.mixer.tone = src.mixer.tone;
 		dst.mixer.noise = src.mixer.noise;
 		dst.mixer.envelope = src.mixer.envelope;
-		if (src.sid && dst.sid) {
-			dst.sid.enabled = src.sid.enabled;
-			dst.sid.pwm = src.sid.pwm ?? false;
-			dst.sid.period = src.sid.period;
-			dst.sid.periodLow = src.sid.periodLow ?? src.sid.period;
-			dst.sid.baseVolume = src.sid.baseVolume;
-			dst.sid.waveform = [...src.sid.waveform];
-			dst.sid.waveformLoop = src.sid.waveformLoop;
-			dst.sid.resetPhase = src.sid.resetPhase;
-		}
-		if (src.syncbuzzer && dst.syncbuzzer) {
-			dst.syncbuzzer.enabled = src.syncbuzzer.enabled;
-			dst.syncbuzzer.period = src.syncbuzzer.period;
-			dst.syncbuzzer.periodLow = src.syncbuzzer.periodLow ?? src.syncbuzzer.period;
-			dst.syncbuzzer.pwm = src.syncbuzzer.pwm ?? false;
-			dst.syncbuzzer.shape = src.syncbuzzer.shape;
-			dst.syncbuzzer.waveform = [...(src.syncbuzzer.waveform ?? [src.syncbuzzer.shape & 0xf])];
-			dst.syncbuzzer.waveformLoop = src.syncbuzzer.waveformLoop ?? 0;
-			dst.syncbuzzer.resetPhase = src.syncbuzzer.resetPhase;
+		if (src.timerEffect && dst.timerEffect) {
+			dst.timerEffect.enabled = src.timerEffect.enabled;
+			dst.timerEffect.kind = src.timerEffect.kind ?? 0;
+			dst.timerEffect.pwmMode = src.timerEffect.pwmMode ?? 0;
+			dst.timerEffect.period = src.timerEffect.period;
+			dst.timerEffect.periodLow = src.timerEffect.periodLow ?? src.timerEffect.period;
+			dst.timerEffect.baseVolume = src.timerEffect.baseVolume ?? 0;
+			dst.timerEffect.baseTonePeriod = src.timerEffect.baseTonePeriod ?? 1;
+			dst.timerEffect.waveform = [...(src.timerEffect.waveform ?? [15, 0])];
+			dst.timerEffect.waveformLoop = src.timerEffect.waveformLoop ?? 0;
+			dst.timerEffect.resetPhase = src.timerEffect.resetPhase ?? false;
 		}
 	}
 }

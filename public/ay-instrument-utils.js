@@ -2,7 +2,10 @@ export const DEFAULT_AY_SID_PERIOD = 100;
 export const DEFAULT_AY_SID_PERIOD_DETUNE = 1;
 export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
-export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [13, 9];
+export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [8];
+export const DEFAULT_AY_FM_WAVEFORM = [0, 7];
+export const AY_FM_SEMITONE_MIN = -127;
+export const AY_FM_SEMITONE_MAX = 128;
 export const AY_TIMER_PWM_DUTY_MIN = 0;
 export const AY_TIMER_PWM_DUTY_MAX = 50;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
@@ -49,6 +52,10 @@ export function clampTimerPwmDuty(duty) {
 	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(AY_TIMER_PWM_DUTY_MAX, duty | 0));
 }
 
+export function clampTimerPwmSweep(sweep) {
+	return Math.max(0, Math.min(AY_TIMER_PWM_DUTY_MAX, sweep | 0));
+}
+
 export function computeTimerPwmPeriods(basePeriod, dutyPercent) {
 	const duty = clampTimerPwmDuty(dutyPercent) / 100;
 	const cyclePeriod = Math.max(2, basePeriod * 2);
@@ -73,12 +80,32 @@ export function effectiveRowTimerWaveformLoop(row) {
 	return row?.timerWaveformLoop ?? 0;
 }
 
-export function isClassicSidTimerWaveform(waveform) {
-	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
+export function clampFmSemitone(value) {
+	return Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, value | 0));
 }
 
-export function isPatternEnvelopeShapeSet(envelopeShape) {
-	return envelopeShape !== 0 && envelopeShape !== 15;
+export function normalizeFmWaveform(waveform) {
+	return waveform.map((value) => clampFmSemitone(value)).slice(0, 32);
+}
+
+export function effectiveRowFmWaveform(row) {
+	if (!row?.fm) {
+		return [...DEFAULT_AY_FM_WAVEFORM];
+	}
+	const waveform = row?.timerWaveform;
+	if (waveform && waveform.length > 0) {
+		return normalizeFmWaveform(waveform);
+	}
+	return [...DEFAULT_AY_FM_WAVEFORM];
+}
+
+export function isDefaultFmTimerWaveform(waveform) {
+	return (
+		waveform.length === DEFAULT_AY_FM_WAVEFORM.length &&
+		waveform.every(
+			(value, index) => clampFmSemitone(value) === clampFmSemitone(DEFAULT_AY_FM_WAVEFORM[index])
+		)
+	);
 }
 
 export function isDefaultSidTimerWaveform(waveform) {
@@ -86,6 +113,14 @@ export function isDefaultSidTimerWaveform(waveform) {
 		waveform.length === DEFAULT_AY_TIMER_WAVEFORM.length &&
 		waveform.every((value, index) => (value & 0xf) === (DEFAULT_AY_TIMER_WAVEFORM[index] & 0xf))
 	);
+}
+
+export function isClassicSidTimerWaveform(waveform) {
+	return waveform.length === 2 && (waveform[0] & 0xf) === 15 && (waveform[1] & 0xf) === 0;
+}
+
+export function isPatternEnvelopeShapeSet(envelopeShape) {
+	return envelopeShape !== 0 && envelopeShape !== 15;
 }
 
 export function resolveSyncbuzzerWaveform(timerRow, patternShapeOverride, patternEnvelopeShape) {
@@ -96,14 +131,11 @@ export function resolveSyncbuzzerWaveform(timerRow, patternShapeOverride, patter
 }
 
 export function rowSupportsTimerPwm(row) {
-	if (!row) {
+	if (!row || (!row.sid && !row.syncbuzzer && !row.fm)) {
 		return false;
 	}
-	const waveform = effectiveRowTimerWaveform(row);
-	if (row.syncbuzzer) {
-		return waveform.length === 2;
-	}
-	return isClassicSidTimerWaveform(waveform);
+	const waveform = row.fm ? effectiveRowFmWaveform(row) : effectiveRowTimerWaveform(row);
+	return waveform.length === 2;
 }
 
 export function rowUsesSyncbuzzerPwmDuty(row) {
@@ -121,7 +153,7 @@ export function effectiveRowTimerPwmSweep(fields, row) {
 	if (!rowSupportsTimerPwm(row)) {
 		return DEFAULT_AY_TIMER_PWM_SWEEP;
 	}
-	return Math.max(0, (fields.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+	return clampTimerPwmSweep(fields.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP);
 }
 
 export function effectiveRowTimerPwmSweepMin(fields, row) {
@@ -139,7 +171,14 @@ export function clampTimerPwmSweepMin(min, maxDuty) {
 	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(clampedMax, min | 0));
 }
 
-export function advanceTimerPwmSweep(currentDuty, direction, sweepSpeed, minDuty, maxDuty) {
+export function advanceTimerPwmSweep(
+	currentDuty,
+	direction,
+	sweepSpeed,
+	minDuty,
+	maxDuty,
+	reverseSweep = false
+) {
 	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
 	const max = clampTimerPwmDuty(maxDuty);
 
@@ -148,7 +187,9 @@ export function advanceTimerPwmSweep(currentDuty, direction, sweepSpeed, minDuty
 	}
 
 	if (currentDuty < 0) {
-		return { duty: min, direction: 1 };
+		return reverseSweep
+			? { duty: max, direction: -1 }
+			: { duty: min, direction: 1 };
 	}
 
 	let duty = currentDuty + sweepSpeed * direction;
@@ -175,7 +216,7 @@ function createDefaultInstrumentTimerPwmFields() {
 
 function normalizeInstrumentTimerPwmFields(source) {
 	const timerPwmDuty = clampTimerPwmDuty(source.timerPwmDuty ?? DEFAULT_AY_TIMER_PWM_DUTY);
-	const timerPwmSweep = Math.max(0, (source.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP) | 0);
+	const timerPwmSweep = clampTimerPwmSweep(source.timerPwmSweep ?? DEFAULT_AY_TIMER_PWM_SWEEP);
 	return {
 		timerPwmDuty,
 		timerPwmSweepMin:
@@ -193,6 +234,7 @@ function createDefaultAyTimerRow() {
 	return {
 		sid: false,
 		syncbuzzer: false,
+		fm: false,
 		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
 		timerWaveformLoop: 0
 	};
@@ -200,16 +242,22 @@ function createDefaultAyTimerRow() {
 
 function normalizeTimerRow(row) {
 	const defaults = createDefaultAyTimerRow();
+	const fm = row?.fm ?? defaults.fm;
 	const normalized = {
 		sid: row?.sid ?? defaults.sid,
 		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
+		fm,
 		sidPeriodMode:
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
 		timerWaveform: row?.timerWaveform?.length
-			? row.timerWaveform.map((value) => value & 0xf).slice(0, 32)
-			: [...defaults.timerWaveform],
+			? fm
+				? normalizeFmWaveform(row.timerWaveform)
+				: row.timerWaveform.map((value) => value & 0xf).slice(0, 32)
+			: fm
+				? [...DEFAULT_AY_FM_WAVEFORM]
+				: [...defaults.timerWaveform],
 		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop
 	};
 	if (row?.detune !== undefined) {
@@ -226,10 +274,13 @@ function normalizeTimerRow(row) {
 
 function applyExclusiveTimerEffects(row) {
 	if (row.sid) {
-		return { ...row, syncbuzzer: false };
+		return { ...row, syncbuzzer: false, fm: false };
 	}
 	if (row.syncbuzzer) {
-		return { ...row, sid: false };
+		return { ...row, sid: false, fm: false };
+	}
+	if (row.fm) {
+		return { ...row, sid: false, syncbuzzer: false };
 	}
 	return row;
 }
@@ -266,7 +317,8 @@ export function normalizeAyInstrumentFields(instrument) {
 	return {
 		timerRows,
 		...resolveInstrumentTimerPwmFields(instrument, sourceRows),
-		timerPwmPreserveOnNewNote: instrument.timerPwmPreserveOnNewNote === true
+		timerPwmPreserveOnNewNote: instrument.timerPwmPreserveOnNewNote === true,
+		timerPwmReverseSweep: instrument.timerPwmReverseSweep === true
 	};
 }
 

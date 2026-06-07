@@ -1,7 +1,7 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
-import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY } from './ay-instrument-utils.js';
+import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowFmWaveform, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY } from './ay-instrument-utils.js';
 import {
 	instrumentHasSample,
 	computeSampleSidPeriod,
@@ -10,6 +10,14 @@ import {
 	resetChannelSamplePlayback,
 	clampSamplePlaybackPosition
 } from './ay-sample-playback.js';
+import {
+	TIMER_EFFECT_KIND_VOLUME,
+	createDefaultTimerEffect,
+	createVolumeTimerEffect,
+	createEnvelopeShapeTimerEffect,
+	createToneTimerEffect,
+	disableTimerEffect
+} from './ay-timer-effect-constants.js';
 
 class AYAudioDriver {
 	constructor(channelCount = 3) {
@@ -70,25 +78,18 @@ class AYAudioDriver {
 			state.channelTimerPwmSweep &&
 			state.channelTimerPwmSweepDirection
 		) {
+			const instrumentIndex = state.channelInstruments?.[channelIndex] ?? -1;
+			const reverseSweep = this.instrumentReverseTimerPwmSweep(state, instrumentIndex);
 			state.channelTimerPwmSweep[channelIndex] = -1;
-			state.channelTimerPwmSweepDirection[channelIndex] = 1;
+			state.channelTimerPwmSweepDirection[channelIndex] = reverseSweep ? -1 : 1;
 		}
-		if (state.channelSidReset) {
+		if (state.channelTimerEffectReset) {
 			const hasActiveSlide =
 				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
 			const hasActivePortamento =
 				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
 			if (!hasActiveSlide && !hasActivePortamento) {
-				state.channelSidReset[channelIndex] = true;
-			}
-		}
-		if (state.channelSyncbuzzerReset) {
-			const hasActiveSlide =
-				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
-			const hasActivePortamento =
-				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
-			if (!hasActiveSlide && !hasActivePortamento) {
-				state.channelSyncbuzzerReset[channelIndex] = true;
+				state.channelTimerEffectReset[channelIndex] = true;
 			}
 		}
 		if (state.channelToneSliding) {
@@ -264,6 +265,17 @@ class AYAudioDriver {
 			return false;
 		}
 		return normalizeAyInstrumentFields(instrument).timerPwmPreserveOnNewNote === true;
+	}
+
+	instrumentReverseTimerPwmSweep(state, instrumentIndex) {
+		if (instrumentIndex === undefined || instrumentIndex < 0) {
+			return false;
+		}
+		const instrument = state.instruments?.[instrumentIndex];
+		if (!instrument) {
+			return false;
+		}
+		return normalizeAyInstrumentFields(instrument).timerPwmReverseSweep === true;
 	}
 
 	shouldPreserveSamplePlayback(state, channelIndex, row) {
@@ -609,8 +621,7 @@ class AYAudioDriver {
 			this.channelMixerState[channelIndex].tone = false;
 			this.channelMixerState[channelIndex].noise = false;
 			this.channelMixerState[channelIndex].envelope = false;
-			registerState.channels[channelIndex].sid.enabled = false;
-			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+			disableTimerEffect(registerState.channels[channelIndex].timerEffect);
 			if (!onOffHalted) {
 				state.instrumentPositions[channelIndex]++;
 				if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
@@ -658,8 +669,7 @@ class AYAudioDriver {
 			registerState.channels[channelIndex].mixer.tone = false;
 			registerState.channels[channelIndex].mixer.noise = false;
 			registerState.channels[channelIndex].mixer.envelope = false;
-			registerState.channels[channelIndex].sid.enabled = false;
-			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+			disableTimerEffect(registerState.channels[channelIndex].timerEffect);
 			this.channelMixerState[channelIndex].tone = false;
 			this.channelMixerState[channelIndex].noise = false;
 			this.channelMixerState[channelIndex].envelope = false;
@@ -678,7 +688,7 @@ class AYAudioDriver {
 				resolveSamplePlaybackRate(instrument, 44100)
 			);
 			const sidBaseVolume = getAySidBaseVolume(finalVolume);
-			registerState.channels[channelIndex].sid = {
+			registerState.channels[channelIndex].timerEffect = createVolumeTimerEffect({
 				enabled: true,
 				pwm: false,
 				period: sidPeriod,
@@ -686,21 +696,11 @@ class AYAudioDriver {
 				baseVolume: sidBaseVolume,
 				waveform: [15, 0],
 				waveformLoop: 0,
-				resetPhase: state.channelSidReset?.[channelIndex] ?? false
-			};
-			if (state.channelSidReset) {
-				state.channelSidReset[channelIndex] = false;
+				resetPhase: state.channelTimerEffectReset?.[channelIndex] ?? false
+			});
+			if (state.channelTimerEffectReset) {
+				state.channelTimerEffectReset[channelIndex] = false;
 			}
-			registerState.channels[channelIndex].syncbuzzer = {
-				enabled: false,
-				period: sidPeriod,
-				periodLow: sidPeriod,
-				pwm: false,
-				shape: 0,
-				waveform: [0],
-				waveformLoop: 0,
-				resetPhase: false
-			};
 		}
 
 		if (!onOffHalted) {
@@ -731,8 +731,8 @@ class AYAudioDriver {
 				continue;
 			}
 
-			const sid = registerState.channels[channelIndex]?.sid;
-			if (!sid?.enabled) {
+			const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+			if (!timerEffect?.enabled || timerEffect.kind !== TIMER_EFFECT_KIND_VOLUME) {
 				continue;
 			}
 
@@ -749,7 +749,7 @@ class AYAudioDriver {
 				effectiveTone
 			);
 			if (!playback.active) {
-				registerState.channels[channelIndex].sid.enabled = false;
+				disableTimerEffect(registerState.channels[channelIndex].timerEffect);
 				state.channelSoundEnabled[channelIndex] = false;
 				continue;
 			}
@@ -940,8 +940,7 @@ class AYAudioDriver {
 				registerState.channels[channelIndex].mixer.tone = false;
 				registerState.channels[channelIndex].mixer.noise = false;
 				registerState.channels[channelIndex].mixer.envelope = false;
-				registerState.channels[channelIndex].sid.enabled = false;
-				registerState.channels[channelIndex].syncbuzzer.enabled = false;
+				disableTimerEffect(registerState.channels[channelIndex].timerEffect);
 				this.channelMixerState[channelIndex].tone = false;
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
@@ -952,21 +951,38 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].noise = instrumentRow.noise;
 
 				const ayFields = normalizeAyInstrumentFields(instrument);
-				const timerRow = ayFields.timerRows[rowIndex] ?? { sid: false, syncbuzzer: false };
+				const timerRow = ayFields.timerRows[rowIndex] ?? {
+					sid: false,
+					syncbuzzer: false,
+					fm: false
+				};
 				const sidActive =
-					timerRow.sid && !timerRow.syncbuzzer && !instrumentRow.envelope;
+					timerRow.sid &&
+					!timerRow.syncbuzzer &&
+					!timerRow.fm &&
+					!instrumentRow.envelope;
 				const syncbuzzerActive =
 					timerRow.syncbuzzer &&
 					!timerRow.sid &&
+					!timerRow.fm &&
 					instrumentRow.envelope &&
 					state.channelEnvelopeEnabled[channelIndex] &&
 					!envelopeDisabledByOnOff;
+				const fmActive =
+					timerRow.fm &&
+					!timerRow.sid &&
+					!timerRow.syncbuzzer &&
+					instrumentRow.tone;
 				const timerEffectPeriod = computeTimerEffectPeriod(finalTone, timerRow);
-				const sidPwmSupported = rowSupportsTimerPwm(timerRow) && !timerRow.syncbuzzer;
+				const sidPwmSupported = sidActive && rowSupportsTimerPwm(timerRow);
 				const syncbuzzerPwmSupported =
 					syncbuzzerActive && rowUsesSyncbuzzerPwmDuty(timerRow) &&
 					!(state.channelPatternEnvelopeShapeOverride?.[channelIndex] ?? false);
-				const pwmSupported = sidPwmSupported || syncbuzzerPwmSupported;
+				const fmPwmSupported = fmActive && rowSupportsTimerPwm(timerRow);
+				const pwmSupported =
+					sidPwmSupported ||
+					syncbuzzerPwmSupported ||
+					fmPwmSupported;
 				const pwmSweepSpeed = pwmSupported ? effectiveRowTimerPwmSweep(ayFields, timerRow) : 0;
 				const maxPwmDuty = pwmSupported
 					? effectiveRowTimerPwmDuty(ayFields, timerRow)
@@ -981,7 +997,8 @@ class AYAudioDriver {
 						state.channelTimerPwmSweepDirection[channelIndex],
 						pwmSweepSpeed,
 						minPwmDuty,
-						maxPwmDuty
+						maxPwmDuty,
+						ayFields.timerPwmReverseSweep === true
 					);
 					state.channelTimerPwmSweep[channelIndex] = advanced.duty;
 					state.channelTimerPwmSweepDirection[channelIndex] = advanced.direction;
@@ -1013,32 +1030,45 @@ class AYAudioDriver {
 				registerState.channels[channelIndex].volume = finalVolume;
 
 				const sidBaseVolume = getAySidBaseVolume(finalVolume);
-				registerState.channels[channelIndex].sid = {
-					enabled: sidActive,
-					pwm: sidActive,
-					period: sidActive ? timerPwmPeriods.highPeriod : timerEffectPeriod,
-					periodLow: sidActive ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
-					baseVolume: sidBaseVolume,
-					waveform: effectiveRowTimerWaveform(timerRow),
-					waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
-					resetPhase: state.channelSidReset?.[channelIndex] ?? false
-				};
-				if (state.channelSidReset) {
-					state.channelSidReset[channelIndex] = false;
+				const timerEffectReset = state.channelTimerEffectReset?.[channelIndex] ?? false;
+				if (syncbuzzerActive) {
+					registerState.channels[channelIndex].timerEffect = createEnvelopeShapeTimerEffect({
+						enabled: true,
+						pwm: syncbuzzerUsesPwm,
+						period: syncbuzzerUsesPwm ? timerPwmPeriods.highPeriod : timerEffectPeriod,
+						periodLow: syncbuzzerUsesPwm ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
+						waveform: syncbuzzerWaveform,
+						waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
+						resetPhase: timerEffectReset
+					});
+				} else if (sidActive) {
+					registerState.channels[channelIndex].timerEffect = createVolumeTimerEffect({
+						enabled: true,
+						pwm: sidPwmSupported,
+						pwmByDutyIndex: sidPwmSupported,
+						period: sidPwmSupported ? timerPwmPeriods.highPeriod : timerEffectPeriod,
+						periodLow: sidPwmSupported ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
+						baseVolume: sidBaseVolume,
+						waveform: effectiveRowTimerWaveform(timerRow),
+						waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
+						resetPhase: timerEffectReset
+					});
+				} else if (fmActive) {
+					registerState.channels[channelIndex].timerEffect = createToneTimerEffect({
+						enabled: true,
+						pwm: fmPwmSupported,
+						period: fmPwmSupported ? timerPwmPeriods.highPeriod : timerEffectPeriod,
+						periodLow: fmPwmSupported ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
+						baseTonePeriod: finalTone,
+						waveform: effectiveRowFmWaveform(timerRow),
+						waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
+						resetPhase: timerEffectReset
+					});
+				} else {
+					registerState.channels[channelIndex].timerEffect = createDefaultTimerEffect();
 				}
-
-				registerState.channels[channelIndex].syncbuzzer = {
-					enabled: syncbuzzerActive,
-					period: syncbuzzerUsesPwm ? timerPwmPeriods.highPeriod : timerEffectPeriod,
-					periodLow: syncbuzzerUsesPwm ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
-					pwm: syncbuzzerUsesPwm,
-					shape: syncbuzzerWaveform[0] ?? 0,
-					waveform: syncbuzzerWaveform,
-					waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
-					resetPhase: state.channelSyncbuzzerReset?.[channelIndex] ?? false
-				};
-				if (state.channelSyncbuzzerReset) {
-					state.channelSyncbuzzerReset[channelIndex] = false;
+				if (state.channelTimerEffectReset) {
+					state.channelTimerEffectReset[channelIndex] = false;
 				}
 			}
 

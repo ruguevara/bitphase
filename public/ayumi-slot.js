@@ -6,6 +6,11 @@ import {
 	getPanSettingsForLayout,
 	DEFAULT_AYM_FREQUENCY
 } from './ayumi-constants.js';
+import {
+	TIMER_EFFECT_KIND_VOLUME,
+	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_EFFECT_KIND_TONE
+} from './ay-timer-effect-constants.js';
 import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
 import TrackerPatternProcessor from './tracker-pattern-processor.js';
@@ -189,7 +194,7 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		const clock = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
 		const wasmModule = this.state.wasmModule;
 		const ayumiPtr = this.state.ayumiPtr;
-		const getSidActivePeriod = wasmModule?.ayumi_get_sid_active_period;
+		const getTimerEffectActivePeriod = wasmModule?.ayumi_get_timer_effect_active_period;
 		const toneHz = [];
 		const sidTimerHz = [];
 		const syncbuzzerTimerHz = [];
@@ -202,21 +207,32 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				toneHz.push(tonePeriod > 0 ? clock / (16 * tonePeriod) : null);
 			}
 
-			if (!channel?.sid?.enabled) {
+			const timerEffect = channel?.timerEffect;
+			const volumeEffectActive =
+				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
+			const toneEffectActive =
+				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_TONE;
+			const envelopeShapeEffectActive =
+				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
+
+			if (!volumeEffectActive && !toneEffectActive) {
 				sidTimerHz.push(null);
-			} else if (typeof getSidActivePeriod === 'function' && ayumiPtr) {
-				const activePeriod = getSidActivePeriod(ayumiPtr, i) & 0xffff;
+			} else if (typeof getTimerEffectActivePeriod === 'function' && ayumiPtr) {
+				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, i) & 0xffff;
 				sidTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
-				const sidPeriod = channel.sid.period & 0xffff;
-				sidTimerHz.push(sidPeriod > 0 ? clock / (8 * sidPeriod) : null);
+				const timerPeriod = timerEffect.period & 0xffff;
+				sidTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
 			}
 
-			if (!channel?.syncbuzzer?.enabled) {
+			if (!envelopeShapeEffectActive) {
 				syncbuzzerTimerHz.push(null);
+			} else if (typeof getTimerEffectActivePeriod === 'function' && ayumiPtr) {
+				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, i) & 0xffff;
+				syncbuzzerTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
-				const syncPeriod = channel.syncbuzzer.period & 0xffff;
-				syncbuzzerTimerHz.push(syncPeriod > 0 ? clock / (8 * syncPeriod) : null);
+				const timerPeriod = timerEffect.period & 0xffff;
+				syncbuzzerTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
 			}
 		}
 		return { toneHz, sidTimerHz, syncbuzzerTimerHz };

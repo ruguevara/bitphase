@@ -12,7 +12,11 @@
 		sidStepToAmplitude,
 		SID_WAVEFORM_PREVIEW_BASE_VOLUME
 	} from './sid-waveform-volume';
-	import { AY_TIMER_WAVEFORM_MAX_LENGTH, AY_TIMER_WAVEFORM_MIN_LENGTH } from './instrument';
+	import {
+		AY_TIMER_WAVEFORM_MAX_LENGTH,
+		AY_TIMER_WAVEFORM_MIN_LENGTH,
+		clampFmSemitone
+	} from './instrument';
 
 	let {
 		rowIndex,
@@ -57,20 +61,33 @@
 	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex));
 	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
 	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(rowIndex));
+	const usesFmSemitones = $derived(controller.rowTimerWaveformUsesFmSemitones(rowIndex));
 	const editorTitle = $derived(
-		`${usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
+		`${usesFmSemitones ? 'FM semitones' : usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
 	);
 	const editorSubtitle = $derived(
-		usesEnvelopeShapes ? 'R13 values (0–15)' : `${chipVariant} DAC curve`
+		usesFmSemitones
+			? 'Signed semitone offsets'
+			: usesEnvelopeShapes
+				? 'R13 values (0–15)'
+				: `${chipVariant} DAC curve`
 	);
 	const stepCountLabel = $derived(
-		`${waveform.length} ${usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
+		`${waveform.length} ${usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
 	);
 	const editorAriaLabel = $derived(
-		usesEnvelopeShapes ? 'Envelope shapes editor' : 'SID steps editor'
+		usesFmSemitones
+			? 'FM semitone editor'
+			: usesEnvelopeShapes
+				? 'Envelope shapes editor'
+				: 'SID steps editor'
 	);
-	const stepSingularLabel = $derived(usesEnvelopeShapes ? 'envelope shape' : 'SID step');
-	const stepsPluralLabel = $derived(usesEnvelopeShapes ? 'envelope shapes' : 'SID steps');
+	const stepSingularLabel = $derived(
+		usesFmSemitones ? 'FM step' : usesEnvelopeShapes ? 'envelope shape' : 'SID step'
+	);
+	const stepsPluralLabel = $derived(
+		usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'
+	);
 
 	const waveformGraphic = $derived.by(() => {
 		const steps = waveform.length;
@@ -81,12 +98,22 @@
 		const baseY = VIEW_HEIGHT - PLOT_PADDING;
 
 		const bars = waveform.map((value, index) => {
+			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
+			if (usesFmSemitones) {
+				const semitone = clampFmSemitone(value);
+				const normalized = (semitone + 12) / 24;
+				return {
+					index,
+					value: semitone,
+					centerX,
+					centerY: baseY - innerHeight * Math.max(0, Math.min(1, normalized))
+				};
+			}
 			const amplitude = sidStepToAmplitude(
 				value,
 				SID_WAVEFORM_PREVIEW_BASE_VOLUME,
 				chipVariant
 			);
-			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
 			return {
 				index,
 				value,
@@ -227,12 +254,14 @@
 		if (!point) return;
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const y = point.y - PLOT_PADDING;
-		const amplitude = Math.max(0, Math.min(1, 1 - y / innerHeight));
-		const step = amplitudeToNearestSidStep(
-			amplitude,
-			SID_WAVEFORM_PREVIEW_BASE_VOLUME,
-			chipVariant
-		);
+		const normalized = Math.max(0, Math.min(1, 1 - y / innerHeight));
+		const step = usesFmSemitones
+			? clampFmSemitone(Math.round(normalized * 24 - 12))
+			: amplitudeToNearestSidStep(
+					normalized,
+					SID_WAVEFORM_PREVIEW_BASE_VOLUME,
+					chipVariant
+				);
 		controller.setRowWaveformStep(rowIndex, index, step);
 	}
 
@@ -288,9 +317,11 @@
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<div
 			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title={usesEnvelopeShapes
-				? 'Envelope shapes (0–15 hex R13 values)'
-				: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}>
+			title={usesFmSemitones
+				? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
+				: usesEnvelopeShapes
+					? 'Envelope shapes (0–15 hex R13 values)'
+					: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}>
 			<span
 				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
 				<IconCarbonWaveform class={iconSizeClass} />

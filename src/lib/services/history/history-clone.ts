@@ -122,6 +122,7 @@ export class HistoryClone {
 			timerRows?: {
 				sid: boolean;
 				syncbuzzer?: boolean;
+				fm?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -136,11 +137,13 @@ export class HistoryClone {
 			timerPwmSweepMin?: number;
 			timerPwmSweep?: number;
 			timerPwmPreserveOnNewNote?: boolean;
+			timerPwmReverseSweep?: boolean;
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
 				sid: boolean;
 				syncbuzzer?: boolean;
+				fm?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -155,6 +158,7 @@ export class HistoryClone {
 			timerPwmSweepMin?: number;
 			timerPwmSweep?: number;
 			timerPwmPreserveOnNewNote?: boolean;
+			timerPwmReverseSweep?: boolean;
 		};
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
@@ -169,6 +173,9 @@ export class HistoryClone {
 		if (extended.timerPwmSweep !== undefined) clonedExtended.timerPwmSweep = extended.timerPwmSweep;
 		if (extended.timerPwmPreserveOnNewNote !== undefined) {
 			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
+		}
+		if (extended.timerPwmReverseSweep !== undefined) {
+			clonedExtended.timerPwmReverseSweep = extended.timerPwmReverseSweep;
 		}
 		return cloned;
 	}

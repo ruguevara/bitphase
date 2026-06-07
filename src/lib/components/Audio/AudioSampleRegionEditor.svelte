@@ -86,6 +86,31 @@
 		return fromRoot || '#89b4fa';
 	}
 
+	function resolveLoopAccentColor(): string {
+		const fromRoot = getComputedStyle(document.documentElement)
+			.getPropertyValue('--color-app-secondary')
+			.trim();
+		return fromRoot || '#b4befe';
+	}
+
+	function colorWithAlpha(color: string, alpha: number): string {
+		if (!color.startsWith('#')) {
+			return color;
+		}
+		const normalized = color.slice(1);
+		const full =
+			normalized.length === 3
+				? normalized
+						.split('')
+						.map((channel) => channel + channel)
+						.join('')
+				: normalized;
+		const red = Number.parseInt(full.slice(0, 2), 16);
+		const green = Number.parseInt(full.slice(2, 4), 16);
+		const blue = Number.parseInt(full.slice(4, 6), 16);
+		return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+	}
+
 	function drawRegionOverlay(
 		ctx: CanvasRenderingContext2D,
 		width: number,
@@ -107,8 +132,9 @@
 		if (playEndX < width) ctx.fillRect(playEndX, 0, width - playEndX, canvasHeight);
 
 		const primary = resolvePrimaryColor();
+		const loopAccent = resolveLoopAccentColor();
 		const playFill = primary.startsWith('#') ? `${primary}18` : 'rgba(137, 180, 250, 0.12)';
-		const loopFill = primary.startsWith('#') ? `${primary}30` : 'rgba(137, 180, 250, 0.2)';
+		const loopFill = colorWithAlpha(loopAccent, 0.2);
 
 		ctx.fillStyle = playFill;
 		ctx.fillRect(playStartX, 0, playEndX - playStartX, canvasHeight);
@@ -119,7 +145,7 @@
 		}
 
 		if (showLoop) {
-			ctx.strokeStyle = 'rgba(250, 179, 135, 0.95)';
+			ctx.strokeStyle = colorWithAlpha(loopAccent, 0.95);
 			ctx.lineWidth = Math.max(1, Math.floor((window.devicePixelRatio ?? 1) * 1.5));
 			ctx.setLineDash([4 * (window.devicePixelRatio ?? 1), 3 * (window.devicePixelRatio ?? 1)]);
 			ctx.beginPath();
@@ -515,10 +541,10 @@
 					aria-label="Adjust loop start"
 					onpointerdown={(event) => beginDrag('loop', event)}>
 					<span
-						class="flex h-10 w-2 flex-col items-center justify-center gap-0.5 rounded-sm bg-[#f9b384] shadow-[0_0_0_1px_rgba(0,0,0,0.35)] ring-2 ring-[var(--color-app-surface)]">
-						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
-						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
-						<span class="h-1 w-1 rounded-full bg-[#1e1e2e]"></span>
+						class="flex h-10 w-2 flex-col items-center justify-center gap-0.5 rounded-sm bg-[var(--color-app-secondary)] shadow-[0_0_0_1px_rgba(0,0,0,0.35)] ring-2 ring-[var(--color-app-surface)]">
+						<span class="h-1 w-1 rounded-full bg-[var(--color-app-surface)]"></span>
+						<span class="h-1 w-1 rounded-full bg-[var(--color-app-surface)]"></span>
+						<span class="h-1 w-1 rounded-full bg-[var(--color-app-surface)]"></span>
 					</span>
 				</button>
 			{/if}

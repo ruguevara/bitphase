@@ -201,6 +201,7 @@ function reconstructInstrument(data: any): Instrument {
 				timerRows?: {
 					sid: boolean;
 					syncbuzzer?: boolean;
+					fm?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
@@ -211,6 +212,7 @@ function reconstructInstrument(data: any): Instrument {
 			(row: {
 				sid?: boolean;
 				syncbuzzer?: boolean;
+				fm?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -224,6 +226,7 @@ function reconstructInstrument(data: any): Instrument {
 				const timerRow: {
 					sid: boolean;
 					syncbuzzer?: boolean;
+					fm?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
@@ -236,6 +239,7 @@ function reconstructInstrument(data: any): Instrument {
 				} = {
 					sid: row.sid ?? false,
 					syncbuzzer: row.syncbuzzer ?? false,
+					fm: row.fm ?? false,
 					sidPeriodMode:
 						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
 							? row.sidPeriodMode
@@ -260,12 +264,16 @@ function reconstructInstrument(data: any): Instrument {
 		timerPwmSweepMin?: number;
 		timerPwmSweep?: number;
 		timerPwmPreserveOnNewNote?: boolean;
+		timerPwmReverseSweep?: boolean;
 	};
 	if (data.timerPwmDuty !== undefined) extended.timerPwmDuty = data.timerPwmDuty;
 	if (data.timerPwmSweepMin !== undefined) extended.timerPwmSweepMin = data.timerPwmSweepMin;
 	if (data.timerPwmSweep !== undefined) extended.timerPwmSweep = data.timerPwmSweep;
 	if (data.timerPwmPreserveOnNewNote !== undefined) {
 		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
+	}
+	if (data.timerPwmReverseSweep !== undefined) {
+		extended.timerPwmReverseSweep = data.timerPwmReverseSweep === true;
 	}
 	const withSample = extended as Instrument & {
 		sampleData?: number[];

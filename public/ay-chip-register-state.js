@@ -1,24 +1,7 @@
-const DEFAULT_SID = {
-	enabled: false,
-	pwm: false,
-	period: 100,
-	periodLow: 100,
-	baseVolume: 0,
-	waveform: [15, 0],
-	waveformLoop: 0,
-	resetPhase: false
-};
-
-const DEFAULT_SYNCBUZZER = {
-	enabled: false,
-	period: 100,
-	periodLow: 100,
-	pwm: false,
-	shape: 0,
-	waveform: [13, 9],
-	waveformLoop: 0,
-	resetPhase: false
-};
+import {
+	createDefaultTimerEffect,
+	TIMER_EFFECT_KIND_NONE
+} from './ay-timer-effect-constants.js';
 
 const AY_REGISTER_COUNT = 14;
 const AY_TONE_CHANNELS = 3;
@@ -32,8 +15,7 @@ class AYChipRegisterState {
 				tone: 0,
 				volume: 0,
 				mixer: { tone: false, noise: false, envelope: false },
-				sid: { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] },
-				syncbuzzer: { ...DEFAULT_SYNCBUZZER }
+				timerEffect: createDefaultTimerEffect()
 			});
 		}
 		this.noise = 0;
@@ -47,8 +29,7 @@ class AYChipRegisterState {
 			this.channels[i].tone = 0;
 			this.channels[i].volume = 0;
 			this.channels[i].mixer = { tone: false, noise: false, envelope: false };
-			this.channels[i].sid = { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] };
-			this.channels[i].syncbuzzer = { ...DEFAULT_SYNCBUZZER };
+			this.channels[i].timerEffect = createDefaultTimerEffect();
 		}
 		this.noise = 0;
 		this.envelopePeriod = 0;
@@ -62,8 +43,7 @@ class AYChipRegisterState {
 				tone: 0,
 				volume: 0,
 				mixer: { tone: false, noise: false, envelope: false },
-				sid: { ...DEFAULT_SID, waveform: [...DEFAULT_SID.waveform] },
-				syncbuzzer: { ...DEFAULT_SYNCBUZZER }
+				timerEffect: createDefaultTimerEffect()
 			});
 		}
 		if (this.channels.length > newChannelCount) {
@@ -82,27 +62,18 @@ class AYChipRegisterState {
 				noise: this.channels[i].mixer.noise,
 				envelope: this.channels[i].mixer.envelope
 			};
-			const sid = this.channels[i].sid;
-			copy.channels[i].sid = {
-				enabled: sid.enabled,
-				pwm: sid.pwm ?? false,
-				period: sid.period,
-				periodLow: sid.periodLow ?? sid.period,
-				baseVolume: sid.baseVolume,
-				waveform: [...sid.waveform],
-				waveformLoop: sid.waveformLoop,
-				resetPhase: sid.resetPhase
-			};
-			const syncbuzzer = this.channels[i].syncbuzzer;
-			copy.channels[i].syncbuzzer = {
-				enabled: syncbuzzer.enabled,
-				period: syncbuzzer.period,
-				periodLow: syncbuzzer.periodLow ?? syncbuzzer.period,
-				pwm: syncbuzzer.pwm ?? false,
-				shape: syncbuzzer.shape,
-				waveform: [...(syncbuzzer.waveform ?? [syncbuzzer.shape & 0xf])],
-				waveformLoop: syncbuzzer.waveformLoop ?? 0,
-				resetPhase: syncbuzzer.resetPhase
+			const timerEffect = this.channels[i].timerEffect;
+			copy.channels[i].timerEffect = {
+				enabled: timerEffect.enabled,
+				kind: timerEffect.kind ?? TIMER_EFFECT_KIND_NONE,
+				pwmMode: timerEffect.pwmMode ?? 0,
+				period: timerEffect.period,
+				periodLow: timerEffect.periodLow ?? timerEffect.period,
+				baseVolume: timerEffect.baseVolume ?? 0,
+				baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
+				waveform: [...(timerEffect.waveform ?? [15, 0])],
+				waveformLoop: timerEffect.waveformLoop ?? 0,
+				resetPhase: timerEffect.resetPhase ?? false
 			};
 		}
 		copy.noise = this.noise;
