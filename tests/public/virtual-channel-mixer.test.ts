@@ -34,6 +34,14 @@ describe('VirtualChannelMixer', () => {
 			mixer.configure({ 0: 2, 1: 3, 2: 1 }, 3);
 			expect(mixer.getTotalVirtualChannelCount()).toBe(6);
 		});
+
+		it('should map virtual channel indices to hardware channel indices', () => {
+			mixer.configure({ 0: 2 }, 3);
+			expect(mixer.getHardwareChannelIndex(0)).toBe(0);
+			expect(mixer.getHardwareChannelIndex(1)).toBe(0);
+			expect(mixer.getHardwareChannelIndex(2)).toBe(1);
+			expect(mixer.getHardwareChannelIndex(3)).toBe(2);
+		});
 	});
 
 	describe('merge', () => {

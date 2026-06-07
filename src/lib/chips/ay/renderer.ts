@@ -169,6 +169,16 @@ export class AYChipRenderer implements ChipRenderer {
 		}
 	}
 
+	private resolveSampleAyumiChannel(
+		mixer: { hasVirtualChannels?: () => boolean; getHardwareChannelIndex?: (i: number) => number },
+		channelIndex: number
+	): number {
+		if (mixer?.hasVirtualChannels?.()) {
+			return mixer.getHardwareChannelIndex(channelIndex);
+		}
+		return channelIndex;
+	}
+
 	private applyAyExportLaneSetup(
 		state: any,
 		song: any,
@@ -341,7 +351,8 @@ export class AYChipRenderer implements ChipRenderer {
 				state,
 				registerState,
 				ayumiEngine,
-				SAMPLE_RATE
+				SAMPLE_RATE,
+				(channelIndex: number) => this.resolveSampleAyumiChannel(mixer, channelIndex)
 			);
 			ayumiEngine.process();
 			ayumiEngine.removeDC();
@@ -495,7 +506,8 @@ export class AYChipRenderer implements ChipRenderer {
 					ctx.state,
 					ctx.registerState,
 					ctx.ayumiEngine,
-					SAMPLE_RATE
+					SAMPLE_RATE,
+					(channelIndex: number) => this.resolveSampleAyumiChannel(ctx.mixer, channelIndex)
 				);
 				ctx.ayumiEngine.process();
 				ctx.ayumiEngine.removeDC();

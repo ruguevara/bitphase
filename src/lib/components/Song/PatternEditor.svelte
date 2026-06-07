@@ -387,6 +387,10 @@
 
 	function refreshAfterVirtualChannelChange(): void {
 		sendVirtualChannelConfigToProcessor();
+		const pattern = currentPattern ?? ensurePatternExists();
+		if (pattern) {
+			chipProcessor.sendInitPattern(pattern, currentPatternOrderIndex);
+		}
 		clearAllCaches();
 		updateSize();
 		setupCanvas();

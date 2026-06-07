@@ -258,11 +258,16 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	accumulateStereoOutput(sampleIndex, mix) {
 		if (this.audioDriver && this.ayumiEngine) {
+			const resolveAyumiChannelIndex =
+				this.virtualChannelMixer?.hasVirtualChannels?.()
+					? (channelIndex) => this.virtualChannelMixer.getHardwareChannelIndex(channelIndex)
+					: (channelIndex) => channelIndex;
 			this.audioDriver.updateSamplePlayback(
 				this.state,
 				this.registerState,
 				this.ayumiEngine,
-				sampleRate
+				sampleRate,
+				resolveAyumiChannelIndex
 			);
 		}
 		this.ayumiEngine.process();

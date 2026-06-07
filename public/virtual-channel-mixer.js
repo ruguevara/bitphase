@@ -37,6 +37,18 @@ class VirtualChannelMixer {
 		return total;
 	}
 
+	getHardwareChannelIndex(virtualChannelIndex) {
+		let offset = 0;
+		for (let hw = 0; hw < this.hwChannelCount; hw++) {
+			const count = this.virtualChannelMap[hw] ?? 1;
+			if (virtualChannelIndex < offset + count) {
+				return hw;
+			}
+			offset += count;
+		}
+		return Math.max(0, this.hwChannelCount - 1);
+	}
+
 	hasVirtualChannels() {
 		return Object.values(this.virtualChannelMap).some((count) => count > 1);
 	}

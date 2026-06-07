@@ -18,7 +18,6 @@ import {
 	createToneTimerEffect,
 	disableTimerEffect
 } from './ay-timer-effect-constants.js';
-
 class AYAudioDriver {
 	constructor(channelCount = 3) {
 		this.channelMixerState = [];
@@ -715,13 +714,22 @@ class AYAudioDriver {
 		}
 	}
 
-	updateSamplePlayback(state, registerState, ayumiEngine, outputSampleRate) {
+	updateSamplePlayback(
+		state,
+		registerState,
+		ayumiEngine,
+		outputSampleRate,
+		resolveAyumiChannelIndex = (channelIndex) => channelIndex
+	) {
 		if (!ayumiEngine || !outputSampleRate) {
 			return;
 		}
 
 		for (let channelIndex = 0; channelIndex < state.channelInstruments.length; channelIndex++) {
-			if (state.channelMuted[channelIndex] || !state.channelSoundEnabled[channelIndex]) {
+			if (state.channelMuted[channelIndex]) {
+				continue;
+			}
+			if (!state.channelSoundEnabled[channelIndex]) {
 				continue;
 			}
 
@@ -754,7 +762,11 @@ class AYAudioDriver {
 				continue;
 			}
 
-			ayumiEngine.applySampleSidVolume(channelIndex, playback.volume);
+			const ayumiChannelIndex = resolveAyumiChannelIndex(channelIndex);
+			if (ayumiChannelIndex < 0 || ayumiChannelIndex >= 3) {
+				continue;
+			}
+			ayumiEngine.applySampleSidVolume(ayumiChannelIndex, playback.volume);
 		}
 	}
 
