@@ -7,6 +7,15 @@ export const TIMER_PWM_MODE_OFF = 0;
 export const TIMER_PWM_MODE_BY_STEP_VALUE = 1;
 export const TIMER_PWM_MODE_BY_DUTY_INDEX = 2;
 
+export const TIMER_FM_OFFSET_SEMITONE = 0;
+export const TIMER_FM_OFFSET_PERIOD = 1;
+
+export function resolveTimerFmOffsetMode(mode) {
+	return mode === TIMER_FM_OFFSET_PERIOD || mode === 'period'
+		? TIMER_FM_OFFSET_PERIOD
+		: TIMER_FM_OFFSET_SEMITONE;
+}
+
 export function createDefaultTimerEffect() {
 	return {
 		enabled: false,
@@ -16,6 +25,7 @@ export function createDefaultTimerEffect() {
 		periodLow: 100,
 		baseVolume: 0,
 		baseTonePeriod: 1,
+		fmOffsetMode: TIMER_FM_OFFSET_SEMITONE,
 		waveform: [15, 0],
 		waveformLoop: 0,
 		resetPhase: false
@@ -45,6 +55,7 @@ export function createVolumeTimerEffect({
 		periodLow,
 		baseVolume,
 		baseTonePeriod: 1,
+		fmOffsetMode: TIMER_FM_OFFSET_SEMITONE,
 		waveform: [...waveform],
 		waveformLoop,
 		resetPhase
@@ -57,6 +68,7 @@ export function createToneTimerEffect({
 	period = 100,
 	periodLow = period,
 	baseTonePeriod = 1,
+	fmOffsetMode = TIMER_FM_OFFSET_SEMITONE,
 	waveform = [0, 7],
 	waveformLoop = 0,
 	resetPhase = false
@@ -69,6 +81,7 @@ export function createToneTimerEffect({
 		periodLow,
 		baseVolume: 0,
 		baseTonePeriod,
+		fmOffsetMode: resolveTimerFmOffsetMode(fmOffsetMode),
 		waveform: [...waveform],
 		waveformLoop,
 		resetPhase
@@ -92,6 +105,7 @@ export function createEnvelopeShapeTimerEffect({
 		periodLow,
 		baseVolume: 0,
 		baseTonePeriod: 1,
+		fmOffsetMode: TIMER_FM_OFFSET_SEMITONE,
 		waveform: [...waveform],
 		waveformLoop,
 		resetPhase

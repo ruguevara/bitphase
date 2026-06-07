@@ -9,6 +9,7 @@ import {
 	resolveExclusiveTimerEffects,
 	formatAyTimerWaveform,
 	formatAyFmWaveform,
+	clampFmPeriodOffset,
 	parseAyTimerWaveform,
 	parseAyFmWaveform,
 	parseAyTimerWaveformPartial,
@@ -127,7 +128,19 @@ describe('ay instrument timer fields', () => {
 
 	it('parses and formats fm semitone waveforms', () => {
 		expect(parseAyFmWaveform('0 1 0 -1', false)).toEqual([0, 1, 0, -1]);
+		expect(parseAyFmWaveform('-12 0', false)).toEqual([-12, 0]);
+		expect(parseAyFmWaveform('-0 0', false)).toBeNull();
 		expect(formatAyFmWaveform([0, 12, -12], false)).toBe('0 12 -12');
+	});
+
+	it('parses and formats fm period offset waveforms', () => {
+		expect(parseAyFmWaveform('0 16 -100', false, 'period')).toEqual([0, 16, -100]);
+		expect(formatAyFmWaveform([0, 16, -512], false, 'period')).toBe('0 16 -512');
+	});
+
+	it('clamps fm period offsets to hardware range', () => {
+		expect(clampFmPeriodOffset(-5000)).toBe(-4095);
+		expect(clampFmPeriodOffset(5000)).toBe(4095);
 	});
 
 	it('enables pwm settings for two-step sid, syncbuzzer, or fm waveforms', () => {

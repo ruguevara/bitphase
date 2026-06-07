@@ -1,8 +1,16 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import {
 	TIMER_EFFECT_KIND_NONE,
-	TIMER_EFFECT_KIND_TONE
+	TIMER_EFFECT_KIND_TONE,
+	TIMER_FM_OFFSET_PERIOD,
+	resolveTimerFmOffsetMode
 } from './ay-timer-effect-constants.js';
+import {
+	AY_FM_PERIOD_OFFSET_MAX,
+	AY_FM_PERIOD_OFFSET_MIN,
+	AY_FM_SEMITONE_MAX,
+	AY_FM_SEMITONE_MIN
+} from './ay-instrument-utils.js';
 
 class AyumiEngine {
 	constructor(wasmModule, ayumiPtr) {
@@ -40,11 +48,13 @@ class AyumiEngine {
 		const periodLow = timerEffect.periodLow > 0 ? timerEffect.periodLow : period;
 		const baseVolume = timerEffect.baseVolume & 0xf;
 		const baseTonePeriod = Math.max(1, timerEffect.baseTonePeriod & 0xfff);
+		const fmOffsetMode = resolveTimerFmOffsetMode(timerEffect.fmOffsetMode);
 		const wasEnabled = lastTimerEffect.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
 		const kindChanged = kind !== (lastTimerEffect.kind ?? TIMER_EFFECT_KIND_NONE);
 		const pwmModeChanged = pwmMode !== (lastTimerEffect.pwmMode ?? 0);
 		const lastBaseTonePeriod = lastTimerEffect.baseTonePeriod ?? 1;
+		const lastFmOffsetMode = resolveTimerFmOffsetMode(lastTimerEffect.fmOffsetMode);
 
 		if (
 			forceApply ||
@@ -54,7 +64,8 @@ class AyumiEngine {
 			period !== lastTimerEffect.period ||
 			periodLow !== lastTimerEffect.periodLow ||
 			baseVolume !== lastTimerEffect.baseVolume ||
-			baseTonePeriod !== lastBaseTonePeriod
+			baseTonePeriod !== lastBaseTonePeriod ||
+			fmOffsetMode !== lastFmOffsetMode
 		) {
 			this.wasmModule.ayumi_set_timer_effect(
 				this.ayumiPtr,
@@ -65,7 +76,8 @@ class AyumiEngine {
 				period,
 				periodLow,
 				baseVolume,
-				baseTonePeriod
+				baseTonePeriod,
+				fmOffsetMode
 			);
 			lastTimerEffect.enabled = timerEffect.enabled;
 			lastTimerEffect.kind = kind;
@@ -74,6 +86,7 @@ class AyumiEngine {
 			lastTimerEffect.periodLow = periodLow;
 			lastTimerEffect.baseVolume = baseVolume;
 			lastTimerEffect.baseTonePeriod = baseTonePeriod;
+			lastTimerEffect.fmOffsetMode = fmOffsetMode;
 		}
 
 		const waveform = timerEffect.waveform ?? [15, 0];
@@ -87,7 +100,12 @@ class AyumiEngine {
 		if (
 			timerEffect.enabled &&
 			waveform.length > 0 &&
-			(forceApply || waveformChanged || enableChanged || kindChanged || pwmModeChanged)
+			(forceApply ||
+				waveformChanged ||
+				enableChanged ||
+				kindChanged ||
+				pwmModeChanged ||
+				fmOffsetMode !== lastFmOffsetMode)
 		) {
 			const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, waveform.length);
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
@@ -95,7 +113,10 @@ class AyumiEngine {
 			for (let i = 0; i < waveform.length; i++) {
 				const raw = waveform[i] | 0;
 				if (kind === TIMER_EFFECT_KIND_TONE) {
-					memory[offset + i] = Math.max(-127, Math.min(128, raw));
+					memory[offset + i] =
+						fmOffsetMode === TIMER_FM_OFFSET_PERIOD
+							? Math.max(AY_FM_PERIOD_OFFSET_MIN, Math.min(AY_FM_PERIOD_OFFSET_MAX, raw))
+							: Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, raw));
 				} else {
 					memory[offset + i] = raw & 0xf;
 				}

@@ -326,6 +326,24 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.waveformEditorRowIndex).toBeNull();
 	});
 
+	it('switches fm offset mode and keeps custom waveform values', () => {
+		let current = createInstrument([{ fm: true, timerWaveform: [0, 8, -4] }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.rowFmOffsetMode(0)).toBe('semitone');
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 8 -4');
+		controller.updateFmOffsetMode(0, 'period');
+		expect(controller.rowFmOffsetMode(0)).toBe('period');
+		expect(controller.rowTimerWaveform(0)).toEqual([0, 8, -4]);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 8 -4');
+	});
+
 	it('resets waveform to syncbuzzer default when switching from fm', () => {
 		let current = createInstrument([{ fm: true, timerWaveform: [15, 7] }]);
 		const controller = new AyTimerEffectsController(

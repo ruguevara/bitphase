@@ -123,6 +123,7 @@ export class HistoryClone {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -144,6 +145,7 @@ export class HistoryClone {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;

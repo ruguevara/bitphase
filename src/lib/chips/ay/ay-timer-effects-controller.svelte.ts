@@ -4,8 +4,15 @@ import {
 	DEFAULT_AY_TIMER_WAVEFORM,
 	DEFAULT_AY_SYNCBUZZER_WAVEFORM,
 	DEFAULT_AY_FM_WAVEFORM,
+	DEFAULT_AY_FM_PERIOD_WAVEFORM,
+	defaultAyFmWaveform,
+	clampFmWaveformValue,
+	clampFmPeriodOffset,
+	clampFmSemitone,
+	isIncompleteSignedNumericToken,
 	effectiveRowDetune,
 	effectiveRowFmWaveform,
+	resolveAyFmOffsetMode,
 	effectiveRowPeriod,
 	effectiveInstrumentTimerPwmDuty,
 	effectiveInstrumentTimerPwmSweep,
@@ -29,6 +36,7 @@ import {
 	clampTimerPwmSweepMin,
 	AY_TIMER_WAVEFORM_MIN_LENGTH,
 	AY_TIMER_WAVEFORM_MAX_LENGTH,
+	type AyFmOffsetMode,
 	type AyInstrumentFields,
 	type AyTimerRow
 } from './instrument';
@@ -280,20 +288,55 @@ export class AyTimerEffectsController {
 				sid: fm ? false : row.sid,
 				syncbuzzer: fm ? false : row.syncbuzzer
 			});
-			if (!fm) {
-				return resolved;
-			}
 			if (
 				wasOtherMode ||
 				isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved))
 			) {
 				return {
 					...resolved,
-					timerWaveform: [...DEFAULT_AY_FM_WAVEFORM]
+					timerWaveform: defaultAyFmWaveform(resolveAyFmOffsetMode(resolved))
 				};
 			}
 			return resolved;
 		});
+	}
+
+	updateFmOffsetMode(index: number, mode: AyFmOffsetMode): void {
+		this.mapTimerRow(index, (row) => {
+			if (!row.fm) {
+				return { ...row, fmOffsetMode: mode };
+			}
+			const currentMode = resolveAyFmOffsetMode(row);
+			if (currentMode === mode) {
+				return row;
+			}
+			const currentWaveform = effectiveRowFmWaveform({ ...row, fmOffsetMode: currentMode });
+			const usesDefaultWaveform =
+				currentMode === 'semitone'
+					? currentWaveform.every(
+							(value, stepIndex) =>
+								clampFmSemitone(value) === clampFmSemitone(DEFAULT_AY_FM_WAVEFORM[stepIndex] ?? 0)
+						) && currentWaveform.length === DEFAULT_AY_FM_WAVEFORM.length
+					: currentWaveform.every(
+							(value, stepIndex) =>
+								clampFmPeriodOffset(value) ===
+								clampFmPeriodOffset(DEFAULT_AY_FM_PERIOD_WAVEFORM[stepIndex] ?? 0)
+						) && currentWaveform.length === DEFAULT_AY_FM_PERIOD_WAVEFORM.length;
+			return {
+				...row,
+				fmOffsetMode: mode,
+				timerWaveform: usesDefaultWaveform
+					? defaultAyFmWaveform(mode)
+					: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+			};
+		});
+	}
+
+	toggleFmOffsetMode(index: number): void {
+		const row = this.fields.timerRows[index];
+		if (!row?.fm) return;
+		const nextMode = resolveAyFmOffsetMode(row) === 'period' ? 'semitone' : 'period';
+		this.updateFmOffsetMode(index, nextMode);
 	}
 
 	beginDragSid(index: number): void {
@@ -376,7 +419,11 @@ export class AyTimerEffectsController {
 	formatRowTimerWaveform(rowIndex: number): string {
 		const row = this.fields.timerRows[rowIndex];
 		if (row?.fm) {
-			return formatAyFmWaveform(this.rowTimerWaveform(rowIndex), this.getAsHex());
+			return formatAyFmWaveform(
+				this.rowTimerWaveform(rowIndex),
+				this.getAsHex(),
+				resolveAyFmOffsetMode(row)
+			);
 		}
 		return formatAyTimerWaveform(this.rowTimerWaveform(rowIndex), this.getAsHex());
 	}
@@ -387,11 +434,9 @@ export class AyTimerEffectsController {
 		}
 		const row = this.fields.timerRows[rowIndex];
 		const nextWaveform = row?.fm
-			? values.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH).map((value) => {
-					if (value < -127) return -127;
-					if (value > 128) return 128;
-					return value | 0;
-				})
+			? values
+					.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+					.map((value) => clampFmWaveformValue(value, resolveAyFmOffsetMode(row)))
 			: values
 					.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
 					.map((value) => Math.max(0, Math.min(15, value | 0)));
@@ -402,7 +447,7 @@ export class AyTimerEffectsController {
 		if (stepIndex < 0) return;
 		const row = this.fields.timerRows[rowIndex];
 		const clamped = row?.fm
-			? Math.max(-127, Math.min(128, step | 0))
+			? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
 			: Math.max(0, Math.min(15, step | 0));
 		const nextWaveform = [...this.rowTimerWaveform(rowIndex)];
 		while (nextWaveform.length <= stepIndex && nextWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH) {
@@ -417,7 +462,7 @@ export class AyTimerEffectsController {
 	parseTimerWaveform(text: string, rowIndex?: number): number[] | null {
 		const row = rowIndex !== undefined ? this.fields.timerRows[rowIndex] : undefined;
 		if (row?.fm) {
-			return parseAyFmWaveform(text, this.getAsHex());
+			return parseAyFmWaveform(text, this.getAsHex(), resolveAyFmOffsetMode(row));
 		}
 		return parseAyTimerWaveform(text, this.getAsHex());
 	}
@@ -425,7 +470,7 @@ export class AyTimerEffectsController {
 	parseTimerWaveformPartial(text: string, rowIndex?: number): number[] | null {
 		const row = rowIndex !== undefined ? this.fields.timerRows[rowIndex] : undefined;
 		if (row?.fm) {
-			return parseAyFmWaveformPartial(text, this.getAsHex());
+			return parseAyFmWaveformPartial(text, this.getAsHex(), resolveAyFmOffsetMode(row));
 		}
 		return parseAyTimerWaveformPartial(text, this.getAsHex());
 	}
@@ -435,8 +480,11 @@ export class AyTimerEffectsController {
 		if (current.length >= AY_TIMER_WAVEFORM_MAX_LENGTH) {
 			return false;
 		}
-		const clamped = Math.max(0, Math.min(15, step | 0));
-		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: [...current, clamped] }));
+		const row = this.fields.timerRows[rowIndex];
+		const clamped = row?.fm
+			? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
+			: Math.max(0, Math.min(15, step | 0));
+		this.mapTimerRow(rowIndex, (currentRow) => ({ ...currentRow, timerWaveform: [...current, clamped] }));
 		return true;
 	}
 
@@ -485,8 +533,16 @@ export class AyTimerEffectsController {
 		return this.rowSyncbuzzerEnabled(index);
 	}
 
+	rowFmOffsetMode(index: number): AyFmOffsetMode {
+		return resolveAyFmOffsetMode(this.fields.timerRows[index]);
+	}
+
 	rowTimerWaveformUsesFmSemitones(index: number): boolean {
-		return this.rowFmEnabled(index);
+		return this.rowFmEnabled(index) && this.rowFmOffsetMode(index) === 'semitone';
+	}
+
+	rowTimerWaveformUsesFmPeriodOffsets(index: number): boolean {
+		return this.rowFmEnabled(index) && this.rowFmOffsetMode(index) === 'period';
 	}
 
 	private parseNum(text: string): number | null {
@@ -501,12 +557,18 @@ export class AyTimerEffectsController {
 
 	private parseSignedNum(text: string): number | null {
 		const trimmed = text.trim();
+		if (isIncompleteSignedNumericToken(trimmed)) {
+			return null;
+		}
 		if (this.getAsHex()) {
 			let sign = 1;
 			let temp = trimmed;
 			if (temp.startsWith('-')) {
 				sign = -1;
 				temp = temp.substring(1);
+			}
+			if (temp.length === 0 || (sign < 0 && /^0+$/.test(temp))) {
+				return null;
 			}
 			if (!/^[0-9a-fA-F]+$/.test(temp)) return null;
 			return sign * parseInt(temp, 16);

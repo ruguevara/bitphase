@@ -20,8 +20,11 @@ const SHARED_CONSTANTS = [
 	'DEFAULT_AY_TIMER_WAVEFORM',
 	'DEFAULT_AY_SYNCBUZZER_WAVEFORM',
 	'DEFAULT_AY_FM_WAVEFORM',
+	'DEFAULT_AY_FM_PERIOD_WAVEFORM',
 	'AY_FM_SEMITONE_MIN',
 	'AY_FM_SEMITONE_MAX',
+	'AY_FM_PERIOD_OFFSET_MIN',
+	'AY_FM_PERIOD_OFFSET_MAX',
 	'AY_TIMER_PWM_DUTY_MIN',
 	'AY_TIMER_PWM_DUTY_MAX',
 	'DEFAULT_AY_TIMER_PWM_DUTY',
@@ -43,7 +46,9 @@ const ROW_CASES: Array<Record<string, unknown> | undefined> = [
 	{ sid: true, timerWaveform: [14, 0] },
 	{ sid: true, timerWaveform: [15, 0, 0] },
 	{ fm: true, timerWaveform: [0, 12] },
-	{ fm: true, timerWaveform: [0, 1, 0, -1] }
+	{ fm: true, timerWaveform: [0, 1, 0, -1] },
+	{ fm: true, fmOffsetMode: 'period', timerWaveform: [0, 16] },
+	{ fm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] }
 ];
 
 const FIELD_CASES = [

@@ -157,7 +157,8 @@ describe('AyumiEngine', () => {
 				503,
 				503,
 				15,
-				1
+				1,
+				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
@@ -194,7 +195,8 @@ describe('AyumiEngine', () => {
 				40,
 				60,
 				0,
-				1
+				1,
+				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,

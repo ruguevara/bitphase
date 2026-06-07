@@ -27,7 +27,7 @@
 </th>
 <th
 	class={isExpanded ? 'w-8 min-w-8 px-1' : 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-	title="FM (rapid tone offset switching by semitone). Mutually exclusive with SID and syncbuzzer.">
+	title="FM (rapid tone offset switching). Mutually exclusive with SID and syncbuzzer.">
 	<div class="flex items-center justify-center font-semibold">FM</div>
 </th>
 <th
@@ -48,7 +48,7 @@
 </th>
 <th
 	class="timer-steps-column {isExpanded ? 'min-w-32 px-1.5' : 'min-w-24 px-0.5 text-[0.65rem]'}"
-	title="SID steps, envelope shapes (0–15), or FM semitone offsets depending on row mode.">
+	title="SID steps, envelope shapes (0–15), or FM semitone/fine-tune offsets depending on row mode.">
 	<div class="flex items-center justify-center gap-0.5">
 		<IconCarbonWaveform class={iconSizeClass} />
 		<span>Steps</span>

@@ -15,7 +15,7 @@ import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 23448;
+const AYUMI_STRUCT_SIZE = 23472;
 const AYUMI_STRUCT_LEFT_OFFSET = AYUMI_STRUCT_SIZE - 40;
 const AYUMI_STRUCT_RIGHT_OFFSET = AYUMI_STRUCT_SIZE - 32;
 const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = AYUMI_STRUCT_SIZE - 24;
@@ -174,7 +174,7 @@ export class AYChipRenderer implements ChipRenderer {
 		channelIndex: number
 	): number {
 		if (mixer?.hasVirtualChannels?.()) {
-			return mixer.getHardwareChannelIndex(channelIndex);
+			return mixer.getHardwareChannelIndex?.(channelIndex) ?? channelIndex;
 		}
 		return channelIndex;
 	}

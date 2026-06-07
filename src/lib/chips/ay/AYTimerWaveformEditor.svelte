@@ -15,6 +15,8 @@
 	import {
 		AY_TIMER_WAVEFORM_MAX_LENGTH,
 		AY_TIMER_WAVEFORM_MIN_LENGTH,
+		AY_FM_PERIOD_OFFSET_MAX,
+		clampFmPeriodOffset,
 		clampFmSemitone
 	} from './instrument';
 
@@ -62,31 +64,44 @@
 	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
 	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(rowIndex));
 	const usesFmSemitones = $derived(controller.rowTimerWaveformUsesFmSemitones(rowIndex));
+	const usesFmPeriodOffsets = $derived(controller.rowTimerWaveformUsesFmPeriodOffsets(rowIndex));
 	const editorTitle = $derived(
-		`${usesFmSemitones ? 'FM semitones' : usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
+		`${usesFmPeriodOffsets ? 'FM period offsets' : usesFmSemitones ? 'FM semitones' : usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
 	);
 	const editorSubtitle = $derived(
-		usesFmSemitones
-			? 'Signed semitone offsets'
-			: usesEnvelopeShapes
-				? 'R13 values (0–15)'
-				: `${chipVariant} DAC curve`
+		usesFmPeriodOffsets
+			? 'Raw tone period offsets added to base period'
+			: usesFmSemitones
+				? 'Signed semitone offsets'
+				: usesEnvelopeShapes
+					? 'R13 values (0–15)'
+					: `${chipVariant} DAC curve`
 	);
 	const stepCountLabel = $derived(
-		`${waveform.length} ${usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
+		`${waveform.length} ${usesFmPeriodOffsets || usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
 	);
 	const editorAriaLabel = $derived(
-		usesFmSemitones
-			? 'FM semitone editor'
-			: usesEnvelopeShapes
-				? 'Envelope shapes editor'
-				: 'SID steps editor'
+		usesFmPeriodOffsets
+			? 'FM period offset editor'
+			: usesFmSemitones
+				? 'FM semitone editor'
+				: usesEnvelopeShapes
+					? 'Envelope shapes editor'
+					: 'SID steps editor'
 	);
 	const stepSingularLabel = $derived(
-		usesFmSemitones ? 'FM step' : usesEnvelopeShapes ? 'envelope shape' : 'SID step'
+		usesFmPeriodOffsets || usesFmSemitones
+			? 'FM step'
+			: usesEnvelopeShapes
+				? 'envelope shape'
+				: 'SID step'
 	);
 	const stepsPluralLabel = $derived(
-		usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'
+		usesFmPeriodOffsets || usesFmSemitones
+			? 'FM steps'
+			: usesEnvelopeShapes
+				? 'envelope shapes'
+				: 'SID steps'
 	);
 
 	const waveformGraphic = $derived.by(() => {
@@ -99,6 +114,16 @@
 
 		const bars = waveform.map((value, index) => {
 			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
+			if (usesFmPeriodOffsets) {
+				const offset = clampFmPeriodOffset(value);
+				const normalized = (offset + AY_FM_PERIOD_OFFSET_MAX) / (AY_FM_PERIOD_OFFSET_MAX * 2);
+				return {
+					index,
+					value: offset,
+					centerX,
+					centerY: baseY - innerHeight * Math.max(0, Math.min(1, normalized))
+				};
+			}
 			if (usesFmSemitones) {
 				const semitone = clampFmSemitone(value);
 				const normalized = (semitone + 12) / 24;
@@ -255,13 +280,17 @@
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const y = point.y - PLOT_PADDING;
 		const normalized = Math.max(0, Math.min(1, 1 - y / innerHeight));
-		const step = usesFmSemitones
-			? clampFmSemitone(Math.round(normalized * 24 - 12))
-			: amplitudeToNearestSidStep(
-					normalized,
-					SID_WAVEFORM_PREVIEW_BASE_VOLUME,
-					chipVariant
-				);
+		const step = usesFmPeriodOffsets
+			? clampFmPeriodOffset(
+					Math.round(normalized * AY_FM_PERIOD_OFFSET_MAX * 2 - AY_FM_PERIOD_OFFSET_MAX)
+				)
+			: usesFmSemitones
+				? clampFmSemitone(Math.round(normalized * 24 - 12))
+				: amplitudeToNearestSidStep(
+						normalized,
+						SID_WAVEFORM_PREVIEW_BASE_VOLUME,
+						chipVariant
+					);
 		controller.setRowWaveformStep(rowIndex, index, step);
 	}
 
@@ -317,7 +346,9 @@
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<div
 			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title={usesFmSemitones
+			title={usesFmPeriodOffsets
+				? 'FM period offsets added to base tone period. Y axis spans -4095 to +4095.'
+				: usesFmSemitones
 				? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
 				: usesEnvelopeShapes
 					? 'Envelope shapes (0–15 hex R13 values)'

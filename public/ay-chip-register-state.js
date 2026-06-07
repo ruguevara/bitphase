@@ -71,6 +71,7 @@ class AYChipRegisterState {
 				periodLow: timerEffect.periodLow ?? timerEffect.period,
 				baseVolume: timerEffect.baseVolume ?? 0,
 				baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
+				fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
 				waveform: [...(timerEffect.waveform ?? [15, 0])],
 				waveformLoop: timerEffect.waveformLoop ?? 0,
 				resetPhase: timerEffect.resetPhase ?? false

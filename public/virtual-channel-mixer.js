@@ -111,6 +111,7 @@ class VirtualChannelMixer {
 			dst.timerEffect.periodLow = src.timerEffect.periodLow ?? src.timerEffect.period;
 			dst.timerEffect.baseVolume = src.timerEffect.baseVolume ?? 0;
 			dst.timerEffect.baseTonePeriod = src.timerEffect.baseTonePeriod ?? 1;
+			dst.timerEffect.fmOffsetMode = src.timerEffect.fmOffsetMode ?? 0;
 			dst.timerEffect.waveform = [...(src.timerEffect.waveform ?? [15, 0])];
 			dst.timerEffect.waveformLoop = src.timerEffect.waveformLoop ?? 0;
 			dst.timerEffect.resetPhase = src.timerEffect.resetPhase ?? false;

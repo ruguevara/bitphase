@@ -3,11 +3,13 @@ import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-deco
 import { normalizeSamplePlaybackBounds } from './sample-region';
 
 export type AySidPeriodMode = 'auto' | 'manual';
+export type AyFmOffsetMode = 'semitone' | 'period';
 
 export type AyTimerRow = {
 	sid: boolean;
 	syncbuzzer?: boolean;
 	fm?: boolean;
+	fmOffsetMode?: AyFmOffsetMode;
 	sidPeriodMode?: AySidPeriodMode;
 	detune?: number;
 	period?: number;
@@ -39,8 +41,11 @@ export const DEFAULT_AY_SID_PERIOD_SEMITONE_DETUNE = 0;
 export const DEFAULT_AY_TIMER_WAVEFORM = [15, 0];
 export const DEFAULT_AY_SYNCBUZZER_WAVEFORM = [8];
 export const DEFAULT_AY_FM_WAVEFORM = [0, 7];
+export const DEFAULT_AY_FM_PERIOD_WAVEFORM = [0, 16, 0, -16];
 export const AY_FM_SEMITONE_MIN = -127;
 export const AY_FM_SEMITONE_MAX = 128;
+export const AY_FM_PERIOD_OFFSET_MIN = -4095;
+export const AY_FM_PERIOD_OFFSET_MAX = 4095;
 export const AY_TIMER_PWM_DUTY_MIN = 0;
 export const AY_TIMER_PWM_DUTY_MAX = 50;
 export const AY_TIMER_PWM_PERCENT_MAX_DIGITS = 2;
@@ -97,13 +102,32 @@ export function createDefaultAyTimerRow(): AyTimerRow {
 	};
 }
 
+export function resolveAyFmOffsetMode(row: AyTimerRow | undefined): AyFmOffsetMode {
+	return row?.fmOffsetMode === 'period' ? 'period' : 'semitone';
+}
+
+export function defaultAyFmWaveform(mode: AyFmOffsetMode): number[] {
+	return mode === 'period' ? [...DEFAULT_AY_FM_PERIOD_WAVEFORM] : [...DEFAULT_AY_FM_WAVEFORM];
+}
+
 export function clampFmSemitone(value: number): number {
 	return Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, value | 0));
 }
 
-export function normalizeFmWaveform(waveform: readonly number[]): number[] {
+export function clampFmPeriodOffset(value: number): number {
+	return Math.max(AY_FM_PERIOD_OFFSET_MIN, Math.min(AY_FM_PERIOD_OFFSET_MAX, value | 0));
+}
+
+export function clampFmWaveformValue(value: number, mode: AyFmOffsetMode): number {
+	return mode === 'period' ? clampFmPeriodOffset(value) : clampFmSemitone(value);
+}
+
+export function normalizeFmWaveform(
+	waveform: readonly number[],
+	mode: AyFmOffsetMode = 'semitone'
+): number[] {
 	return waveform
-		.map((value) => clampFmSemitone(value))
+		.map((value) => clampFmWaveformValue(value, mode))
 		.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH);
 }
 
@@ -111,11 +135,12 @@ export function effectiveRowFmWaveform(row: AyTimerRow | undefined): number[] {
 	if (!row?.fm) {
 		return [...DEFAULT_AY_FM_WAVEFORM];
 	}
+	const mode = resolveAyFmOffsetMode(row);
 	const waveform = row.timerWaveform;
 	if (waveform && waveform.length > 0) {
-		return normalizeFmWaveform(waveform);
+		return normalizeFmWaveform(waveform, mode);
 	}
-	return [...DEFAULT_AY_FM_WAVEFORM];
+	return defaultAyFmWaveform(mode);
 }
 
 export function isDefaultFmTimerWaveform(waveform: readonly number[]): boolean {
@@ -411,20 +436,22 @@ export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
 function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
 	const defaults = createDefaultAyTimerRow();
 	const fm = row?.fm ?? defaults.fm ?? false;
+	const fmOffsetMode = resolveAyFmOffsetMode(row);
 	const normalized: AyTimerRow = {
 		sid: row?.sid ?? defaults.sid,
 		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
 		fm,
+		fmOffsetMode,
 		sidPeriodMode:
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
 		timerWaveform: row?.timerWaveform?.length
 			? fm
-				? normalizeFmWaveform(row.timerWaveform)
+				? normalizeFmWaveform(row.timerWaveform, fmOffsetMode)
 				: row.timerWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
 			: fm
-				? [...DEFAULT_AY_FM_WAVEFORM]
+				? defaultAyFmWaveform(fmOffsetMode)
 				: [...defaults.timerWaveform!],
 		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop!
 	};
@@ -436,6 +463,9 @@ function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
 	}
 	if (row?.period !== undefined) {
 		normalized.period = Math.max(1, row.period & 0xffff);
+	}
+	if (fmOffsetMode === 'period') {
+		normalized.fmOffsetMode = 'period';
 	}
 	return resolveExclusiveTimerEffects(normalized);
 }
@@ -487,10 +517,14 @@ export function formatAyTimerWaveform(waveform: readonly number[], asHex: boolea
 		.join(' ');
 }
 
-export function formatAyFmWaveform(waveform: readonly number[], asHex: boolean): string {
+export function formatAyFmWaveform(
+	waveform: readonly number[],
+	asHex: boolean,
+	mode: AyFmOffsetMode = 'semitone'
+): string {
 	return waveform
 		.map((value) => {
-			const clamped = clampFmSemitone(value);
+			const clamped = clampFmWaveformValue(value, mode);
 			if (asHex) {
 				const sign = clamped < 0 ? '-' : '';
 				return sign + Math.abs(clamped).toString(16).toUpperCase();
@@ -500,13 +534,23 @@ export function formatAyFmWaveform(waveform: readonly number[], asHex: boolean):
 		.join(' ');
 }
 
+export function isIncompleteSignedNumericToken(part: string): boolean {
+	return part === '-' || part === '+' || /^-0+$/.test(part);
+}
+
 function parseFmWaveformToken(part: string, asHex: boolean): number | null {
+	if (isIncompleteSignedNumericToken(part)) {
+		return null;
+	}
 	if (asHex) {
 		let sign = 1;
 		let temp = part;
 		if (temp.startsWith('-')) {
 			sign = -1;
 			temp = temp.substring(1);
+		}
+		if (temp.length === 0 || (sign < 0 && /^0+$/.test(temp))) {
+			return null;
 		}
 		if (!/^[0-9a-fA-F]+$/.test(temp)) {
 			return null;
@@ -519,15 +563,21 @@ function parseFmWaveformToken(part: string, asHex: boolean): number | null {
 	return parseInt(part, 10);
 }
 
-export function parseAyFmWaveformPartial(text: string, asHex: boolean): number[] | null {
+export function parseAyFmWaveformPartial(
+	text: string,
+	asHex: boolean,
+	mode: AyFmOffsetMode = 'semitone'
+): number[] | null {
 	if (!text.trim()) {
 		return null;
 	}
+	const min = mode === 'period' ? AY_FM_PERIOD_OFFSET_MIN : AY_FM_SEMITONE_MIN;
+	const max = mode === 'period' ? AY_FM_PERIOD_OFFSET_MAX : AY_FM_SEMITONE_MAX;
 	const parts = text.trimEnd().split(/\s+/).filter((part) => part.length > 0);
 	const values: number[] = [];
 	for (const part of parts) {
 		const parsed = parseFmWaveformToken(part, asHex);
-		if (parsed === null || parsed < AY_FM_SEMITONE_MIN || parsed > AY_FM_SEMITONE_MAX) {
+		if (parsed === null || parsed < min || parsed > max) {
 			break;
 		}
 		values.push(parsed);
@@ -538,8 +588,12 @@ export function parseAyFmWaveformPartial(text: string, asHex: boolean): number[]
 	return values.length > 0 ? values : null;
 }
 
-export function parseAyFmWaveform(text: string, asHex: boolean): number[] | null {
-	const values = parseAyFmWaveformPartial(text, asHex);
+export function parseAyFmWaveform(
+	text: string,
+	asHex: boolean,
+	mode: AyFmOffsetMode = 'semitone'
+): number[] | null {
+	const values = parseAyFmWaveformPartial(text, asHex, mode);
 	if (!values) {
 		return null;
 	}
