@@ -176,11 +176,9 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 			noise: false,
 			envelope: false
 		};
-		if (registerState.channels[channelIndex].sid) {
-			registerState.channels[channelIndex].sid.enabled = false;
-		}
-		if (registerState.channels[channelIndex].syncbuzzer) {
-			registerState.channels[channelIndex].syncbuzzer.enabled = false;
+		const timerEffect = registerState.channels[channelIndex].timerEffect;
+		if (timerEffect) {
+			timerEffect.enabled = false;
 		}
 	}
 

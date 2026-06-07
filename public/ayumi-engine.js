@@ -1,220 +1,106 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
+import { TIMER_EFFECT_KIND_NONE } from './ay-timer-effect-constants.js';
 
 class AyumiEngine {
 	constructor(wasmModule, ayumiPtr) {
 		this.wasmModule = wasmModule;
 		this.ayumiPtr = ayumiPtr;
 		this.lastState = new AYChipRegisterState();
-		this.sidWaveformPtrs = [0, 0, 0];
-		this.sidWaveformLengths = [0, 0, 0];
-		this.syncbuzzerWaveformPtrs = [0, 0, 0];
-		this.syncbuzzerWaveformLengths = [0, 0, 0];
+		this.timerEffectWaveformPtrs = [0, 0, 0];
+		this.timerEffectWaveformLengths = [0, 0, 0];
 		this.forceFullApply = false;
 		this.lastSampleSidVolumes = [-1, -1, -1];
 	}
 
-	_ensureSidWaveformBuffer(channelIndex, length) {
+	_ensureTimerEffectWaveformBuffer(channelIndex, length) {
 		const needed = Math.max(length, 1) * 4;
-		if (this.sidWaveformPtrs[channelIndex] && this.sidWaveformLengths[channelIndex] >= length) {
-			return this.sidWaveformPtrs[channelIndex];
+		if (
+			this.timerEffectWaveformPtrs[channelIndex] &&
+			this.timerEffectWaveformLengths[channelIndex] >= length
+		) {
+			return this.timerEffectWaveformPtrs[channelIndex];
 		}
-		if (this.sidWaveformPtrs[channelIndex]) {
-			this.wasmModule.free(this.sidWaveformPtrs[channelIndex]);
+		if (this.timerEffectWaveformPtrs[channelIndex]) {
+			this.wasmModule.free(this.timerEffectWaveformPtrs[channelIndex]);
 		}
 		const ptr = this.wasmModule.malloc(needed);
-		this.sidWaveformPtrs[channelIndex] = ptr;
-		this.sidWaveformLengths[channelIndex] = length;
+		this.timerEffectWaveformPtrs[channelIndex] = ptr;
+		this.timerEffectWaveformLengths[channelIndex] = length;
 		return ptr;
 	}
 
-	_applySid(channelIndex, sid, lastSid, forceApply = false) {
-		const enabled = sid.enabled ? 1 : 0;
-		const period = sid.period > 0 ? sid.period : 1;
-		const periodLow = sid.periodLow > 0 ? sid.periodLow : period;
-		const pwm = sid.pwm ? 1 : 0;
-		const baseVolume = sid.baseVolume & 0xf;
-		const wasEnabled = lastSid.enabled ? 1 : 0;
-		const wasPwm = lastSid.pwm ? 1 : 0;
+	_applyTimerEffect(channelIndex, timerEffect, lastTimerEffect, forceApply = false) {
+		const enabled = timerEffect.enabled ? 1 : 0;
+		const kind = timerEffect.kind ?? TIMER_EFFECT_KIND_NONE;
+		const pwmMode = timerEffect.pwmMode ?? 0;
+		const period = timerEffect.period > 0 ? timerEffect.period : 1;
+		const periodLow = timerEffect.periodLow > 0 ? timerEffect.periodLow : period;
+		const baseVolume = timerEffect.baseVolume & 0xf;
+		const wasEnabled = lastTimerEffect.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
-		const modeChanged = pwm !== wasPwm;
-
-		if (pwm) {
-			if (
-				forceApply ||
-				enableChanged ||
-				modeChanged ||
-				period !== lastSid.period ||
-				periodLow !== lastSid.periodLow ||
-				baseVolume !== lastSid.baseVolume
-			) {
-				this.wasmModule.ayumi_set_sid_pwm(
-					this.ayumiPtr,
-					channelIndex,
-					enabled,
-					period,
-					periodLow,
-					baseVolume
-				);
-				lastSid.enabled = sid.enabled;
-				lastSid.pwm = sid.pwm;
-				lastSid.period = period;
-				lastSid.periodLow = periodLow;
-				lastSid.baseVolume = baseVolume;
-			}
-		} else if (
-			forceApply ||
-			enableChanged ||
-			modeChanged ||
-			period !== lastSid.period ||
-			baseVolume !== lastSid.baseVolume
-		) {
-			this.wasmModule.ayumi_set_sid(this.ayumiPtr, channelIndex, enabled, period, baseVolume);
-			lastSid.enabled = sid.enabled;
-			lastSid.pwm = false;
-			lastSid.period = period;
-			lastSid.periodLow = period;
-			lastSid.baseVolume = baseVolume;
-		}
-
-		const waveform = sid.waveform ?? [15, 0];
-		const waveformLoop = sid.waveformLoop ?? 0;
-		const lastWaveform = lastSid.waveform ?? [15, 0];
-		const waveformChanged =
-			waveform.length !== lastWaveform.length ||
-			waveformLoop !== (lastSid.waveformLoop ?? 0) ||
-			waveform.some((value, index) => value !== lastWaveform[index]);
+		const kindChanged = kind !== (lastTimerEffect.kind ?? TIMER_EFFECT_KIND_NONE);
+		const pwmModeChanged = pwmMode !== (lastTimerEffect.pwmMode ?? 0);
 
 		if (
-			sid.enabled &&
-			waveform.length > 0 &&
-			(forceApply || waveformChanged || enableChanged || modeChanged)
-		) {
-			const ptr = this._ensureSidWaveformBuffer(channelIndex, waveform.length);
-			const memory = new Int32Array(this.wasmModule.memory.buffer);
-			const offset = ptr >> 2;
-			for (let i = 0; i < waveform.length; i++) {
-				memory[offset + i] = waveform[i] & 0xf;
-			}
-			this.wasmModule.ayumi_set_sid_waveform(
-				this.ayumiPtr,
-				channelIndex,
-				ptr,
-				waveform.length,
-				waveformLoop
-			);
-			lastSid.waveform = [...waveform];
-			lastSid.waveformLoop = waveformLoop;
-		}
-
-		if (sid.resetPhase) {
-			this.wasmModule.ayumi_sid_reset(this.ayumiPtr, channelIndex);
-			sid.resetPhase = false;
-		}
-	}
-
-	_ensureSyncbuzzerWaveformBuffer(channelIndex, length) {
-		const needed = Math.max(length, 1) * 4;
-		if (
-			this.syncbuzzerWaveformPtrs[channelIndex] &&
-			this.syncbuzzerWaveformLengths[channelIndex] >= length
-		) {
-			return this.syncbuzzerWaveformPtrs[channelIndex];
-		}
-		if (this.syncbuzzerWaveformPtrs[channelIndex]) {
-			this.wasmModule.free(this.syncbuzzerWaveformPtrs[channelIndex]);
-		}
-		const ptr = this.wasmModule.malloc(needed);
-		this.syncbuzzerWaveformPtrs[channelIndex] = ptr;
-		this.syncbuzzerWaveformLengths[channelIndex] = length;
-		return ptr;
-	}
-
-	_applySyncbuzzer(channelIndex, syncbuzzer, lastSyncbuzzer, forceApply = false) {
-		const enabled = syncbuzzer.enabled ? 1 : 0;
-		const period = syncbuzzer.period > 0 ? syncbuzzer.period : 1;
-		const periodLow = syncbuzzer.periodLow > 0 ? syncbuzzer.periodLow : period;
-		const pwm = syncbuzzer.pwm ? 1 : 0;
-		const shape = syncbuzzer.shape & 0xf;
-		const wasEnabled = lastSyncbuzzer.enabled ? 1 : 0;
-		const wasPwm = lastSyncbuzzer.pwm ? 1 : 0;
-		const enableChanged = enabled !== wasEnabled;
-		const modeChanged = pwm !== wasPwm;
-
-		if (pwm) {
-			if (
-				forceApply ||
-				enableChanged ||
-				modeChanged ||
-				period !== lastSyncbuzzer.period ||
-				periodLow !== lastSyncbuzzer.periodLow
-			) {
-				this.wasmModule.ayumi_set_syncbuzzer_pwm(
-					this.ayumiPtr,
-					channelIndex,
-					enabled,
-					period,
-					periodLow
-				);
-				lastSyncbuzzer.enabled = syncbuzzer.enabled;
-				lastSyncbuzzer.pwm = syncbuzzer.pwm;
-				lastSyncbuzzer.period = period;
-				lastSyncbuzzer.periodLow = periodLow;
-			}
-		} else if (
 			forceApply ||
 			enableChanged ||
-			modeChanged ||
-			period !== lastSyncbuzzer.period ||
-			shape !== lastSyncbuzzer.shape
+			kindChanged ||
+			pwmModeChanged ||
+			period !== lastTimerEffect.period ||
+			periodLow !== lastTimerEffect.periodLow ||
+			baseVolume !== lastTimerEffect.baseVolume
 		) {
-			this.wasmModule.ayumi_set_syncbuzzer(
+			this.wasmModule.ayumi_set_timer_effect(
 				this.ayumiPtr,
 				channelIndex,
 				enabled,
+				kind,
+				pwmMode,
 				period,
-				shape
+				periodLow,
+				baseVolume
 			);
-			lastSyncbuzzer.enabled = syncbuzzer.enabled;
-			lastSyncbuzzer.pwm = false;
-			lastSyncbuzzer.period = period;
-			lastSyncbuzzer.periodLow = period;
-			lastSyncbuzzer.shape = shape;
+			lastTimerEffect.enabled = timerEffect.enabled;
+			lastTimerEffect.kind = kind;
+			lastTimerEffect.pwmMode = pwmMode;
+			lastTimerEffect.period = period;
+			lastTimerEffect.periodLow = periodLow;
+			lastTimerEffect.baseVolume = baseVolume;
 		}
 
-		const waveform = syncbuzzer.waveform ?? [shape];
-		const waveformLoop = syncbuzzer.waveformLoop ?? 0;
-		const lastWaveform = lastSyncbuzzer.waveform ?? [lastSyncbuzzer.shape & 0xf];
+		const waveform = timerEffect.waveform ?? [15, 0];
+		const waveformLoop = timerEffect.waveformLoop ?? 0;
+		const lastWaveform = lastTimerEffect.waveform ?? [15, 0];
 		const waveformChanged =
 			waveform.length !== lastWaveform.length ||
-			waveformLoop !== (lastSyncbuzzer.waveformLoop ?? 0) ||
+			waveformLoop !== (lastTimerEffect.waveformLoop ?? 0) ||
 			waveform.some((value, index) => value !== lastWaveform[index]);
 
 		if (
-			syncbuzzer.enabled &&
+			timerEffect.enabled &&
 			waveform.length > 0 &&
-			(forceApply || waveformChanged || enableChanged || modeChanged)
+			(forceApply || waveformChanged || enableChanged || kindChanged || pwmModeChanged)
 		) {
-			const ptr = this._ensureSyncbuzzerWaveformBuffer(channelIndex, waveform.length);
+			const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, waveform.length);
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
 			const offset = ptr >> 2;
 			for (let i = 0; i < waveform.length; i++) {
 				memory[offset + i] = waveform[i] & 0xf;
 			}
-			this.wasmModule.ayumi_set_syncbuzzer_waveform(
+			this.wasmModule.ayumi_set_timer_effect_waveform(
 				this.ayumiPtr,
 				channelIndex,
 				ptr,
 				waveform.length,
 				waveformLoop
 			);
-			lastSyncbuzzer.waveform = [...waveform];
-			lastSyncbuzzer.waveformLoop = waveformLoop;
-			lastSyncbuzzer.shape = waveform[0] & 0xf;
+			lastTimerEffect.waveform = [...waveform];
+			lastTimerEffect.waveformLoop = waveformLoop;
 		}
 
-		if (syncbuzzer.resetPhase) {
-			this.wasmModule.ayumi_syncbuzzer_reset(this.ayumiPtr, channelIndex);
-			syncbuzzer.resetPhase = false;
+		if (timerEffect.resetPhase) {
+			this.wasmModule.ayumi_timer_effect_reset(this.ayumiPtr, channelIndex);
+			timerEffect.resetPhase = false;
 		}
 	}
 
@@ -261,12 +147,13 @@ class AyumiEngine {
 				lastMixer.envelope = mixer.envelope;
 			}
 
-			if (channel.sid) {
-				this._applySid(channelIndex, channel.sid, lastChannel.sid, forceApply);
-			}
-
-			if (channel.syncbuzzer) {
-				this._applySyncbuzzer(channelIndex, channel.syncbuzzer, lastChannel.syncbuzzer, forceApply);
+			if (channel.timerEffect) {
+				this._applyTimerEffect(
+					channelIndex,
+					channel.timerEffect,
+					lastChannel.timerEffect,
+					forceApply
+				);
 			}
 		}
 
@@ -310,11 +197,11 @@ class AyumiEngine {
 			return;
 		}
 		this.lastSampleSidVolumes[channelIndex] = volume;
-		const ptr = this._ensureSidWaveformBuffer(channelIndex, 1);
+		const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, 1);
 		const memory = new Int32Array(this.wasmModule.memory.buffer);
 		const offset = ptr >> 2;
 		memory[offset] = volume;
-		this.wasmModule.ayumi_set_sid_waveform(this.ayumiPtr, channelIndex, ptr, 1, 0);
+		this.wasmModule.ayumi_set_timer_effect_waveform(this.ayumiPtr, channelIndex, ptr, 1, 0);
 	}
 
 	reset() {
@@ -324,11 +211,11 @@ class AyumiEngine {
 	}
 
 	dispose() {
-		for (let i = 0; i < this.sidWaveformPtrs.length; i++) {
-			if (this.sidWaveformPtrs[i]) {
-				this.wasmModule.free(this.sidWaveformPtrs[i]);
-				this.sidWaveformPtrs[i] = 0;
-				this.sidWaveformLengths[i] = 0;
+		for (let i = 0; i < this.timerEffectWaveformPtrs.length; i++) {
+			if (this.timerEffectWaveformPtrs[i]) {
+				this.wasmModule.free(this.timerEffectWaveformPtrs[i]);
+				this.timerEffectWaveformPtrs[i] = 0;
+				this.timerEffectWaveformLengths[i] = 0;
 			}
 		}
 	}

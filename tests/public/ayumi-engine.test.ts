@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AyumiEngine from '../../public/ayumi-engine.js';
 import AYChipRegisterState from '../../public/ay-chip-register-state.js';
+import {
+	TIMER_EFFECT_KIND_VOLUME,
+	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_PWM_MODE_OFF,
+	TIMER_PWM_MODE_BY_DUTY_INDEX,
+	createVolumeTimerEffect,
+	createEnvelopeShapeTimerEffect
+} from '../../public/ay-timer-effect-constants.js';
 
 describe('AyumiEngine', () => {
 	let mockWasm: {
@@ -10,12 +18,9 @@ describe('AyumiEngine', () => {
 		ayumi_set_noise: ReturnType<typeof vi.fn>;
 		ayumi_set_envelope: ReturnType<typeof vi.fn>;
 		ayumi_set_envelope_shape: ReturnType<typeof vi.fn>;
-		ayumi_set_sid: ReturnType<typeof vi.fn>;
-		ayumi_set_sid_waveform: ReturnType<typeof vi.fn>;
-		ayumi_set_syncbuzzer: ReturnType<typeof vi.fn>;
-		ayumi_set_syncbuzzer_pwm: ReturnType<typeof vi.fn>;
-		ayumi_set_syncbuzzer_waveform: ReturnType<typeof vi.fn>;
-		ayumi_syncbuzzer_reset: ReturnType<typeof vi.fn>;
+		ayumi_set_timer_effect: ReturnType<typeof vi.fn>;
+		ayumi_set_timer_effect_waveform: ReturnType<typeof vi.fn>;
+		ayumi_timer_effect_reset: ReturnType<typeof vi.fn>;
 		ayumi_process: ReturnType<typeof vi.fn>;
 		ayumi_remove_dc: ReturnType<typeof vi.fn>;
 		memory: { buffer: ArrayBuffer };
@@ -32,12 +37,9 @@ describe('AyumiEngine', () => {
 			ayumi_set_noise: vi.fn(),
 			ayumi_set_envelope: vi.fn(),
 			ayumi_set_envelope_shape: vi.fn(),
-			ayumi_set_sid: vi.fn(),
-			ayumi_set_sid_waveform: vi.fn(),
-			ayumi_set_syncbuzzer: vi.fn(),
-			ayumi_set_syncbuzzer_pwm: vi.fn(),
-			ayumi_set_syncbuzzer_waveform: vi.fn(),
-			ayumi_syncbuzzer_reset: vi.fn(),
+			ayumi_set_timer_effect: vi.fn(),
+			ayumi_set_timer_effect_waveform: vi.fn(),
+			ayumi_timer_effect_reset: vi.fn(),
 			ayumi_process: vi.fn(),
 			ayumi_remove_dc: vi.fn(),
 			memory: { buffer: new ArrayBuffer(4096) },
@@ -130,23 +132,33 @@ describe('AyumiEngine', () => {
 			expect(mockWasm.ayumi_set_tone).not.toHaveBeenCalled();
 		});
 
-		it('uploads SID waveform when SID is first enabled with default waveform', () => {
+		it('uploads volume timer effect waveform when first enabled with default waveform', () => {
 			const engine = new AyumiEngine(mockWasm as any, mockPtr);
 			const state = new AYChipRegisterState();
 			state.channels[0].mixer.tone = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].sid = {
+			state.channels[0].timerEffect = createVolumeTimerEffect({
 				enabled: true,
+				pwm: false,
 				period: 503,
 				baseVolume: 15,
 				waveform: [15, 0],
 				waveformLoop: 0,
 				resetPhase: false
-			};
+			});
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_sid).toHaveBeenCalledWith(mockPtr, 0, 1, 503, 15);
-			expect(mockWasm.ayumi_set_sid_waveform).toHaveBeenCalledWith(
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_EFFECT_KIND_VOLUME,
+				TIMER_PWM_MODE_OFF,
+				503,
+				503,
+				15
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
 				256,
@@ -155,26 +167,34 @@ describe('AyumiEngine', () => {
 			);
 		});
 
-		it('uploads syncbuzzer waveform and pwm when syncbuzzer is enabled', () => {
+		it('uploads envelope-shape timer effect waveform and pwm when enabled', () => {
 			const engine = new AyumiEngine(mockWasm as any, mockPtr);
 			const state = new AYChipRegisterState();
 			state.channels[0].mixer.tone = true;
 			state.channels[0].mixer.envelope = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].syncbuzzer = {
+			state.channels[0].timerEffect = createEnvelopeShapeTimerEffect({
 				enabled: true,
+				pwm: true,
 				period: 40,
 				periodLow: 60,
-				pwm: true,
-				shape: 13,
 				waveform: [13, 9],
 				waveformLoop: 0,
 				resetPhase: false
-			};
+			});
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_syncbuzzer_pwm).toHaveBeenCalledWith(mockPtr, 0, 1, 40, 60);
-			expect(mockWasm.ayumi_set_syncbuzzer_waveform).toHaveBeenCalledWith(
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+				TIMER_PWM_MODE_BY_DUTY_INDEX,
+				40,
+				60,
+				0
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
 				256,
@@ -183,24 +203,25 @@ describe('AyumiEngine', () => {
 			);
 		});
 
-		it('does not re-upload unchanged SID waveform while SID stays enabled', () => {
+		it('does not re-upload unchanged volume timer effect waveform while enabled', () => {
 			const engine = new AyumiEngine(mockWasm as any, mockPtr);
 			const state = new AYChipRegisterState();
 			state.channels[0].mixer.tone = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].sid = {
+			state.channels[0].timerEffect = createVolumeTimerEffect({
 				enabled: true,
+				pwm: true,
 				period: 503,
 				baseVolume: 15,
 				waveform: [15, 0],
 				waveformLoop: 0,
 				resetPhase: false
-			};
+			});
 			engine.applyRegisterState(state);
-			mockWasm.ayumi_set_sid_waveform.mockClear();
+			mockWasm.ayumi_set_timer_effect_waveform.mockClear();
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_sid_waveform).not.toHaveBeenCalled();
+			expect(mockWasm.ayumi_set_timer_effect_waveform).not.toHaveBeenCalled();
 		});
 	});
 

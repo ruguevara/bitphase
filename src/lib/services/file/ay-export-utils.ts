@@ -5,6 +5,21 @@ export const DEFAULT_AY_REGISTERS: readonly number[] = Array.from(
 );
 export const TONE_CHANNELS = 3;
 
+const TIMER_EFFECT_KIND_VOLUME = 1;
+const TIMER_EFFECT_KIND_ENVELOPE_SHAPE = 2;
+const TIMER_PWM_MODE_BY_STEP_VALUE = 1;
+
+type TimerEffectRegisterState = {
+	enabled?: boolean;
+	kind?: number;
+	pwmMode?: number;
+	period?: number;
+	periodLow?: number;
+	baseVolume?: number;
+	waveform?: number[];
+	waveformLoop?: number;
+};
+
 export type HardwareSidState = {
 	enabled: boolean;
 	pwm: boolean;
@@ -123,34 +138,39 @@ export function sidVolumeLevel(waveformStep: number, baseVolume: number): number
 export { isTimerWaveformLowPhase, timerPwmStepPeriod } from '../../chips/ay/instrument';
 
 export function extractHardwareSidStates(registerState: {
-	channels: Array<{ sid?: HardwareSidState }>;
+	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
 }): HardwareSidState[] {
 	const result: HardwareSidState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const sid = registerState.channels[channelIndex]?.sid;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const enabled =
+			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
 		result.push({
-			enabled: sid?.enabled ?? false,
-			pwm: sid?.pwm ?? false,
-			period: sid?.period ?? 0,
-			periodLow: sid?.periodLow ?? sid?.period ?? 0,
-			baseVolume: sid?.baseVolume ?? 0,
-			waveform: [...(sid?.waveform ?? [15, 0])],
-			waveformLoop: sid?.waveformLoop ?? 0
+			enabled,
+			pwm: enabled && timerEffect.pwmMode === TIMER_PWM_MODE_BY_STEP_VALUE,
+			period: timerEffect?.period ?? 0,
+			periodLow: timerEffect?.periodLow ?? timerEffect?.period ?? 0,
+			baseVolume: timerEffect?.baseVolume ?? 0,
+			waveform: [...(timerEffect?.waveform ?? [15, 0])],
+			waveformLoop: timerEffect?.waveformLoop ?? 0
 		});
 	}
 	return result;
 }
 
 export function extractHardwareSyncBuzzerStates(registerState: {
-	channels: Array<{ syncbuzzer?: HardwareSyncBuzzerState }>;
+	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
 }): HardwareSyncBuzzerState[] {
 	const result: HardwareSyncBuzzerState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const syncbuzzer = registerState.channels[channelIndex]?.syncbuzzer;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const enabled =
+			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
+		const waveform = timerEffect?.waveform ?? [0];
 		result.push({
-			enabled: syncbuzzer?.enabled ?? false,
-			period: syncbuzzer?.period ?? 0,
-			shape: syncbuzzer?.shape ?? 0
+			enabled,
+			period: timerEffect?.period ?? 0,
+			shape: waveform[0] ?? 0
 		});
 	}
 	return result;

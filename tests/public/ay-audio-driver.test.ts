@@ -95,7 +95,7 @@ describe('AYAudioDriver', () => {
 			expect(state.channelToneSliding[0]).toBe(100);
 		});
 
-		it('does not reset SID phase when slide or portamento is active', () => {
+		it('does not reset timer effect phase when slide or portamento is active', () => {
 			const driver = new AYAudioDriver();
 			const stateWithSlide = {
 				channelToneAccumulator: [0],
@@ -106,10 +106,10 @@ describe('AYAudioDriver', () => {
 				channelPortamentoActive: [false],
 				channelToneSliding: [0],
 				channelVibratoSliding: [0],
-				channelSidReset: [false]
+				channelTimerEffectReset: [false]
 			};
 			driver.resetInstrumentAccumulators(stateWithSlide, 0);
-			expect(stateWithSlide.channelSidReset[0]).toBe(false);
+			expect(stateWithSlide.channelTimerEffectReset[0]).toBe(false);
 
 			const stateWithPortamento = {
 				channelToneAccumulator: [0],
@@ -120,13 +120,13 @@ describe('AYAudioDriver', () => {
 				channelPortamentoActive: [true],
 				channelToneSliding: [0],
 				channelVibratoSliding: [0],
-				channelSidReset: [false]
+				channelTimerEffectReset: [false]
 			};
 			driver.resetInstrumentAccumulators(stateWithPortamento, 0);
-			expect(stateWithPortamento.channelSidReset[0]).toBe(false);
+			expect(stateWithPortamento.channelTimerEffectReset[0]).toBe(false);
 		});
 
-		it('resets SID phase on a normal new note', () => {
+		it('resets timer effect phase on a normal new note', () => {
 			const driver = new AYAudioDriver();
 			const state = {
 				channelToneAccumulator: [0],
@@ -137,10 +137,10 @@ describe('AYAudioDriver', () => {
 				channelPortamentoActive: [false],
 				channelToneSliding: [0],
 				channelVibratoSliding: [0],
-				channelSidReset: [false]
+				channelTimerEffectReset: [false]
 			};
 			driver.resetInstrumentAccumulators(state, 0);
-			expect(state.channelSidReset[0]).toBe(true);
+			expect(state.channelTimerEffectReset[0]).toBe(true);
 		});
 
 		it('preserves timer pwm sweep when requested', () => {
