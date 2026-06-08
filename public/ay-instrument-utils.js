@@ -143,11 +143,13 @@ export function isPatternEnvelopeShapeSet(envelopeShape) {
 	return envelopeShape !== 0 && envelopeShape !== 15;
 }
 
-export function resolveSyncbuzzerWaveform(timerRow, patternShapeOverride, patternEnvelopeShape) {
-	if (patternShapeOverride) {
-		return [patternEnvelopeShape & 0xf];
+export function resolveSyncbuzzerWaveform(timerRow, patternEnvelopeShape) {
+	const steps = effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+	if (!isPatternEnvelopeShapeSet(patternEnvelopeShape)) {
+		return steps;
 	}
-	return effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+	const patternShape = patternEnvelopeShape & 0xf;
+	return steps.map((step) => (step === 0 ? patternShape : step));
 }
 
 export function rowSupportsTimerPwm(row) {

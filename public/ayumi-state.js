@@ -15,7 +15,6 @@ const AY_CHANNEL_ARRAY_SPECS = [
 	['channelMuted', false],
 	['channelSoundEnabled', false],
 	['channelTimerEffectReset', false],
-	['channelPatternEnvelopeShapeOverride', false],
 	['channelSamplePositions', 0],
 	['channelSamplePhase', 0]
 ];

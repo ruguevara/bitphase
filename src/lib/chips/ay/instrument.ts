@@ -181,13 +181,14 @@ export function isDefaultSidTimerWaveform(waveform: readonly number[]): boolean 
 
 export function resolveSyncbuzzerWaveform(
 	timerRow: AyTimerRow | undefined,
-	patternShapeOverride: boolean,
 	patternEnvelopeShape: number
 ): number[] {
-	if (patternShapeOverride) {
-		return [patternEnvelopeShape & 0xf];
+	const steps = effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+	if (!isPatternEnvelopeShapeSet(patternEnvelopeShape)) {
+		return steps;
 	}
-	return effectiveRowTimerWaveform(timerRow).map((value) => value & 0xf);
+	const patternShape = patternEnvelopeShape & 0xf;
+	return steps.map((step) => (step === 0 ? patternShape : step));
 }
 
 export function rowSupportsTimerPwm(row: AyTimerRow | undefined): boolean {

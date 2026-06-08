@@ -175,6 +175,22 @@ describe('ay-instrument-utils TS/JS parity', () => {
 		}
 	});
 
+	it('resolveSyncbuzzerWaveform matches', () => {
+		const cases = [
+			{ timerRow: { syncbuzzer: true, timerWaveform: [0, 8, 0, 8] }, patternShape: 0 },
+			{ timerRow: { syncbuzzer: true, timerWaveform: [0, 8, 0, 8] }, patternShape: 15 },
+			{ timerRow: { syncbuzzer: true, timerWaveform: [0, 8, 0, 8] }, patternShape: 12 },
+			{ timerRow: { syncbuzzer: true, timerWaveform: [8] }, patternShape: 12 },
+			{ timerRow: undefined, patternShape: 12 }
+		];
+		for (const { timerRow, patternShape } of cases) {
+			const label = `${JSON.stringify(timerRow)} / ${patternShape}`;
+			expect(js.resolveSyncbuzzerWaveform(timerRow as never, patternShape as never), label).toEqual(
+				ts.resolveSyncbuzzerWaveform(timerRow as ts.AyTimerRow | undefined, patternShape)
+			);
+		}
+	});
+
 	it('isClassicSidTimerWaveform matches', () => {
 		const waveforms = [[15, 0], [15, 0, 0], [14, 0], [15, 1], [], [15], [0xf, 0x0]];
 		for (const waveform of waveforms) {

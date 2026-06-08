@@ -238,6 +238,18 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 	}
 
 	_collectHardwareRegisters() {
+		const wasmModule = this.state?.wasmModule;
+		const ayumiPtr = this.state?.ayumiPtr;
+		const getRegisters = wasmModule?.ayumi_get_registers;
+		if (typeof getRegisters === 'function' && ayumiPtr) {
+			if (!this._hardwareRegistersBufferPtr) {
+				this._hardwareRegistersBufferPtr = wasmModule.malloc(14);
+			}
+			getRegisters(ayumiPtr, this._hardwareRegistersBufferPtr);
+			return Array.from(
+				new Uint8Array(wasmModule.memory.buffer, this._hardwareRegistersBufferPtr, 14)
+			);
+		}
 		return this._getEngineRegisterState().toHardwareRegisters();
 	}
 

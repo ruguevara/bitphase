@@ -21,6 +21,7 @@ import {
 	isClassicSidTimerWaveform,
 	rowSupportsTimerPwm,
 	rowUsesSyncbuzzerPwmDuty,
+	resolveSyncbuzzerWaveform,
 	instrumentSupportsTimerPwm,
 	normalizeInstrumentTimerPwmFields,
 	sanitizeTimerPwmPercentInput,
@@ -159,6 +160,14 @@ describe('ay instrument timer fields', () => {
 		expect(rowSupportsTimerPwm({ fm: true })).toBe(true);
 		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
 		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
+	});
+
+	it('resolves syncbuzzer steps with zero placeholders from pattern envelope shape', () => {
+		const timerRow = { syncbuzzer: true, timerWaveform: [0, 8, 0, 8] };
+		expect(resolveSyncbuzzerWaveform(timerRow, 0)).toEqual([0, 8, 0, 8]);
+		expect(resolveSyncbuzzerWaveform(timerRow, 15)).toEqual([0, 8, 0, 8]);
+		expect(resolveSyncbuzzerWaveform(timerRow, 12)).toEqual([12, 8, 12, 8]);
+		expect(resolveSyncbuzzerWaveform({ syncbuzzer: true, timerWaveform: [8] }, 12)).toEqual([8]);
 	});
 
 	it('uses instrument-level pwm values for pwm-eligible rows only', () => {

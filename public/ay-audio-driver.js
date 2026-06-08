@@ -303,9 +303,6 @@ class AYAudioDriver {
 		}
 
 		const shapeSet = isPatternEnvelopeShapeSet(row.envelopeShape);
-		if (state.channelPatternEnvelopeShapeOverride) {
-			state.channelPatternEnvelopeShapeOverride[channelIndex] = shapeSet;
-		}
 		const envelopeValueNum =
 			patternRow.envelopeValue != null && patternRow.envelopeValue >= 0
 				? Number(patternRow.envelopeValue)
@@ -988,8 +985,7 @@ class AYAudioDriver {
 				const timerEffectPeriod = computeTimerEffectPeriod(finalTone, timerRow);
 				const sidPwmSupported = sidActive && rowSupportsTimerPwm(timerRow);
 				const syncbuzzerPwmSupported =
-					syncbuzzerActive && rowUsesSyncbuzzerPwmDuty(timerRow) &&
-					!(state.channelPatternEnvelopeShapeOverride?.[channelIndex] ?? false);
+					syncbuzzerActive && rowUsesSyncbuzzerPwmDuty(timerRow);
 				const fmPwmSupported = fmActive && rowSupportsTimerPwm(timerRow);
 				const pwmSupported =
 					sidPwmSupported ||
@@ -1019,7 +1015,6 @@ class AYAudioDriver {
 				const timerPwmPeriods = computeTimerPwmPeriods(timerEffectPeriod, effectivePwmDuty);
 				const syncbuzzerWaveform = resolveSyncbuzzerWaveform(
 					timerRow,
-					state.channelPatternEnvelopeShapeOverride?.[channelIndex] ?? false,
 					registerState.envelopeShape
 				);
 				const syncbuzzerUsesPwm = syncbuzzerPwmSupported && syncbuzzerWaveform.length === 2;
