@@ -201,6 +201,7 @@ function reconstructInstrument(data: any): Instrument {
 				timerRows?: {
 					sid: boolean;
 					syncbuzzer?: boolean;
+					envfm?: boolean;
 					fm?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
@@ -213,12 +214,16 @@ function reconstructInstrument(data: any): Instrument {
 				sid?: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envfm?: boolean;
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 				semitone?: number;
 				timerWaveform?: number[];
+				fmTimerWaveform?: number[];
+				envFmTimerWaveform?: number[];
 				timerWaveformLoop?: number;
+				fmOffsetMode?: 'semitone' | 'period';
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
@@ -226,13 +231,17 @@ function reconstructInstrument(data: any): Instrument {
 				const timerRow: {
 					sid: boolean;
 					syncbuzzer?: boolean;
+					envfm?: boolean;
 					fm?: boolean;
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
 					semitone?: number;
 					timerWaveform?: number[];
+					fmTimerWaveform?: number[];
+					envFmTimerWaveform?: number[];
 					timerWaveformLoop?: number;
+					fmOffsetMode?: 'semitone' | 'period';
 					timerPwmDuty?: number;
 					timerPwmSweepMin?: number;
 					timerPwmSweep?: number;
@@ -240,6 +249,7 @@ function reconstructInstrument(data: any): Instrument {
 					sid: row.sid ?? false,
 					syncbuzzer: row.syncbuzzer ?? false,
 					fm: row.fm ?? false,
+					envfm: row.envfm ?? false,
 					sidPeriodMode:
 						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
 							? row.sidPeriodMode
@@ -249,31 +259,97 @@ function reconstructInstrument(data: any): Instrument {
 				if (row.period !== undefined) timerRow.period = row.period;
 				if (row.semitone !== undefined) timerRow.semitone = row.semitone;
 				if (row.timerWaveform) timerRow.timerWaveform = [...row.timerWaveform];
+				if (row.fmTimerWaveform) timerRow.fmTimerWaveform = [...row.fmTimerWaveform];
+				if (row.envFmTimerWaveform) timerRow.envFmTimerWaveform = [...row.envFmTimerWaveform];
 				if (row.timerWaveformLoop !== undefined) {
 					timerRow.timerWaveformLoop = row.timerWaveformLoop;
 				}
+				if (row.fmOffsetMode === 'semitone' || row.fmOffsetMode === 'period') {
+					timerRow.fmOffsetMode = row.fmOffsetMode;
+				}
 				if (row.timerPwmDuty !== undefined) timerRow.timerPwmDuty = row.timerPwmDuty;
-				if (row.timerPwmSweepMin !== undefined) timerRow.timerPwmSweepMin = row.timerPwmSweepMin;
+				if (row.timerPwmSweepMin !== undefined)
+					timerRow.timerPwmSweepMin = row.timerPwmSweepMin;
 				if (row.timerPwmSweep !== undefined) timerRow.timerPwmSweep = row.timerPwmSweep;
 				return timerRow;
 			}
 		);
 	}
 	const extended = instrument as Instrument & {
+		timerPwmSidSyncDuty?: number;
+		timerPwmSidSyncSweepMin?: number;
+		timerPwmSidSyncSweep?: number;
+		timerPwmFmDuty?: number;
+		timerPwmFmSweepMin?: number;
+		timerPwmFmSweep?: number;
+		timerPwmEfmDuty?: number;
+		timerPwmEfmSweepMin?: number;
+		timerPwmEfmSweep?: number;
+		timerPwmSidSyncSweepShape?: string;
+		timerPwmSidSyncAutomationTrigger?: string;
+		timerPwmSidSyncReverseSweep?: boolean;
+		timerPwmFmSweepShape?: string;
+		timerPwmFmAutomationTrigger?: string;
+		timerPwmFmReverseSweep?: boolean;
+		timerPwmEfmSweepShape?: string;
+		timerPwmEfmAutomationTrigger?: string;
+		timerPwmEfmReverseSweep?: boolean;
 		timerPwmDuty?: number;
 		timerPwmSweepMin?: number;
 		timerPwmSweep?: number;
-		timerPwmPreserveOnNewNote?: boolean;
 		timerPwmReverseSweep?: boolean;
+		timerPwmSweepShape?: string;
 	};
+	if (data.timerPwmSidSyncDuty !== undefined)
+		extended.timerPwmSidSyncDuty = data.timerPwmSidSyncDuty;
+	if (data.timerPwmSidSyncSweepMin !== undefined) {
+		extended.timerPwmSidSyncSweepMin = data.timerPwmSidSyncSweepMin;
+	}
+	if (data.timerPwmSidSyncSweep !== undefined)
+		extended.timerPwmSidSyncSweep = data.timerPwmSidSyncSweep;
+	if (data.timerPwmFmDuty !== undefined) extended.timerPwmFmDuty = data.timerPwmFmDuty;
+	if (data.timerPwmFmSweepMin !== undefined)
+		extended.timerPwmFmSweepMin = data.timerPwmFmSweepMin;
+	if (data.timerPwmFmSweep !== undefined) extended.timerPwmFmSweep = data.timerPwmFmSweep;
+	if (data.timerPwmEfmDuty !== undefined) extended.timerPwmEfmDuty = data.timerPwmEfmDuty;
+	if (data.timerPwmEfmSweepMin !== undefined)
+		extended.timerPwmEfmSweepMin = data.timerPwmEfmSweepMin;
+	if (data.timerPwmEfmSweep !== undefined) extended.timerPwmEfmSweep = data.timerPwmEfmSweep;
+	if (data.timerPwmSidSyncSweepShape !== undefined) {
+		extended.timerPwmSidSyncSweepShape = data.timerPwmSidSyncSweepShape;
+	}
+	if (data.timerPwmFmSweepShape !== undefined) {
+		extended.timerPwmFmSweepShape = data.timerPwmFmSweepShape;
+	}
+	if (data.timerPwmEfmSweepShape !== undefined) {
+		extended.timerPwmEfmSweepShape = data.timerPwmEfmSweepShape;
+	}
+	if (data.timerPwmSidSyncReverseSweep !== undefined) {
+		extended.timerPwmSidSyncReverseSweep = data.timerPwmSidSyncReverseSweep === true;
+	}
+	if (data.timerPwmSidSyncAutomationTrigger !== undefined) {
+		extended.timerPwmSidSyncAutomationTrigger = data.timerPwmSidSyncAutomationTrigger;
+	}
+	if (data.timerPwmFmReverseSweep !== undefined) {
+		extended.timerPwmFmReverseSweep = data.timerPwmFmReverseSweep === true;
+	}
+	if (data.timerPwmFmAutomationTrigger !== undefined) {
+		extended.timerPwmFmAutomationTrigger = data.timerPwmFmAutomationTrigger;
+	}
+	if (data.timerPwmEfmReverseSweep !== undefined) {
+		extended.timerPwmEfmReverseSweep = data.timerPwmEfmReverseSweep === true;
+	}
+	if (data.timerPwmEfmAutomationTrigger !== undefined) {
+		extended.timerPwmEfmAutomationTrigger = data.timerPwmEfmAutomationTrigger;
+	}
 	if (data.timerPwmDuty !== undefined) extended.timerPwmDuty = data.timerPwmDuty;
 	if (data.timerPwmSweepMin !== undefined) extended.timerPwmSweepMin = data.timerPwmSweepMin;
 	if (data.timerPwmSweep !== undefined) extended.timerPwmSweep = data.timerPwmSweep;
-	if (data.timerPwmPreserveOnNewNote !== undefined) {
-		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
-	}
 	if (data.timerPwmReverseSweep !== undefined) {
 		extended.timerPwmReverseSweep = data.timerPwmReverseSweep === true;
+	}
+	if (data.timerPwmSweepShape !== undefined) {
+		extended.timerPwmSweepShape = data.timerPwmSweepShape;
 	}
 	const withSample = extended as Instrument & {
 		sampleData?: number[];

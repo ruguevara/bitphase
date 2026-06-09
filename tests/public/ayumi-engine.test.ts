@@ -2,12 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AyumiEngine from '../../public/ayumi-engine.js';
 import AYChipRegisterState from '../../public/ay-chip-register-state.js';
 import {
-	TIMER_EFFECT_KIND_VOLUME,
-	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_LAYER_VOLUME,
+	TIMER_LAYER_ENVELOPE_SHAPE,
+	TIMER_LAYER_TONE,
+	TIMER_LAYER_ENVELOPE_FM,
 	TIMER_PWM_MODE_OFF,
 	TIMER_PWM_MODE_BY_DUTY_INDEX,
 	createVolumeTimerEffect,
-	createEnvelopeShapeTimerEffect
+	createEnvelopeShapeTimerEffect,
+	createEnvelopeFmTimerEffect,
+	buildCompositeTimerEffect
 } from '../../public/ay-timer-effect-constants.js';
 
 describe('AyumiEngine', () => {
@@ -152,17 +156,19 @@ describe('AyumiEngine', () => {
 				mockPtr,
 				0,
 				1,
-				TIMER_EFFECT_KIND_VOLUME,
+				TIMER_LAYER_VOLUME,
 				TIMER_PWM_MODE_OFF,
 				503,
 				503,
 				15,
+				1,
 				1,
 				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_LAYER_VOLUME,
 				256,
 				2,
 				0
@@ -190,17 +196,150 @@ describe('AyumiEngine', () => {
 				mockPtr,
 				0,
 				1,
-				TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+				TIMER_LAYER_ENVELOPE_SHAPE,
 				TIMER_PWM_MODE_BY_DUTY_INDEX,
 				40,
 				60,
 				0,
+				1,
 				1,
 				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_LAYER_ENVELOPE_SHAPE,
+				256,
+				2,
+				0
+			);
+		});
+
+		it('uploads envelope-fm timer effect waveform with signed offsets when enabled', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].mixer.envelope = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].timerEffect = createEnvelopeFmTimerEffect({
+				enabled: true,
+				pwm: true,
+				period: 40,
+				periodLow: 60,
+				baseEnvelopePeriod: 0x3d,
+				waveform: [-1, 1],
+				waveformLoop: 0,
+				resetPhase: false
+			});
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_LAYER_ENVELOPE_FM,
+				TIMER_PWM_MODE_BY_DUTY_INDEX,
+				40,
+				60,
+				0,
+				1,
+				0x3d,
+				0
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				TIMER_LAYER_ENVELOPE_FM,
+				256,
+				2,
+				0
+			);
+			const memory = new Int32Array(mockWasm.memory.buffer);
+			expect(memory[256 >> 2]).toBe(-1);
+			expect(memory[(256 >> 2) + 1]).toBe(1);
+		});
+
+		it('uploads envelope-fm timer effect in semitone mode when enabled', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].mixer.envelope = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].timerEffect = createEnvelopeFmTimerEffect({
+				enabled: true,
+				pwm: false,
+				period: 40,
+				periodLow: 40,
+				baseEnvelopePeriod: 0x3d,
+				fmOffsetMode: 'semitone',
+				waveform: [0, 7],
+				waveformLoop: 0,
+				resetPhase: false
+			});
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_LAYER_ENVELOPE_FM,
+				TIMER_PWM_MODE_OFF,
+				40,
+				40,
+				0,
+				1,
+				0x3d,
+				0
+			);
+			const memory = new Int32Array(mockWasm.memory.buffer);
+			expect(memory[256 >> 2]).toBe(0);
+			expect(memory[(256 >> 2) + 1]).toBe(7);
+		});
+
+		it('uploads composite sid and fm timer layers together', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].timerEffect = buildCompositeTimerEffect({
+				sid: true,
+				fm: true,
+				pwmMode: TIMER_PWM_MODE_BY_DUTY_INDEX,
+				period: 40,
+				periodLow: 60,
+				baseVolume: 15,
+				baseTonePeriod: 500,
+				volumeWaveform: [15, 0],
+				toneWaveform: [0, 7],
+				waveformLoop: 0
+			});
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_LAYER_VOLUME | TIMER_LAYER_TONE,
+				TIMER_PWM_MODE_BY_DUTY_INDEX,
+				40,
+				60,
+				15,
+				500,
+				1,
+				0
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				TIMER_LAYER_VOLUME,
+				256,
+				2,
+				0
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				TIMER_LAYER_TONE,
 				256,
 				2,
 				0

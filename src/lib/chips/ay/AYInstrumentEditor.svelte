@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import type { Instrument } from '../../models/song';
 	import IconCarbonTrashCan from '~icons/carbon/trash-can';
 	import IconCarbonDelete from '~icons/carbon/delete';
@@ -62,7 +63,7 @@
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
 	const FIXED_TABLE_COLUMNS = 3;
-	const TIMER_EFFECT_COLUMNS = 6;
+	const TIMER_EFFECT_COLUMNS = 7;
 	const MIXER_EFFECT_COLUMNS = 13;
 	const tableColSpan = $derived(
 		activeTab === 'mixer'
@@ -183,6 +184,7 @@
 	let loopRow = $state(instrument.loop);
 	let name = $state(instrument.name);
 	let tableRef: HTMLTableElement | null = $state(null);
+	let waveformEditorContainerRef: HTMLDivElement | null = $state(null);
 	let loopMarkerStyle = $state<{ left: number; top: number; height: number } | null>(null);
 	let editorContainerRef: HTMLDivElement | null = $state(null);
 	let lastInstrumentId = $state(instrument.id);
@@ -404,7 +406,7 @@
 	const timerTableLayoutKey = $derived(
 		activeTab === 'timer'
 			? timerEffects.fields.timerRows
-					.map((row) => `${row.sid ? 1 : 0}${row.syncbuzzer ? 1 : 0}${row.fm ? 1 : 0}`)
+					.map((row) => `${row.sid ? 1 : 0}${row.syncbuzzer ? 1 : 0}${row.fm ? 1 : 0}${row.envfm ? 1 : 0}`)
 					.join('')
 			: ''
 	);
@@ -458,6 +460,20 @@
 		observer.observe(table);
 		observer.observe(container);
 		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		const rowIndex = timerEffects.waveformEditorRowIndex;
+		if (rowIndex === null || activeTab !== 'timer') {
+			return;
+		}
+		void (async () => {
+			await tick();
+			if (timerEffects.waveformEditorRowIndex !== rowIndex || activeTab !== 'timer') {
+				return;
+			}
+			waveformEditorContainerRef?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+		})();
 	});
 
 	export function addRowExternal() {
@@ -679,13 +695,6 @@
 		</button>
 	</div>
 
-	{#if activeTab === 'timer' && timerEffects.waveformEditorRowIndex !== null}
-		<AYTimerWaveformEditor
-			rowIndex={timerEffects.waveformEditorRowIndex}
-			{isExpanded}
-			onclose={() => timerEffects.closeWaveformEditor()} />
-	{/if}
-
 	{#if activeTab === 'sample'}
 		<div class="mt-3 mr-2 ml-2 box-border min-w-0">
 			<AYInstrumentSamplePanel {instrument} {isExpanded} {onInstrumentChange} />
@@ -694,9 +703,7 @@
 		<div class="mt-3 flex items-start gap-2 overflow-x-auto">
 			{#key `${isExpanded}-${activeTab}`}
 				<div
-					class="relative flex flex-col {activeTab === 'timer'
-						? 'w-full min-w-0'
-						: ''}">
+					class="relative flex flex-col {activeTab === 'timer' ? 'w-max max-w-full' : ''}">
 					{#if loopMarkerStyle}
 						<div
 							class="pointer-events-none absolute z-0 -translate-x-1/2"
@@ -714,12 +721,28 @@
 							</div>
 						</div>
 					{/if}
+					{#if activeTab === 'timer'}
+						<div class="border-b border-[var(--color-app-border)]">
+							<AYTimerPwmControls {isExpanded} />
+						</div>
+						{#if timerEffects.waveformEditorRowIndex !== null}
+							<div
+								bind:this={waveformEditorContainerRef}
+								class="border-b border-[var(--color-app-border)] px-2.5 py-2">
+								<AYTimerWaveformEditor
+									rowIndex={timerEffects.waveformEditorRowIndex}
+									{isExpanded}
+									compact={true}
+									onclose={() => timerEffects.closeWaveformEditor()} />
+							</div>
+						{/if}
+					{/if}
 					<table
 						bind:this={tableRef}
-						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none {activeTab ===
+						class="row-editor-table border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none {activeTab ===
 						'timer'
-							? 'w-full'
-							: ''}">
+							? 'timer-effects-table w-max table-fixed'
+							: 'table-fixed'}">
 						<thead>
 							<tr>
 								<th
@@ -1174,15 +1197,6 @@
 							{/each}
 						</tbody>
 						<tfoot>
-							{#if activeTab === 'timer'}
-								<tr>
-									<td
-										colspan={tableColSpan}
-										class="border-t border-[var(--color-app-border)] px-0 py-0">
-										<AYTimerPwmControls {isExpanded} />
-									</td>
-								</tr>
-							{/if}
 							<tr>
 								<td colspan={tableColSpan} class="px-2 py-1">
 									<div class="flex items-center justify-center">

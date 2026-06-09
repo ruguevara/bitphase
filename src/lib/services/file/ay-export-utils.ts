@@ -5,17 +5,36 @@ export const DEFAULT_AY_REGISTERS: readonly number[] = Array.from(
 );
 export const TONE_CHANNELS = 3;
 
-const TIMER_EFFECT_KIND_VOLUME = 1;
-const TIMER_EFFECT_KIND_ENVELOPE_SHAPE = 2;
+const TIMER_LAYER_VOLUME = 1;
+const TIMER_LAYER_ENVELOPE_SHAPE = 2;
 const TIMER_PWM_MODE_BY_STEP_VALUE = 1;
+
+function timerEffectHasLayer(timerEffect: TimerEffectRegisterState | undefined, layer: number): boolean {
+	if (!timerEffect?.enabled) {
+		return false;
+	}
+	if (timerEffect.layers !== undefined && timerEffect.layers !== null) {
+		return (timerEffect.layers & layer) !== 0;
+	}
+	if (layer === TIMER_LAYER_VOLUME) {
+		return timerEffect.kind === 1;
+	}
+	if (layer === TIMER_LAYER_ENVELOPE_SHAPE) {
+		return timerEffect.kind === 2;
+	}
+	return false;
+}
 
 type TimerEffectRegisterState = {
 	enabled?: boolean;
+	layers?: number;
 	kind?: number;
 	pwmMode?: number;
 	period?: number;
 	periodLow?: number;
 	baseVolume?: number;
+	volumeWaveform?: number[];
+	envelopeShapeWaveform?: number[];
 	waveform?: number[];
 	waveformLoop?: number;
 };
@@ -143,15 +162,14 @@ export function extractHardwareSidStates(registerState: {
 	const result: HardwareSidState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
 		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
-		const enabled =
-			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
+		const enabled = timerEffectHasLayer(timerEffect, TIMER_LAYER_VOLUME);
 		result.push({
 			enabled,
 			pwm: enabled && timerEffect.pwmMode === TIMER_PWM_MODE_BY_STEP_VALUE,
 			period: timerEffect?.period ?? 0,
 			periodLow: timerEffect?.periodLow ?? timerEffect?.period ?? 0,
 			baseVolume: timerEffect?.baseVolume ?? 0,
-			waveform: [...(timerEffect?.waveform ?? [15, 0])],
+			waveform: [...(timerEffect?.volumeWaveform ?? timerEffect?.waveform ?? [15, 0])],
 			waveformLoop: timerEffect?.waveformLoop ?? 0
 		});
 	}
@@ -164,9 +182,8 @@ export function extractHardwareSyncBuzzerStates(registerState: {
 	const result: HardwareSyncBuzzerState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
 		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
-		const enabled =
-			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
-		const waveform = timerEffect?.waveform ?? [0];
+		const enabled = timerEffectHasLayer(timerEffect, TIMER_LAYER_ENVELOPE_SHAPE);
+		const waveform = timerEffect?.envelopeShapeWaveform ?? timerEffect?.waveform ?? [0];
 		result.push({
 			enabled,
 			period: timerEffect?.period ?? 0,

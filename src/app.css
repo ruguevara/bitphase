@@ -151,8 +151,31 @@ html {
 	outline: none;
 }
 
+.row-editor-table.timer-effects-table {
+	width: max-content;
+	max-width: 100%;
+}
+
+.row-editor-table.timer-effects-table .timer-effect-boolean-column {
+	width: 2rem;
+	max-width: 2rem;
+}
+
+.row-editor-table.timer-effects-table .timer-effect-offset-column {
+	width: 3rem;
+	max-width: 3rem;
+}
+
 .row-editor-table .timer-steps-column {
-	width: 100%;
+	width: 2rem;
+	max-width: 2rem;
+	padding: 0;
+	vertical-align: middle;
+}
+
+.row-editor-table .timer-steps-icon-button:focus-visible {
+	outline: 2px solid var(--color-app-primary);
+	outline-offset: -2px;
 }
 
 .instrument-cell-boolean-on {

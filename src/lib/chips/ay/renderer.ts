@@ -15,7 +15,7 @@ import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 23472;
+const AYUMI_STRUCT_SIZE = 24672;
 const AYUMI_STRUCT_LEFT_OFFSET = AYUMI_STRUCT_SIZE - 40;
 const AYUMI_STRUCT_RIGHT_OFFSET = AYUMI_STRUCT_SIZE - 32;
 const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = AYUMI_STRUCT_SIZE - 24;
@@ -170,7 +170,10 @@ export class AYChipRenderer implements ChipRenderer {
 	}
 
 	private resolveSampleAyumiChannel(
-		mixer: { hasVirtualChannels?: () => boolean; getHardwareChannelIndex?: (i: number) => number },
+		mixer: {
+			hasVirtualChannels?: () => boolean;
+			getHardwareChannelIndex?: (i: number) => number;
+		},
 		channelIndex: number
 	): number {
 		if (mixer?.hasVirtualChannels?.()) {
@@ -507,7 +510,8 @@ export class AYChipRenderer implements ChipRenderer {
 					ctx.registerState,
 					ctx.ayumiEngine,
 					SAMPLE_RATE,
-					(channelIndex: number) => this.resolveSampleAyumiChannel(ctx.mixer, channelIndex)
+					(channelIndex: number) =>
+						this.resolveSampleAyumiChannel(ctx.mixer, channelIndex)
 				);
 				ctx.ayumiEngine.process();
 				ctx.ayumiEngine.removeDC();

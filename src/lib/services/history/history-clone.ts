@@ -123,61 +123,151 @@ export class HistoryClone {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envfm?: boolean;
 				fmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 				semitone?: number;
 				timerWaveform?: number[];
+				fmTimerWaveform?: number[];
+				envFmTimerWaveform?: number[];
 				timerWaveformLoop?: number;
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
 			}[];
+			timerPwmSidSyncDuty?: number;
+			timerPwmSidSyncSweepMin?: number;
+			timerPwmSidSyncSweep?: number;
+			timerPwmFmDuty?: number;
+			timerPwmFmSweepMin?: number;
+			timerPwmFmSweep?: number;
+			timerPwmEfmDuty?: number;
+			timerPwmEfmSweepMin?: number;
+			timerPwmEfmSweep?: number;
+			timerPwmSidSyncSweepShape?: string;
+			timerPwmSidSyncAutomationTrigger?: string;
+			timerPwmSidSyncReverseSweep?: boolean;
+			timerPwmFmSweepShape?: string;
+			timerPwmFmAutomationTrigger?: string;
+			timerPwmFmReverseSweep?: boolean;
+			timerPwmEfmSweepShape?: string;
+			timerPwmEfmAutomationTrigger?: string;
+			timerPwmEfmReverseSweep?: boolean;
 			timerPwmDuty?: number;
 			timerPwmSweepMin?: number;
 			timerPwmSweep?: number;
-			timerPwmPreserveOnNewNote?: boolean;
 			timerPwmReverseSweep?: boolean;
+			timerPwmSweepShape?: string;
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envfm?: boolean;
 				fmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 				semitone?: number;
 				timerWaveform?: number[];
+				fmTimerWaveform?: number[];
+				envFmTimerWaveform?: number[];
 				timerWaveformLoop?: number;
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
 			}[];
+			timerPwmSidSyncDuty?: number;
+			timerPwmSidSyncSweepMin?: number;
+			timerPwmSidSyncSweep?: number;
+			timerPwmFmDuty?: number;
+			timerPwmFmSweepMin?: number;
+			timerPwmFmSweep?: number;
+			timerPwmEfmDuty?: number;
+			timerPwmEfmSweepMin?: number;
+			timerPwmEfmSweep?: number;
+			timerPwmSidSyncSweepShape?: string;
+			timerPwmSidSyncAutomationTrigger?: string;
+			timerPwmSidSyncReverseSweep?: boolean;
+			timerPwmFmSweepShape?: string;
+			timerPwmFmAutomationTrigger?: string;
+			timerPwmFmReverseSweep?: boolean;
+			timerPwmEfmSweepShape?: string;
+			timerPwmEfmAutomationTrigger?: string;
+			timerPwmEfmReverseSweep?: boolean;
 			timerPwmDuty?: number;
 			timerPwmSweepMin?: number;
 			timerPwmSweep?: number;
-			timerPwmPreserveOnNewNote?: boolean;
 			timerPwmReverseSweep?: boolean;
+			timerPwmSweepShape?: string;
 		};
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
 				...row,
-				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined,
+				fmTimerWaveform: row.fmTimerWaveform ? [...row.fmTimerWaveform] : undefined,
+				envFmTimerWaveform: row.envFmTimerWaveform ? [...row.envFmTimerWaveform] : undefined
 			}));
+		}
+		if (extended.timerPwmSidSyncDuty !== undefined) {
+			clonedExtended.timerPwmSidSyncDuty = extended.timerPwmSidSyncDuty;
+		}
+		if (extended.timerPwmSidSyncSweepMin !== undefined) {
+			clonedExtended.timerPwmSidSyncSweepMin = extended.timerPwmSidSyncSweepMin;
+		}
+		if (extended.timerPwmSidSyncSweep !== undefined) {
+			clonedExtended.timerPwmSidSyncSweep = extended.timerPwmSidSyncSweep;
+		}
+		if (extended.timerPwmFmDuty !== undefined) clonedExtended.timerPwmFmDuty = extended.timerPwmFmDuty;
+		if (extended.timerPwmFmSweepMin !== undefined) {
+			clonedExtended.timerPwmFmSweepMin = extended.timerPwmFmSweepMin;
+		}
+		if (extended.timerPwmFmSweep !== undefined) clonedExtended.timerPwmFmSweep = extended.timerPwmFmSweep;
+		if (extended.timerPwmEfmDuty !== undefined) clonedExtended.timerPwmEfmDuty = extended.timerPwmEfmDuty;
+		if (extended.timerPwmEfmSweepMin !== undefined) {
+			clonedExtended.timerPwmEfmSweepMin = extended.timerPwmEfmSweepMin;
+		}
+		if (extended.timerPwmEfmSweep !== undefined) clonedExtended.timerPwmEfmSweep = extended.timerPwmEfmSweep;
+		if (extended.timerPwmSidSyncSweepShape !== undefined) {
+			clonedExtended.timerPwmSidSyncSweepShape = extended.timerPwmSidSyncSweepShape;
+		}
+		if (extended.timerPwmFmSweepShape !== undefined) {
+			clonedExtended.timerPwmFmSweepShape = extended.timerPwmFmSweepShape;
+		}
+		if (extended.timerPwmEfmSweepShape !== undefined) {
+			clonedExtended.timerPwmEfmSweepShape = extended.timerPwmEfmSweepShape;
+		}
+		if (extended.timerPwmSidSyncReverseSweep !== undefined) {
+			clonedExtended.timerPwmSidSyncReverseSweep = extended.timerPwmSidSyncReverseSweep;
+		}
+		if (extended.timerPwmSidSyncAutomationTrigger !== undefined) {
+			clonedExtended.timerPwmSidSyncAutomationTrigger = extended.timerPwmSidSyncAutomationTrigger;
+		}
+		if (extended.timerPwmFmReverseSweep !== undefined) {
+			clonedExtended.timerPwmFmReverseSweep = extended.timerPwmFmReverseSweep;
+		}
+		if (extended.timerPwmFmAutomationTrigger !== undefined) {
+			clonedExtended.timerPwmFmAutomationTrigger = extended.timerPwmFmAutomationTrigger;
+		}
+		if (extended.timerPwmEfmReverseSweep !== undefined) {
+			clonedExtended.timerPwmEfmReverseSweep = extended.timerPwmEfmReverseSweep;
+		}
+		if (extended.timerPwmEfmAutomationTrigger !== undefined) {
+			clonedExtended.timerPwmEfmAutomationTrigger = extended.timerPwmEfmAutomationTrigger;
 		}
 		if (extended.timerPwmDuty !== undefined) clonedExtended.timerPwmDuty = extended.timerPwmDuty;
 		if (extended.timerPwmSweepMin !== undefined) {
 			clonedExtended.timerPwmSweepMin = extended.timerPwmSweepMin;
 		}
 		if (extended.timerPwmSweep !== undefined) clonedExtended.timerPwmSweep = extended.timerPwmSweep;
-		if (extended.timerPwmPreserveOnNewNote !== undefined) {
-			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
-		}
 		if (extended.timerPwmReverseSweep !== undefined) {
 			clonedExtended.timerPwmReverseSweep = extended.timerPwmReverseSweep;
+		}
+		if (extended.timerPwmSweepShape !== undefined) {
+			clonedExtended.timerPwmSweepShape = extended.timerPwmSweepShape;
 		}
 		return cloned;
 	}

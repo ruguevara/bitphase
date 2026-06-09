@@ -5,39 +5,62 @@ import {
 	DEFAULT_AY_SYNCBUZZER_WAVEFORM,
 	DEFAULT_AY_FM_WAVEFORM,
 	DEFAULT_AY_FM_PERIOD_WAVEFORM,
+	DEFAULT_AY_ENV_FM_WAVEFORM,
 	defaultAyFmWaveform,
+	defaultAyEnvFmWaveform,
 	clampFmWaveformValue,
 	clampFmPeriodOffset,
 	clampFmSemitone,
 	isIncompleteSignedNumericToken,
 	effectiveRowDetune,
 	effectiveRowFmWaveform,
+	effectiveRowEnvFmWaveform,
 	resolveAyFmOffsetMode,
 	effectiveRowPeriod,
-	effectiveInstrumentTimerPwmDuty,
-	effectiveInstrumentTimerPwmSweep,
-	effectiveInstrumentTimerPwmSweepMin,
+	effectiveScopeTimerPwmDuty,
+	effectiveScopeTimerPwmSweep,
+	effectiveScopeTimerPwmSweepMin,
+	effectiveScopeTimerPwmSweepShape,
+	effectiveScopeTimerPwmAutomationTrigger,
+	effectiveScopeTimerPwmReverseSweep,
 	effectiveRowTimerWaveform,
 	effectiveRowTimerWaveformLoop,
 	instrumentSupportsTimerPwm,
+	instrumentScopeSupportsTimerPwm,
+	normalizeAllInstrumentTimerPwmFields,
+	normalizeInstrumentTimerPwmScopeFields,
+	normalizeTimerPwmScopeFields,
 	effectiveRowToneDetune,
 	formatAyTimerWaveform,
 	formatAyFmWaveform,
+	formatAyEnvFmWaveform,
 	isDefaultSidTimerWaveform,
 	normalizeAyInstrumentFields,
 	parseAyFmWaveform,
 	parseAyFmWaveformPartial,
-	normalizeInstrumentTimerPwmFields,
+	parseAyEnvFmWaveform,
+	parseAyEnvFmWaveformPartial,
 	parseAyTimerWaveform,
 	parseAyTimerWaveformPartial,
 	resolveExclusiveTimerEffects,
+	rowHasSidOrSyncbuzzer,
+	resolveTimerWaveformEditLayer,
+	resolveTimerWaveformStorageField,
+	rowEffectiveWaveformForEditLayer,
+	rowTimerWaveformEditLayers,
+	type AyTimerWaveformEditLayer,
 	clampTimerPwmDuty,
 	clampTimerPwmSweep,
 	clampTimerPwmSweepMin,
+	normalizeTimerPwmSweepShape,
+	type AyTimerPwmSweepShape,
 	AY_TIMER_WAVEFORM_MIN_LENGTH,
 	AY_TIMER_WAVEFORM_MAX_LENGTH,
 	type AyFmOffsetMode,
 	type AyInstrumentFields,
+	type AyTimerPwmScope,
+	AY_TIMER_PWM_SCOPES,
+	type AyTimerPwmAutomationTrigger,
 	type AyTimerRow
 } from './instrument';
 
@@ -46,11 +69,10 @@ type ExtendedInstrument = Instrument & Partial<AyInstrumentFields>;
 export class AyTimerEffectsController {
 	fields = $state(normalizeAyInstrumentFields(new Instrument('', [])));
 	waveformEditorRowIndex = $state<number | null>(null);
+	waveformEditLayerByRow = $state<Partial<Record<number, AyTimerWaveformEditLayer>>>({});
 	isDragging = $state(false);
-	dragType = $state<'sid' | 'syncbuzzer' | 'fm' | null>(null);
-	dragSidValue = $state<boolean | null>(null);
-	dragSyncbuzzerValue = $state<boolean | null>(null);
-	dragFmValue = $state<boolean | null>(null);
+	dragType = $state<'sid' | 'syncbuzzer' | 'fm' | 'envfm' | null>(null);
+	dragBooleanValue = $state<boolean | null>(null);
 
 	private lastInstrumentId = '';
 	private lastSyncedRowCount = 0;
@@ -105,11 +127,7 @@ export class AyTimerEffectsController {
 		}
 		this.fields = {
 			timerRows,
-			timerPwmDuty: normalized.timerPwmDuty,
-			timerPwmSweepMin: normalized.timerPwmSweepMin,
-			timerPwmSweep: normalized.timerPwmSweep,
-			timerPwmPreserveOnNewNote: normalized.timerPwmPreserveOnNewNote,
-			timerPwmReverseSweep: normalized.timerPwmReverseSweep
+			...normalizeAllInstrumentTimerPwmFields(normalized)
 		};
 		if (
 			this.waveformEditorRowIndex !== null &&
@@ -119,14 +137,51 @@ export class AyTimerEffectsController {
 		}
 		this.lastSyncedRowCount = instrument.rows.length;
 		this.lastInstrumentId = instrument.id;
+		this.syncWaveformEditLayers();
 	}
 
 	stopDrag(): void {
 		this.isDragging = false;
 		this.dragType = null;
-		this.dragSidValue = null;
-		this.dragSyncbuzzerValue = null;
-		this.dragFmValue = null;
+		this.dragBooleanValue = null;
+	}
+
+	private syncWaveformEditLayers(): void {
+		const next: Partial<Record<number, AyTimerWaveformEditLayer>> = {};
+		for (let index = 0; index < this.fields.timerRows.length; index++) {
+			const layer = resolveTimerWaveformEditLayer(
+				this.fields.timerRows[index],
+				this.waveformEditLayerByRow[index]
+			);
+			next[index] = layer;
+		}
+		this.waveformEditLayerByRow = next;
+	}
+
+	private afterTimerRowMutation(): void {
+		this.syncWaveformEditLayers();
+	}
+
+	rowTimerWaveformEditLayers(rowIndex: number): AyTimerWaveformEditLayer[] {
+		return rowTimerWaveformEditLayers(this.fields.timerRows[rowIndex]);
+	}
+
+	rowHasMultipleTimerWaveformEditLayers(rowIndex: number): boolean {
+		return this.rowTimerWaveformEditLayers(rowIndex).length > 1;
+	}
+
+	rowTimerWaveformEditLayer(rowIndex: number): AyTimerWaveformEditLayer {
+		return resolveTimerWaveformEditLayer(
+			this.fields.timerRows[rowIndex],
+			this.waveformEditLayerByRow[rowIndex]
+		);
+	}
+
+	setRowTimerWaveformEditLayer(rowIndex: number, layer: AyTimerWaveformEditLayer): void {
+		if (!this.rowTimerWaveformEditLayers(rowIndex).includes(layer)) {
+			return;
+		}
+		this.waveformEditLayerByRow[rowIndex] = layer;
 	}
 
 	openWaveformEditor(rowIndex: number): void {
@@ -147,13 +202,27 @@ export class AyTimerEffectsController {
 
 	private commitFields(next: AyInstrumentFields): void {
 		this.fields = next;
+		this.syncWaveformEditLayers();
 		this.updateInstrument({
 			timerRows: next.timerRows,
-			timerPwmDuty: next.timerPwmDuty,
-			timerPwmSweepMin: next.timerPwmSweepMin,
-			timerPwmSweep: next.timerPwmSweep,
-			timerPwmPreserveOnNewNote: next.timerPwmPreserveOnNewNote,
-			timerPwmReverseSweep: next.timerPwmReverseSweep
+			timerPwmSidSyncDuty: next.timerPwmSidSyncDuty,
+			timerPwmSidSyncSweepMin: next.timerPwmSidSyncSweepMin,
+			timerPwmSidSyncSweep: next.timerPwmSidSyncSweep,
+			timerPwmSidSyncSweepShape: next.timerPwmSidSyncSweepShape,
+			timerPwmSidSyncAutomationTrigger: next.timerPwmSidSyncAutomationTrigger,
+			timerPwmSidSyncReverseSweep: next.timerPwmSidSyncReverseSweep,
+			timerPwmFmDuty: next.timerPwmFmDuty,
+			timerPwmFmSweepMin: next.timerPwmFmSweepMin,
+			timerPwmFmSweep: next.timerPwmFmSweep,
+			timerPwmFmSweepShape: next.timerPwmFmSweepShape,
+			timerPwmFmAutomationTrigger: next.timerPwmFmAutomationTrigger,
+			timerPwmFmReverseSweep: next.timerPwmFmReverseSweep,
+			timerPwmEfmDuty: next.timerPwmEfmDuty,
+			timerPwmEfmSweepMin: next.timerPwmEfmSweepMin,
+			timerPwmEfmSweep: next.timerPwmEfmSweep,
+			timerPwmEfmSweepShape: next.timerPwmEfmSweepShape,
+			timerPwmEfmAutomationTrigger: next.timerPwmEfmAutomationTrigger,
+			timerPwmEfmReverseSweep: next.timerPwmEfmReverseSweep
 		});
 	}
 
@@ -171,52 +240,151 @@ export class AyTimerEffectsController {
 		return instrumentSupportsTimerPwm(this.fields);
 	}
 
-	timerPwmDuty(): number {
-		return effectiveInstrumentTimerPwmDuty(this.fields);
+	instrumentScopeSupportsTimerPwm(scope: AyTimerPwmScope): boolean {
+		return instrumentScopeSupportsTimerPwm(this.fields, scope);
 	}
 
-	timerPwmSweepMin(): number {
-		return effectiveInstrumentTimerPwmSweepMin(this.fields);
+	timerPwmDuty(scope: AyTimerPwmScope): number {
+		return effectiveScopeTimerPwmDuty(this.fields, scope);
 	}
 
-	timerPwmSweep(): number {
-		return effectiveInstrumentTimerPwmSweep(this.fields);
+	timerPwmSweepMin(scope: AyTimerPwmScope): number {
+		return effectiveScopeTimerPwmSweepMin(this.fields, scope);
 	}
 
-	timerPwmPreserveOnNewNote(): boolean {
-		return this.fields.timerPwmPreserveOnNewNote;
+	timerPwmSweep(scope: AyTimerPwmScope): number {
+		return effectiveScopeTimerPwmSweep(this.fields, scope);
 	}
 
-	setTimerPwmPreserveOnNewNote(preserve: boolean): void {
-		if (!this.instrumentSupportsTimerPwm()) return;
-		this.commitFields({ ...this.fields, timerPwmPreserveOnNewNote: preserve });
+	timerPwmSweepShape(scope: AyTimerPwmScope): AyTimerPwmSweepShape {
+		return effectiveScopeTimerPwmSweepShape(this.fields, scope);
 	}
 
-	timerPwmReverseSweep(): boolean {
-		return this.fields.timerPwmReverseSweep;
+	timerPwmScopeHasActiveSweep(scope: AyTimerPwmScope): boolean {
+		return AY_TIMER_PWM_SCOPES.some(
+			(entry) => entry === scope && this.instrumentScopeSupportsTimerPwm(scope) && this.timerPwmSweep(scope) > 0
+		);
 	}
 
-	setTimerPwmReverseSweep(reverse: boolean): void {
-		if (!this.instrumentSupportsTimerPwm() || this.timerPwmSweep() <= 0) return;
-		this.commitFields({ ...this.fields, timerPwmReverseSweep: reverse });
+	timerPwmAnyScopeHasActiveSweep(): boolean {
+		return AY_TIMER_PWM_SCOPES.some((scope) => this.timerPwmScopeHasActiveSweep(scope));
 	}
 
-	setTimerPwmDuty(duty: number): void {
-		if (!this.instrumentSupportsTimerPwm()) return;
-		const pwmFields = normalizeInstrumentTimerPwmFields({
-			...this.fields,
-			timerPwmDuty: clampTimerPwmDuty(duty)
+	timerPwmAutomationTrigger(scope: AyTimerPwmScope): AyTimerPwmAutomationTrigger {
+		return effectiveScopeTimerPwmAutomationTrigger(this.fields, scope);
+	}
+
+	setTimerPwmAutomationTrigger(scope: AyTimerPwmScope, trigger: AyTimerPwmAutomationTrigger): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope)) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		this.commitFields(
+			this.applyTimerPwmScopeFields(scope, {
+				...scoped,
+				automationTrigger: trigger
+			})
+		);
+	}
+
+	timerPwmReverseSweep(scope: AyTimerPwmScope): boolean {
+		return effectiveScopeTimerPwmReverseSweep(this.fields, scope);
+	}
+
+	setTimerPwmReverseSweep(scope: AyTimerPwmScope, reverse: boolean): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope) || this.timerPwmSweep(scope) <= 0) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		this.commitFields(
+			this.applyTimerPwmScopeFields(scope, {
+				...scoped,
+				reverseSweep: reverse
+			})
+		);
+	}
+
+	setTimerPwmSweepShape(scope: AyTimerPwmScope, shape: AyTimerPwmSweepShape): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope)) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		this.commitFields(
+			this.applyTimerPwmScopeFields(scope, {
+				...scoped,
+				sweepShape: normalizeTimerPwmSweepShape(shape)
+			})
+		);
+	}
+
+	setTimerPwmDuty(scope: AyTimerPwmScope, duty: number): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope)) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		const nextScope = normalizeTimerPwmScopeFields({
+			...scoped,
+			duty: clampTimerPwmDuty(duty)
 		});
-		this.commitFields({ ...this.fields, ...pwmFields });
+		this.commitFields(this.applyTimerPwmScopeFields(scope, nextScope));
 	}
 
-	setTimerPwmSweepMin(min: number): void {
-		if (!this.instrumentSupportsTimerPwm() || this.fields.timerPwmSweep <= 0) return;
-		const pwmFields = normalizeInstrumentTimerPwmFields({
-			...this.fields,
-			timerPwmSweepMin: clampTimerPwmSweepMin(min, this.fields.timerPwmDuty)
+	setTimerPwmSweepMin(scope: AyTimerPwmScope, min: number): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope) || this.timerPwmSweep(scope) <= 0) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		const nextScope = normalizeTimerPwmScopeFields({
+			...scoped,
+			sweepMin: clampTimerPwmSweepMin(min, scoped.duty)
 		});
-		this.commitFields({ ...this.fields, ...pwmFields });
+		this.commitFields(this.applyTimerPwmScopeFields(scope, nextScope));
+	}
+
+	updateTimerPwmSweep(scope: AyTimerPwmScope, text: string): void {
+		if (!this.instrumentScopeSupportsTimerPwm(scope)) return;
+		const parsed = this.parseNum(text);
+		if (parsed === null) return;
+		const scoped = normalizeInstrumentTimerPwmScopeFields(this.fields, scope);
+		const nextScope = normalizeTimerPwmScopeFields({
+			...scoped,
+			sweep: clampTimerPwmSweep(parsed)
+		});
+		this.commitFields(this.applyTimerPwmScopeFields(scope, nextScope));
+	}
+
+	private applyTimerPwmScopeFields(
+		scope: AyTimerPwmScope,
+		fields: {
+			duty: number;
+			sweepMin: number;
+			sweep: number;
+			sweepShape: AyTimerPwmSweepShape;
+			automationTrigger: AyTimerPwmAutomationTrigger;
+			reverseSweep: boolean;
+		}
+	): AyInstrumentFields {
+		if (scope === 'sidSync') {
+			return {
+				...this.fields,
+				timerPwmSidSyncDuty: fields.duty,
+				timerPwmSidSyncSweepMin: fields.sweepMin,
+				timerPwmSidSyncSweep: fields.sweep,
+				timerPwmSidSyncSweepShape: fields.sweepShape,
+				timerPwmSidSyncAutomationTrigger: fields.automationTrigger,
+				timerPwmSidSyncReverseSweep: fields.reverseSweep
+			};
+		}
+		if (scope === 'fm') {
+			return {
+				...this.fields,
+				timerPwmFmDuty: fields.duty,
+				timerPwmFmSweepMin: fields.sweepMin,
+				timerPwmFmSweep: fields.sweep,
+				timerPwmFmSweepShape: fields.sweepShape,
+				timerPwmFmAutomationTrigger: fields.automationTrigger,
+				timerPwmFmReverseSweep: fields.reverseSweep
+			};
+		}
+		return {
+			...this.fields,
+			timerPwmEfmDuty: fields.duty,
+			timerPwmEfmSweepMin: fields.sweepMin,
+			timerPwmEfmSweep: fields.sweep,
+			timerPwmEfmSweepShape: fields.sweepShape,
+			timerPwmEfmAutomationTrigger: fields.automationTrigger,
+			timerPwmEfmReverseSweep: fields.reverseSweep
+		};
 	}
 
 	parseTimerPwmNum(text: string): number | null {
@@ -227,70 +395,85 @@ export class AyTimerEffectsController {
 		return this.getAsHex();
 	}
 
-	updateTimerPwmSweep(text: string): void {
-		if (!this.instrumentSupportsTimerPwm()) return;
-		const parsed = this.parseNum(text);
-		if (parsed === null) return;
-		const pwmFields = normalizeInstrumentTimerPwmFields({
-			...this.fields,
-			timerPwmSweep: clampTimerPwmSweep(parsed)
-		});
-		this.commitFields({ ...this.fields, ...pwmFields });
-	}
-
 	updateSidRow(index: number, sid: boolean): void {
 		this.mapTimerRow(index, (row) => {
-			const wasOtherMode = !!(row.syncbuzzer || row.fm);
+			const wasSync = row.syncbuzzer;
+			const hadSidOrSync = rowHasSidOrSyncbuzzer(row);
 			const resolved = resolveExclusiveTimerEffects({
 				...row,
 				sid,
-				syncbuzzer: sid ? false : row.syncbuzzer,
-				fm: sid ? false : row.fm
+				syncbuzzer: sid ? false : row.syncbuzzer
 			});
-			if (!sid || !wasOtherMode) {
+			if (!sid) {
 				return resolved;
 			}
-			return { ...resolved, timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM] };
+			const next: AyTimerRow = { ...resolved };
+			if (!hadSidOrSync && (row.fm || row.envfm)) {
+				if (row.fm) {
+					next.fmTimerWaveform = effectiveRowFmWaveform(row);
+				}
+				if (row.envfm) {
+					next.envFmTimerWaveform = effectiveRowEnvFmWaveform(row);
+				}
+				next.timerWaveform = [...DEFAULT_AY_TIMER_WAVEFORM];
+			} else if (wasSync || isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved))) {
+				next.timerWaveform = [...DEFAULT_AY_TIMER_WAVEFORM];
+			}
+			return next;
 		});
+		if (sid) {
+			this.waveformEditLayerByRow[index] = 'sid';
+		}
 	}
 
 	updateSyncbuzzerRow(index: number, syncbuzzer: boolean): void {
 		this.mapTimerRow(index, (row) => {
-			const wasOtherMode = !!(row.sid || row.fm);
+			const hadSidOrSync = rowHasSidOrSyncbuzzer(row);
 			const resolved = resolveExclusiveTimerEffects({
 				...row,
 				syncbuzzer,
-				sid: syncbuzzer ? false : row.sid,
-				fm: syncbuzzer ? false : row.fm
+				sid: syncbuzzer ? false : row.sid
 			});
 			if (!syncbuzzer) {
 				return resolved;
 			}
+			const next: AyTimerRow = { ...resolved };
+			if (!hadSidOrSync && row.fm) {
+				next.fmTimerWaveform = effectiveRowFmWaveform(row);
+			}
+			if (!hadSidOrSync && row.envfm) {
+				next.envFmTimerWaveform = effectiveRowEnvFmWaveform(row);
+			}
 			if (
-				wasOtherMode ||
+				!hadSidOrSync ||
 				isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved))
 			) {
-				return {
-					...resolved,
-					timerWaveform: [...DEFAULT_AY_SYNCBUZZER_WAVEFORM]
-				};
+				next.timerWaveform = [...DEFAULT_AY_SYNCBUZZER_WAVEFORM];
 			}
-			return resolved;
+			return next;
 		});
+		if (syncbuzzer) {
+			this.waveformEditLayerByRow[index] = 'syncbuzzer';
+		}
 	}
 
 	updateFmRow(index: number, fm: boolean): void {
 		this.mapTimerRow(index, (row) => {
-			const wasOtherMode = !!(row.sid || row.syncbuzzer);
-			const resolved = resolveExclusiveTimerEffects({
-				...row,
-				fm,
-				sid: fm ? false : row.sid,
-				syncbuzzer: fm ? false : row.syncbuzzer
-			});
+			const resolved = { ...row, fm };
+			if (!fm) {
+				return resolved;
+			}
+			if (rowHasSidOrSyncbuzzer(row)) {
+				return {
+					...resolved,
+					fmTimerWaveform: row.fmTimerWaveform?.length
+						? row.fmTimerWaveform
+						: defaultAyFmWaveform(resolveAyFmOffsetMode(resolved))
+				};
+			}
 			if (
-				wasOtherMode ||
-				isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved))
+				isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved)) ||
+				!row.timerWaveform?.length
 			) {
 				return {
 					...resolved,
@@ -299,20 +482,57 @@ export class AyTimerEffectsController {
 			}
 			return resolved;
 		});
+		if (fm) {
+			this.waveformEditLayerByRow[index] = 'fm';
+		}
+	}
+
+	updateEnvfmRow(index: number, envfm: boolean): void {
+		this.mapTimerRow(index, (row) => {
+			const resolved = { ...row, envfm };
+			if (!envfm) {
+				return resolved;
+			}
+			if (rowHasSidOrSyncbuzzer(row) || row.fm) {
+				return {
+					...resolved,
+					fmOffsetMode: 'period',
+					envFmTimerWaveform: row.envFmTimerWaveform?.length
+						? row.envFmTimerWaveform
+						: defaultAyEnvFmWaveform('period')
+				};
+			}
+			if (
+				isDefaultSidTimerWaveform(effectiveRowTimerWaveform(resolved)) ||
+				!row.timerWaveform?.length
+			) {
+				return {
+					...resolved,
+					fmOffsetMode: 'period',
+					timerWaveform: defaultAyEnvFmWaveform('period')
+				};
+			}
+			return resolved;
+		});
+		if (envfm) {
+			this.waveformEditLayerByRow[index] = 'envfm';
+		}
 	}
 
 	updateFmOffsetMode(index: number, mode: AyFmOffsetMode): void {
 		this.mapTimerRow(index, (row) => {
-			if (!row.fm) {
+			if (!row.fm && !row.envfm) {
 				return { ...row, fmOffsetMode: mode };
 			}
 			const currentMode = resolveAyFmOffsetMode(row);
 			if (currentMode === mode) {
 				return row;
 			}
-			const currentWaveform = effectiveRowFmWaveform({ ...row, fmOffsetMode: currentMode });
-			const usesDefaultWaveform =
-				currentMode === 'semitone'
+			const currentWaveform = row.fm
+				? effectiveRowFmWaveform({ ...row, fmOffsetMode: currentMode })
+				: effectiveRowEnvFmWaveform({ ...row, fmOffsetMode: currentMode });
+			const usesDefaultWaveform = row.fm
+				? currentMode === 'semitone'
 					? currentWaveform.every(
 							(value, stepIndex) =>
 								clampFmSemitone(value) === clampFmSemitone(DEFAULT_AY_FM_WAVEFORM[stepIndex] ?? 0)
@@ -321,20 +541,50 @@ export class AyTimerEffectsController {
 							(value, stepIndex) =>
 								clampFmPeriodOffset(value) ===
 								clampFmPeriodOffset(DEFAULT_AY_FM_PERIOD_WAVEFORM[stepIndex] ?? 0)
-						) && currentWaveform.length === DEFAULT_AY_FM_PERIOD_WAVEFORM.length;
+						) && currentWaveform.length === DEFAULT_AY_FM_PERIOD_WAVEFORM.length
+				: currentMode === 'semitone'
+					? currentWaveform.every(
+							(value, stepIndex) =>
+								clampFmSemitone(value) === clampFmSemitone(DEFAULT_AY_FM_WAVEFORM[stepIndex] ?? 0)
+						) && currentWaveform.length === DEFAULT_AY_FM_WAVEFORM.length
+					: currentWaveform.every(
+							(value, stepIndex) =>
+								clampFmPeriodOffset(value) ===
+								clampFmPeriodOffset(DEFAULT_AY_ENV_FM_WAVEFORM[stepIndex] ?? 0)
+						) && currentWaveform.length === DEFAULT_AY_ENV_FM_WAVEFORM.length;
 			return {
 				...row,
 				fmOffsetMode: mode,
-				timerWaveform: usesDefaultWaveform
-					? defaultAyFmWaveform(mode)
-					: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+				...(row.fm
+					? rowHasSidOrSyncbuzzer(row)
+						? {
+								fmTimerWaveform: usesDefaultWaveform
+									? defaultAyFmWaveform(mode)
+									: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+							}
+						: {
+								timerWaveform: usesDefaultWaveform
+									? defaultAyFmWaveform(mode)
+									: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+							}
+					: rowHasSidOrSyncbuzzer(row) || row.fm
+						? {
+								envFmTimerWaveform: usesDefaultWaveform
+									? defaultAyEnvFmWaveform(mode)
+									: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+							}
+						: {
+								timerWaveform: usesDefaultWaveform
+									? defaultAyEnvFmWaveform(mode)
+									: currentWaveform.map((value) => clampFmWaveformValue(value, mode))
+							})
 			};
 		});
 	}
 
 	toggleFmOffsetMode(index: number): void {
 		const row = this.fields.timerRows[index];
-		if (!row?.fm) return;
+		if (!row?.fm && !row?.envfm) return;
 		const nextMode = resolveAyFmOffsetMode(row) === 'period' ? 'semitone' : 'period';
 		this.updateFmOffsetMode(index, nextMode);
 	}
@@ -342,43 +592,52 @@ export class AyTimerEffectsController {
 	beginDragSid(index: number): void {
 		this.isDragging = true;
 		this.dragType = 'sid';
-		this.dragSidValue = !this.fields.timerRows[index].sid;
-		this.updateSidRow(index, this.dragSidValue);
+		this.dragBooleanValue = !this.fields.timerRows[index].sid;
+		this.updateSidRow(index, this.dragBooleanValue);
 	}
 
 	dragOverSid(index: number): void {
-		if (this.isDragging && this.dragType === 'sid' && this.dragSidValue !== null) {
-			this.updateSidRow(index, this.dragSidValue);
+		if (this.isDragging && this.dragBooleanValue !== null) {
+			this.updateSidRow(index, this.dragBooleanValue);
 		}
 	}
 
 	beginDragSyncbuzzer(index: number): void {
 		this.isDragging = true;
 		this.dragType = 'syncbuzzer';
-		this.dragSyncbuzzerValue = !this.fields.timerRows[index]?.syncbuzzer;
-		this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
+		this.dragBooleanValue = !this.fields.timerRows[index]?.syncbuzzer;
+		this.updateSyncbuzzerRow(index, this.dragBooleanValue);
 	}
 
 	dragOverSyncbuzzer(index: number): void {
-		if (
-			this.isDragging &&
-			this.dragType === 'syncbuzzer' &&
-			this.dragSyncbuzzerValue !== null
-		) {
-			this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
+		if (this.isDragging && this.dragBooleanValue !== null) {
+			this.updateSyncbuzzerRow(index, this.dragBooleanValue);
 		}
 	}
 
 	beginDragFm(index: number): void {
 		this.isDragging = true;
 		this.dragType = 'fm';
-		this.dragFmValue = !this.fields.timerRows[index]?.fm;
-		this.updateFmRow(index, this.dragFmValue);
+		this.dragBooleanValue = !this.fields.timerRows[index]?.fm;
+		this.updateFmRow(index, this.dragBooleanValue);
 	}
 
 	dragOverFm(index: number): void {
-		if (this.isDragging && this.dragType === 'fm' && this.dragFmValue !== null) {
-			this.updateFmRow(index, this.dragFmValue);
+		if (this.isDragging && this.dragBooleanValue !== null) {
+			this.updateFmRow(index, this.dragBooleanValue);
+		}
+	}
+
+	beginDragEnvfm(index: number): void {
+		this.isDragging = true;
+		this.dragType = 'envfm';
+		this.dragBooleanValue = !this.fields.timerRows[index]?.envfm;
+		this.updateEnvfmRow(index, this.dragBooleanValue);
+	}
+
+	dragOverEnvfm(index: number): void {
+		if (this.isDragging && this.dragBooleanValue !== null) {
+			this.updateEnvfmRow(index, this.dragBooleanValue);
 		}
 	}
 
@@ -406,10 +665,22 @@ export class AyTimerEffectsController {
 
 	rowTimerWaveform(rowIndex: number): number[] {
 		const row = this.fields.timerRows[rowIndex];
-		if (row?.fm) {
-			return effectiveRowFmWaveform(row);
+		return rowEffectiveWaveformForEditLayer(row, this.rowTimerWaveformEditLayer(rowIndex));
+	}
+
+	private clampWaveformValuesForEditLayer(
+		row: AyTimerRow | undefined,
+		layer: AyTimerWaveformEditLayer,
+		values: readonly number[]
+	): number[] {
+		if (layer === 'fm' || layer === 'envfm') {
+			return values
+				.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+				.map((value) => clampFmWaveformValue(value, resolveAyFmOffsetMode(row)));
 		}
-		return effectiveRowTimerWaveform(row);
+		return values
+			.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			.map((value) => Math.max(0, Math.min(15, value | 0)));
 	}
 
 	rowTimerWaveformLoop(rowIndex: number): number {
@@ -418,37 +689,41 @@ export class AyTimerEffectsController {
 
 	formatRowTimerWaveform(rowIndex: number): string {
 		const row = this.fields.timerRows[rowIndex];
-		if (row?.fm) {
-			return formatAyFmWaveform(
-				this.rowTimerWaveform(rowIndex),
-				this.getAsHex(),
-				resolveAyFmOffsetMode(row)
-			);
+		const layer = this.rowTimerWaveformEditLayer(rowIndex);
+		const waveform = this.rowTimerWaveform(rowIndex);
+		if (layer === 'envfm') {
+			return formatAyEnvFmWaveform(waveform, this.getAsHex(), resolveAyFmOffsetMode(row));
 		}
-		return formatAyTimerWaveform(this.rowTimerWaveform(rowIndex), this.getAsHex());
+		if (layer === 'fm') {
+			return formatAyFmWaveform(waveform, this.getAsHex(), resolveAyFmOffsetMode(row));
+		}
+		return formatAyTimerWaveform(waveform, this.getAsHex());
 	}
 
 	setRowTimerWaveform(rowIndex: number, values: number[]): void {
 		if (values.length === 0) {
 			return;
 		}
-		const row = this.fields.timerRows[rowIndex];
-		const nextWaveform = row?.fm
-			? values
-					.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
-					.map((value) => clampFmWaveformValue(value, resolveAyFmOffsetMode(row)))
-			: values
-					.slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
-					.map((value) => Math.max(0, Math.min(15, value | 0)));
-		this.mapTimerRow(rowIndex, (current) => ({ ...current, timerWaveform: nextWaveform }));
+		const layer = this.rowTimerWaveformEditLayer(rowIndex);
+		const nextWaveform = this.clampWaveformValuesForEditLayer(
+			this.fields.timerRows[rowIndex],
+			layer,
+			values
+		);
+		this.mapTimerRow(rowIndex, (current) => ({
+			...current,
+			[resolveTimerWaveformStorageField(current, layer)]: nextWaveform
+		}));
 	}
 
 	setRowWaveformStep(rowIndex: number, stepIndex: number, step: number): void {
 		if (stepIndex < 0) return;
 		const row = this.fields.timerRows[rowIndex];
-		const clamped = row?.fm
-			? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
-			: Math.max(0, Math.min(15, step | 0));
+		const layer = this.rowTimerWaveformEditLayer(rowIndex);
+		const clamped =
+			layer === 'fm' || layer === 'envfm'
+				? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
+				: Math.max(0, Math.min(15, step | 0));
 		const nextWaveform = [...this.rowTimerWaveform(rowIndex)];
 		while (nextWaveform.length <= stepIndex && nextWaveform.length < AY_TIMER_WAVEFORM_MAX_LENGTH) {
 			nextWaveform.push(0);
@@ -456,12 +731,20 @@ export class AyTimerEffectsController {
 		if (stepIndex >= nextWaveform.length) return;
 		if (nextWaveform[stepIndex] === clamped) return;
 		nextWaveform[stepIndex] = clamped;
-		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: nextWaveform }));
+		this.mapTimerRow(rowIndex, (current) => ({
+			...current,
+			[resolveTimerWaveformStorageField(current, layer)]: nextWaveform
+		}));
 	}
 
 	parseTimerWaveform(text: string, rowIndex?: number): number[] | null {
 		const row = rowIndex !== undefined ? this.fields.timerRows[rowIndex] : undefined;
-		if (row?.fm) {
+		const layer =
+			rowIndex !== undefined ? this.rowTimerWaveformEditLayer(rowIndex) : undefined;
+		if (layer === 'envfm') {
+			return parseAyEnvFmWaveform(text, this.getAsHex(), resolveAyFmOffsetMode(row));
+		}
+		if (layer === 'fm') {
 			return parseAyFmWaveform(text, this.getAsHex(), resolveAyFmOffsetMode(row));
 		}
 		return parseAyTimerWaveform(text, this.getAsHex());
@@ -469,7 +752,12 @@ export class AyTimerEffectsController {
 
 	parseTimerWaveformPartial(text: string, rowIndex?: number): number[] | null {
 		const row = rowIndex !== undefined ? this.fields.timerRows[rowIndex] : undefined;
-		if (row?.fm) {
+		const layer =
+			rowIndex !== undefined ? this.rowTimerWaveformEditLayer(rowIndex) : undefined;
+		if (layer === 'envfm') {
+			return parseAyEnvFmWaveformPartial(text, this.getAsHex(), resolveAyFmOffsetMode(row));
+		}
+		if (layer === 'fm') {
 			return parseAyFmWaveformPartial(text, this.getAsHex(), resolveAyFmOffsetMode(row));
 		}
 		return parseAyTimerWaveformPartial(text, this.getAsHex());
@@ -481,10 +769,15 @@ export class AyTimerEffectsController {
 			return false;
 		}
 		const row = this.fields.timerRows[rowIndex];
-		const clamped = row?.fm
-			? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
-			: Math.max(0, Math.min(15, step | 0));
-		this.mapTimerRow(rowIndex, (currentRow) => ({ ...currentRow, timerWaveform: [...current, clamped] }));
+		const layer = this.rowTimerWaveformEditLayer(rowIndex);
+		const clamped =
+			layer === 'fm' || layer === 'envfm'
+				? clampFmWaveformValue(step, resolveAyFmOffsetMode(row))
+				: Math.max(0, Math.min(15, step | 0));
+		this.mapTimerRow(rowIndex, (currentRow) => ({
+			...currentRow,
+			[resolveTimerWaveformStorageField(currentRow, layer)]: [...current, clamped]
+		}));
 		return true;
 	}
 
@@ -497,7 +790,11 @@ export class AyTimerEffectsController {
 		if (current.length <= AY_TIMER_WAVEFORM_MIN_LENGTH) {
 			return false;
 		}
-		this.mapTimerRow(rowIndex, (row) => ({ ...row, timerWaveform: current.slice(0, -1) }));
+		const layer = this.rowTimerWaveformEditLayer(rowIndex);
+		this.mapTimerRow(rowIndex, (row) => ({
+			...row,
+			[resolveTimerWaveformStorageField(row, layer)]: current.slice(0, -1)
+		}));
 		return true;
 	}
 
@@ -529,8 +826,19 @@ export class AyTimerEffectsController {
 		return this.fields.timerRows[index]?.fm ?? false;
 	}
 
+	rowEnvfmEnabled(index: number): boolean {
+		return this.fields.timerRows[index]?.envfm ?? false;
+	}
+
 	rowTimerWaveformUsesEnvelopeShapes(index: number): boolean {
-		return this.rowSyncbuzzerEnabled(index);
+		return this.rowTimerWaveformEditLayer(index) === 'syncbuzzer';
+	}
+
+	rowTimerWaveformUsesEnvFmOffsets(index: number): boolean {
+		return (
+			this.rowTimerWaveformEditLayer(index) === 'envfm' &&
+			this.rowFmOffsetMode(index) === 'period'
+		);
 	}
 
 	rowFmOffsetMode(index: number): AyFmOffsetMode {
@@ -538,11 +846,17 @@ export class AyTimerEffectsController {
 	}
 
 	rowTimerWaveformUsesFmSemitones(index: number): boolean {
-		return this.rowFmEnabled(index) && this.rowFmOffsetMode(index) === 'semitone';
+		const layer = this.rowTimerWaveformEditLayer(index);
+		return (layer === 'fm' || layer === 'envfm') && this.rowFmOffsetMode(index) === 'semitone';
 	}
 
 	rowTimerWaveformUsesFmPeriodOffsets(index: number): boolean {
-		return this.rowFmEnabled(index) && this.rowFmOffsetMode(index) === 'period';
+		return this.rowTimerWaveformEditLayer(index) === 'fm' && this.rowFmOffsetMode(index) === 'period';
+	}
+
+	rowTimerWaveformEditLayerUsesFmOffsetMode(index: number): boolean {
+		const layer = this.rowTimerWaveformEditLayer(index);
+		return layer === 'fm' || layer === 'envfm';
 	}
 
 	private parseNum(text: string): number | null {

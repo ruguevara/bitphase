@@ -125,10 +125,10 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(10);
+		controller.setTimerPwmDuty('sidSync', 10);
+		expect(controller.timerPwmDuty('sidSync')).toBe(10);
 		expect(
-			(current as Instrument & { timerPwmDuty?: number }).timerPwmDuty
+			(current as Instrument & { timerPwmSidSyncDuty?: number }).timerPwmSidSyncDuty
 		).toBe(10);
 	});
 
@@ -142,17 +142,17 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		controller.updateTimerPwmSweep('3');
-		expect(controller.timerPwmSweep()).toBe(3);
-		controller.updateTimerPwmSweep('-12');
-		expect(controller.timerPwmSweep()).toBe(3);
-		controller.setTimerPwmSweepMin(8);
-		expect(controller.timerPwmSweepMin()).toBe(8);
-		controller.updateTimerPwmSweep('0');
-		expect(controller.timerPwmSweep()).toBe(0);
-		expect(controller.timerPwmSweepMin()).toBe(0);
-		controller.updateTimerPwmSweep('99');
-		expect(controller.timerPwmSweep()).toBe(50);
+		controller.updateTimerPwmSweep('sidSync', '3');
+		expect(controller.timerPwmSweep('sidSync')).toBe(3);
+		controller.updateTimerPwmSweep('sidSync', '-12');
+		expect(controller.timerPwmSweep('sidSync')).toBe(3);
+		controller.setTimerPwmSweepMin('sidSync', 8);
+		expect(controller.timerPwmSweepMin('sidSync')).toBe(8);
+		controller.updateTimerPwmSweep('sidSync', '0');
+		expect(controller.timerPwmSweep('sidSync')).toBe(0);
+		expect(controller.timerPwmSweepMin('sidSync')).toBe(0);
+		controller.updateTimerPwmSweep('sidSync', '99');
+		expect(controller.timerPwmSweep('sidSync')).toBe(50);
 	});
 
 	it('tracks instrument sweep min globally', () => {
@@ -168,10 +168,10 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		controller.setTimerPwmSweepMin(5);
-		expect(controller.timerPwmSweepMin()).toBe(5);
-		controller.setTimerPwmSweepMin(40);
-		expect(controller.timerPwmSweepMin()).toBe(25);
+		controller.setTimerPwmSweepMin('sidSync', 5);
+		expect(controller.timerPwmSweepMin('sidSync')).toBe(5);
+		controller.setTimerPwmSweepMin('sidSync', 40);
+		expect(controller.timerPwmSweepMin('sidSync')).toBe(25);
 	});
 
 	it('disables pwm editing when no row has a two-step pwm-eligible waveform', () => {
@@ -189,8 +189,8 @@ describe('AyTimerEffectsController', () => {
 		);
 
 		expect(controller.instrumentSupportsTimerPwm()).toBe(false);
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(20);
+		controller.setTimerPwmDuty('sidSync', 10);
+		expect(controller.timerPwmDuty('sidSync')).toBe(20);
 	});
 
 	it('disables pwm editing when syncbuzzer rows use more than two envelope shapes', () => {
@@ -208,8 +208,8 @@ describe('AyTimerEffectsController', () => {
 		);
 
 		expect(controller.instrumentSupportsTimerPwm()).toBe(false);
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(20);
+		controller.setTimerPwmDuty('sidSync', 10);
+		expect(controller.timerPwmDuty('sidSync')).toBe(20);
 	});
 
 	it('enables pwm editing when sid rows use exactly two steps', () => {
@@ -227,8 +227,8 @@ describe('AyTimerEffectsController', () => {
 		);
 
 		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(10);
+		controller.setTimerPwmDuty('sidSync', 10);
+		expect(controller.timerPwmDuty('sidSync')).toBe(10);
 	});
 
 	it('enables pwm editing when fm rows use exactly two semitone steps', () => {
@@ -246,8 +246,9 @@ describe('AyTimerEffectsController', () => {
 		);
 
 		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(10);
+		expect(controller.instrumentScopeSupportsTimerPwm('fm')).toBe(true);
+		controller.setTimerPwmDuty('fm', 10);
+		expect(controller.timerPwmDuty('fm')).toBe(10);
 	});
 
 	it('enables pwm editing when syncbuzzer rows use exactly two envelope shapes', () => {
@@ -265,11 +266,12 @@ describe('AyTimerEffectsController', () => {
 		);
 
 		expect(controller.instrumentSupportsTimerPwm()).toBe(true);
-		controller.setTimerPwmDuty(10);
-		expect(controller.timerPwmDuty()).toBe(10);
+		expect(controller.instrumentScopeSupportsTimerPwm('sidSync')).toBe(true);
+		controller.setTimerPwmDuty('sidSync', 10);
+		expect(controller.timerPwmDuty('sidSync')).toBe(10);
 	});
 
-	it('tracks instrument-level pwm preserve on new note', () => {
+	it('tracks scoped pwm automation trigger', () => {
 		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
@@ -279,15 +281,19 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		expect(controller.timerPwmPreserveOnNewNote()).toBe(false);
-		controller.setTimerPwmPreserveOnNewNote(true);
-		expect(controller.timerPwmPreserveOnNewNote()).toBe(true);
+		expect(controller.timerPwmAutomationTrigger('sidSync')).toBe('retrigger');
+		controller.setTimerPwmAutomationTrigger('sidSync', 'free');
+		expect(controller.timerPwmAutomationTrigger('sidSync')).toBe('free');
 		expect(
-			(current as Instrument & { timerPwmPreserveOnNewNote?: boolean }).timerPwmPreserveOnNewNote
-		).toBe(true);
+			(current as Instrument & { timerPwmSidSyncAutomationTrigger?: string })
+				.timerPwmSidSyncAutomationTrigger
+		).toBe('free');
+		expect(
+			(current as Instrument & { timerPwmFmAutomationTrigger?: string }).timerPwmFmAutomationTrigger
+		).toBe('retrigger');
 	});
 
-	it('tracks instrument-level reverse pwm sweep', () => {
+	it('tracks scoped reverse pwm sweep', () => {
 		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], {
 			timerPwmSweep: 4
 		});
@@ -299,12 +305,38 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		expect(controller.timerPwmReverseSweep()).toBe(false);
-		controller.setTimerPwmReverseSweep(true);
-		expect(controller.timerPwmReverseSweep()).toBe(true);
+		expect(controller.timerPwmReverseSweep('sidSync')).toBe(false);
+		controller.setTimerPwmReverseSweep('sidSync', true);
+		expect(controller.timerPwmReverseSweep('sidSync')).toBe(true);
 		expect(
-			(current as Instrument & { timerPwmReverseSweep?: boolean }).timerPwmReverseSweep
+			(current as Instrument & { timerPwmSidSyncReverseSweep?: boolean }).timerPwmSidSyncReverseSweep
 		).toBe(true);
+	});
+
+	it('tracks scoped pwm sweep shapes independently', () => {
+		let current = createInstrument([
+			{ sid: true, timerWaveform: [15, 0], fm: true, fmTimerWaveform: [0, 7] }
+		]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.timerPwmSweepShape('sidSync')).toBe('tri');
+		expect(controller.timerPwmSweepShape('fm')).toBe('tri');
+		controller.setTimerPwmSweepShape('sidSync', 'sin');
+		controller.setTimerPwmSweepShape('fm', 'square');
+		expect(controller.timerPwmSweepShape('sidSync')).toBe('sin');
+		expect(controller.timerPwmSweepShape('fm')).toBe('square');
+		expect(
+			(current as Instrument & { timerPwmSidSyncSweepShape?: string }).timerPwmSidSyncSweepShape
+		).toBe('sin');
+		expect((current as Instrument & { timerPwmFmSweepShape?: string }).timerPwmFmSweepShape).toBe(
+			'square'
+		);
 	});
 
 	it('opens and closes the waveform editor for a row', () => {
@@ -344,7 +376,7 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.formatRowTimerWaveform(0)).toBe('0 8 -4');
 	});
 
-	it('resets waveform to syncbuzzer default when switching from fm', () => {
+	it('resets waveform to syncbuzzer default when enabling syncbuzzer on an fm row', () => {
 		let current = createInstrument([{ fm: true, timerWaveform: [15, 7] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
@@ -356,7 +388,7 @@ describe('AyTimerEffectsController', () => {
 
 		expect(controller.formatRowTimerWaveform(0)).toBe('15 7');
 		controller.updateSyncbuzzerRow(0, true);
-		expect(controller.rowFmEnabled(0)).toBe(false);
+		expect(controller.rowFmEnabled(0)).toBe(true);
 		expect(controller.rowSyncbuzzerEnabled(0)).toBe(true);
 		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 	});
@@ -379,5 +411,58 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 		controller.openWaveformEditor(0);
 		expect(controller.waveformEditorRowIndex).toBeNull();
+	});
+
+	it('enables env fm offsets and allows combining with sid', () => {
+		let current = createInstrument([{ sid: false, syncbuzzer: false, fm: false }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		controller.updateEnvfmRow(0, true);
+		expect(controller.rowEnvfmEnabled(0)).toBe(true);
+		expect(controller.rowTimerWaveformUsesEnvFmOffsets(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('-1 1');
+		controller.toggleFmOffsetMode(0);
+		expect(controller.rowTimerWaveformUsesFmSemitones(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 7');
+		controller.updateSidRow(0, true);
+		expect(controller.rowEnvfmEnabled(0)).toBe(true);
+		expect(controller.rowSidEnabled(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('15 0');
+	});
+
+	it('switches timer waveform edit layer when multiple effects are enabled', () => {
+		let current = createInstrument([
+			{
+				sid: true,
+				fm: true,
+				envfm: true,
+				timerWaveform: [15, 0],
+				fmTimerWaveform: [0, 7],
+				envFmTimerWaveform: [-1, 1]
+			}
+		]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.rowHasMultipleTimerWaveformEditLayers(0)).toBe(true);
+		expect(controller.rowTimerWaveformEditLayer(0)).toBe('sid');
+		expect(controller.formatRowTimerWaveform(0)).toBe('15 0');
+		controller.setRowTimerWaveformEditLayer(0, 'fm');
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 7');
+		controller.setRowTimerWaveformEditLayer(0, 'envfm');
+		expect(controller.formatRowTimerWaveform(0)).toBe('-1 1');
+		controller.setRowTimerWaveform(0, [-2, 2]);
+		expect(controller.fields.timerRows[0]?.envFmTimerWaveform).toEqual([-2, 2]);
 	});
 });

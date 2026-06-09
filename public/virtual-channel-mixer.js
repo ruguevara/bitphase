@@ -105,13 +105,20 @@ class VirtualChannelMixer {
 		dst.mixer.envelope = src.mixer.envelope;
 		if (src.timerEffect && dst.timerEffect) {
 			dst.timerEffect.enabled = src.timerEffect.enabled;
+			dst.timerEffect.layers = src.timerEffect.layers ?? 0;
 			dst.timerEffect.kind = src.timerEffect.kind ?? 0;
 			dst.timerEffect.pwmMode = src.timerEffect.pwmMode ?? 0;
 			dst.timerEffect.period = src.timerEffect.period;
 			dst.timerEffect.periodLow = src.timerEffect.periodLow ?? src.timerEffect.period;
 			dst.timerEffect.baseVolume = src.timerEffect.baseVolume ?? 0;
 			dst.timerEffect.baseTonePeriod = src.timerEffect.baseTonePeriod ?? 1;
+			dst.timerEffect.baseEnvelopePeriod =
+				src.timerEffect.baseEnvelopePeriod ?? src.timerEffect.baseTonePeriod ?? 1;
 			dst.timerEffect.fmOffsetMode = src.timerEffect.fmOffsetMode ?? 0;
+			dst.timerEffect.volumeWaveform = [...(src.timerEffect.volumeWaveform ?? src.timerEffect.waveform ?? [15, 0])];
+			dst.timerEffect.envelopeShapeWaveform = [...(src.timerEffect.envelopeShapeWaveform ?? [8])];
+			dst.timerEffect.toneWaveform = [...(src.timerEffect.toneWaveform ?? [0, 7])];
+			dst.timerEffect.envelopePeriodWaveform = [...(src.timerEffect.envelopePeriodWaveform ?? [-1, 1])];
 			dst.timerEffect.waveform = [...(src.timerEffect.waveform ?? [15, 0])];
 			dst.timerEffect.waveformLoop = src.timerEffect.waveformLoop ?? 0;
 			dst.timerEffect.resetPhase = src.timerEffect.resetPhase ?? false;

@@ -21,6 +21,7 @@ const SHARED_CONSTANTS = [
 	'DEFAULT_AY_SYNCBUZZER_WAVEFORM',
 	'DEFAULT_AY_FM_WAVEFORM',
 	'DEFAULT_AY_FM_PERIOD_WAVEFORM',
+	'DEFAULT_AY_ENV_FM_WAVEFORM',
 	'AY_FM_SEMITONE_MIN',
 	'AY_FM_SEMITONE_MAX',
 	'AY_FM_PERIOD_OFFSET_MIN',
@@ -30,6 +31,7 @@ const SHARED_CONSTANTS = [
 	'DEFAULT_AY_TIMER_PWM_DUTY',
 	'DEFAULT_AY_TIMER_PWM_SWEEP_MIN',
 	'DEFAULT_AY_TIMER_PWM_SWEEP',
+	'DEFAULT_AY_TIMER_PWM_INTERRUPT_REFERENCE_HZ',
 	'TIMER_PWM_SWEEP_UNINITIALIZED',
 	'AY_TONE_REGISTER_PRESCALER',
 	'AY_AUTO_TIMER_TONE_MULTIPLIER'
@@ -48,12 +50,28 @@ const ROW_CASES: Array<Record<string, unknown> | undefined> = [
 	{ fm: true, timerWaveform: [0, 12] },
 	{ fm: true, timerWaveform: [0, 1, 0, -1] },
 	{ fm: true, fmOffsetMode: 'period', timerWaveform: [0, 16] },
-	{ fm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] }
+	{ fm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] },
+	{ envfm: true, timerWaveform: [-1, 1] },
+	{ envfm: true, fmOffsetMode: 'semitone', timerWaveform: [0, 7] },
+	{ envfm: true, timerWaveform: [-16, 16] }
 ];
 
 const FIELD_CASES = [
-	{ timerPwmDuty: 50, timerPwmSweepMin: 0, timerPwmSweep: 0, timerRows: [] },
-	{ timerPwmDuty: 25, timerPwmSweepMin: 5, timerPwmSweep: 3, timerRows: [] },
+	{
+		timerPwmSidSyncDuty: 50,
+		timerPwmSidSyncSweepMin: 0,
+		timerPwmSidSyncSweep: 0,
+		timerPwmFmDuty: 40,
+		timerPwmFmSweepMin: 5,
+		timerPwmFmSweep: 2,
+		timerRows: []
+	},
+	{
+		timerPwmSidSyncDuty: 25,
+		timerPwmSidSyncSweepMin: 5,
+		timerPwmSidSyncSweep: 3,
+		timerRows: []
+	},
 	{ timerPwmDuty: 75, timerPwmSweepMin: -3, timerPwmSweep: -1, timerRows: [] },
 	{ timerPwmDuty: undefined, timerPwmSweepMin: undefined, timerPwmSweep: undefined, timerRows: [] }
 ];
@@ -70,8 +88,8 @@ const INSTRUMENT_CASES: InstrumentInput[] = [
 		timerPwmDuty: 25,
 		timerPwmSweepMin: 8,
 		timerPwmSweep: 4,
-		timerPwmPreserveOnNewNote: true,
-		timerPwmReverseSweep: true
+		timerPwmReverseSweep: true,
+		timerPwmSidSyncAutomationTrigger: 'free'
 	} as unknown as InstrumentInput,
 	{
 		id: '03',
@@ -136,6 +154,17 @@ describe('ay-instrument-utils TS/JS parity', () => {
 		}
 	});
 
+	it('effectiveTimerPwmSweepPerInterrupt matches', () => {
+		for (const sweep of SWEEP_INPUTS) {
+			for (const hz of [25, 50, 100, 200]) {
+				expect(
+					js.effectiveTimerPwmSweepPerInterrupt(sweep as never, hz as never),
+					`sweep=${sweep} hz=${hz}`
+				).toBe(ts.effectiveTimerPwmSweepPerInterrupt(sweep, hz));
+			}
+		}
+	});
+
 	it('clampTimerPwmSweepMin matches', () => {
 		for (const min of DUTY_INPUTS) {
 			for (const max of DUTY_INPUTS) {
@@ -172,6 +201,50 @@ describe('ay-instrument-utils TS/JS parity', () => {
 					}
 				}
 			}
+		}
+	});
+
+	it('advanceTimerPwmSweepWithShape matches for triangle and shaped sweeps', () => {
+		for (const reverseSweep of [false, true]) {
+			for (const current of CURRENT_DUTIES) {
+				for (const direction of DIRECTIONS) {
+					for (const sweep of SWEEP_INPUTS) {
+						for (const min of [0, 5, 25, 50]) {
+							for (const max of [0, 10, 25, 50]) {
+								const label = `tri reverse=${reverseSweep} c=${current} dir=${direction} s=${sweep} min=${min} max=${max}`;
+								expect(
+									js.advanceTimerPwmSweepWithShape(
+										current as never,
+										direction as never,
+										sweep as never,
+										min as never,
+										max as never,
+										'tri',
+										reverseSweep as never
+									),
+									label
+								).toEqual(
+									ts.advanceTimerPwmSweepWithShape(
+										current,
+										direction,
+										sweep,
+										min,
+										max,
+										'tri',
+										reverseSweep
+									)
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		for (const shape of ['sin', 'square', 'ramup', 'rampdn', 'expup', 'expdn'] as const) {
+			const first = js.advanceTimerPwmSweepWithShape(-1, 1, 25, 5, 25, shape, false);
+			const second = ts.advanceTimerPwmSweepWithShape(-1, 1, 25, 5, 25, shape, false);
+			expect(first, shape).toEqual(second);
 		}
 	});
 
@@ -215,24 +288,39 @@ describe('ay-instrument-utils TS/JS parity', () => {
 
 			for (const fields of FIELD_CASES) {
 				const fieldsLabel = `${label} / ${JSON.stringify(fields)}`;
-				expect(
-					js.effectiveRowTimerPwmDuty(fields as never, row as never),
-					fieldsLabel
-				).toBe(
-					ts.effectiveRowTimerPwmDuty(fields as unknown as ts.AyInstrumentFields, row as ts.AyTimerRow | undefined)
-				);
-				expect(
-					js.effectiveRowTimerPwmSweep(fields as never, row as never),
-					fieldsLabel
-				).toBe(
-					ts.effectiveRowTimerPwmSweep(fields as unknown as ts.AyInstrumentFields, row as ts.AyTimerRow | undefined)
-				);
-				expect(
-					js.effectiveRowTimerPwmSweepMin(fields as never, row as never),
-					fieldsLabel
-				).toBe(
-					ts.effectiveRowTimerPwmSweepMin(fields as unknown as ts.AyInstrumentFields, row as ts.AyTimerRow | undefined)
-				);
+				const normalizedFields = ts.normalizeAyInstrumentFields({
+					id: 'pwm',
+					rows: [{}],
+					...fields
+				} as InstrumentInput);
+				for (const scope of ts.AY_TIMER_PWM_SCOPES) {
+					if (!ts.rowScopeSupportsTimerPwm(row as ts.AyTimerRow | undefined, scope)) {
+						continue;
+					}
+					const scopeLabel = `${fieldsLabel} / ${scope}`;
+					expect(
+						js.effectiveRowTimerPwmDuty(normalizedFields as never, row as never, scope),
+						scopeLabel
+					).toBe(
+						ts.effectiveRowTimerPwmDuty(normalizedFields, row as ts.AyTimerRow | undefined, scope)
+					);
+					expect(
+						js.effectiveRowTimerPwmSweep(normalizedFields as never, row as never, scope),
+						scopeLabel
+					).toBe(
+						ts.effectiveRowTimerPwmSweep(normalizedFields, row as ts.AyTimerRow | undefined, scope)
+					);
+					expect(
+						js.effectiveRowTimerPwmSweepMin(normalizedFields as never, row as never, scope),
+						scopeLabel
+					).toBe(
+						ts.effectiveRowTimerPwmSweepMin(
+							normalizedFields,
+							row as ts.AyTimerRow | undefined,
+							scope
+						)
+					);
+				}
 			}
 		}
 	});

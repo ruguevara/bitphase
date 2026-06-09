@@ -2,7 +2,6 @@
 	import IconCarbonAdd from '~icons/carbon/add';
 	import IconCarbonSubtract from '~icons/carbon/subtract';
 	import IconCarbonClose from '~icons/carbon/close';
-	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
@@ -19,24 +18,32 @@
 		clampFmPeriodOffset,
 		clampFmSemitone
 	} from './instrument';
+	import AYTimerStepsTextInput from './AYTimerStepsTextInput.svelte';
+	import AYTimerWaveformLayerTabs from './AYTimerWaveformLayerTabs.svelte';
 
 	let {
 		rowIndex,
 		isExpanded = false,
+		embedded = false,
+		compact = false,
+		showLayerTabs = true,
 		onclose
 	}: {
 		rowIndex: number;
 		isExpanded?: boolean;
+		embedded?: boolean;
+		compact?: boolean;
+		showLayerTabs?: boolean;
 		onclose?: () => void;
 	} = $props();
 
 	const controller = getAyTimerEffectsContext();
 	const containerContext: { audioService: AudioService } = getContext('container');
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
-	const canvasHeight = $derived(isExpanded ? 104 : 72);
+	const canvasHeight = $derived(isExpanded ? 128 : 96);
 
 	const PLOT_PADDING = 10;
-	const VIEW_HEIGHT = 72;
+	const VIEW_HEIGHT = 88;
 	const DOT_RADIUS_PX = 2.5;
 	const DOT_RADIUS_ACTIVE_PX = 3.5;
 	const GRADIENT_ID = $derived(`ay-timer-waveform-gradient-${rowIndex}`);
@@ -46,6 +53,7 @@
 	let isDrawing = $state(false);
 	let activeStepIndex = $state<number | null>(null);
 	let hoverStepIndex = $state<number | null>(null);
+	let stepsTextInput: { handleWaveformLayerChange: () => void } | null = $state(null);
 
 	const chipVariant = $derived(
 		resolveAyChipVariant(containerContext.audioService.chipSettings.get('chipVariant'))
@@ -55,49 +63,36 @@
 
 	const highlightedStepIndex = $derived(activeStepIndex ?? hoverStepIndex);
 
-	const activeStepValue = $derived(
-		highlightedStepIndex !== null ? (waveform[highlightedStepIndex] ?? null) : null
-	);
-
 	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex));
 	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex));
 	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
+	const editLayer = $derived(controller.rowTimerWaveformEditLayer(rowIndex));
 	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(rowIndex));
+	const usesEnvFmOffsets = $derived(controller.rowTimerWaveformUsesEnvFmOffsets(rowIndex));
 	const usesFmSemitones = $derived(controller.rowTimerWaveformUsesFmSemitones(rowIndex));
 	const usesFmPeriodOffsets = $derived(controller.rowTimerWaveformUsesFmPeriodOffsets(rowIndex));
-	const editorTitle = $derived(
-		`${usesFmPeriodOffsets ? 'FM period offsets' : usesFmSemitones ? 'FM semitones' : usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
-	);
-	const editorSubtitle = $derived(
-		usesFmPeriodOffsets
-			? 'Raw tone period offsets added to base period'
-			: usesFmSemitones
-				? 'Signed semitone offsets'
-				: usesEnvelopeShapes
-					? 'R13 values (0–15)'
-					: `${chipVariant} DAC curve`
-	);
-	const stepCountLabel = $derived(
-		`${waveform.length} ${usesFmPeriodOffsets || usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
-	);
 	const editorAriaLabel = $derived(
-		usesFmPeriodOffsets
+		usesEnvFmOffsets
+			? 'Env FM offset editor'
+			: usesFmPeriodOffsets
 			? 'FM period offset editor'
 			: usesFmSemitones
-				? 'FM semitone editor'
+				? editLayer === 'envfm'
+					? 'Env FM semitone editor'
+					: 'FM semitone editor'
 				: usesEnvelopeShapes
 					? 'Envelope shapes editor'
 					: 'SID steps editor'
 	);
 	const stepSingularLabel = $derived(
-		usesFmPeriodOffsets || usesFmSemitones
+		usesEnvFmOffsets || usesFmPeriodOffsets || usesFmSemitones
 			? 'FM step'
 			: usesEnvelopeShapes
 				? 'envelope shape'
 				: 'SID step'
 	);
 	const stepsPluralLabel = $derived(
-		usesFmPeriodOffsets || usesFmSemitones
+		usesEnvFmOffsets || usesFmPeriodOffsets || usesFmSemitones
 			? 'FM steps'
 			: usesEnvelopeShapes
 				? 'envelope shapes'
@@ -114,7 +109,7 @@
 
 		const bars = waveform.map((value, index) => {
 			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
-			if (usesFmPeriodOffsets) {
+			if (usesEnvFmOffsets || usesFmPeriodOffsets) {
 				const offset = clampFmPeriodOffset(value);
 				const normalized = (offset + AY_FM_PERIOD_OFFSET_MAX) / (AY_FM_PERIOD_OFFSET_MAX * 2);
 				return {
@@ -280,7 +275,7 @@
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const y = point.y - PLOT_PADDING;
 		const normalized = Math.max(0, Math.min(1, 1 - y / innerHeight));
-		const step = usesFmPeriodOffsets
+		const step = usesEnvFmOffsets || usesFmPeriodOffsets
 			? clampFmPeriodOffset(
 					Math.round(normalized * AY_FM_PERIOD_OFFSET_MAX * 2 - AY_FM_PERIOD_OFFSET_MAX)
 				)
@@ -339,47 +334,48 @@
 			activeStepIndex = length > 0 ? length - 1 : null;
 		}
 	}
+
+	function handleWaveformLayerChange(): void {
+		stepsTextInput?.handleWaveformLayerChange();
+	}
 </script>
 
 <div
-	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3">
-	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-		<div
-			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title={usesFmPeriodOffsets
-				? 'FM period offsets added to base tone period. Y axis spans -4095 to +4095.'
-				: usesFmSemitones
-				? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
-				: usesEnvelopeShapes
-					? 'Envelope shapes (0–15 hex R13 values)'
-					: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}>
-			<span
-				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
-				<IconCarbonWaveform class={iconSizeClass} />
-			</span>
-			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">{editorTitle}</div>
-				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{editorSubtitle}</div>
-			</div>
-		</div>
-		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
-			<span>{stepCountLabel}</span>
-			{#if activeStepValue !== null && highlightedStepIndex !== null}
-				<span
-					class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
-					#{highlightedStepIndex + 1} = {activeStepValue}
-				</span>
+	class={embedded
+		? ''
+		: compact
+			? 'rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-2'
+			: 'mx-2 mt-2 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-2'}>
+	{#if showLayerTabs || !embedded || onclose}
+		<div class="{embedded ? 'mb-1.5' : 'mb-2'} flex flex-col gap-1.5">
+			{#if showLayerTabs || onclose}
+				<div class="flex items-start gap-1.5">
+					{#if showLayerTabs}
+						<div class="min-w-0 flex-1">
+							<AYTimerWaveformLayerTabs
+								{rowIndex}
+								{isExpanded}
+								variant="bar"
+								onLayerChange={handleWaveformLayerChange} />
+						</div>
+					{/if}
+					{#if onclose}
+						<button
+							type="button"
+							class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)]"
+							title="Close waveform editor"
+							aria-label="Close waveform editor"
+							onclick={() => onclose?.()}>
+							<IconCarbonClose class={iconSizeClass} />
+						</button>
+					{/if}
+				</div>
 			{/if}
-			<button
-				type="button"
-				class="inline-flex cursor-pointer items-center justify-center rounded p-1 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)]"
-				title="Close waveform editor"
-				aria-label="Close waveform editor"
-				onclick={() => onclose?.()}>
-				<IconCarbonClose class={iconSizeClass} />
-			</button>
+			{#if !embedded}
+				<AYTimerStepsTextInput bind:this={stepsTextInput} {rowIndex} />
+			{/if}
 		</div>
-	</div>
+	{/if}
 
 	<div
 		class="flex overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] ring-1 ring-inset ring-[var(--color-app-border)]/60"
@@ -488,7 +484,7 @@
 		</svg>
 		</div>
 		<div
-			class="flex w-9 shrink-0 flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]">
+			class="flex w-7 shrink-0 flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]">
 			<button
 				type="button"
 				class="flex flex-1 cursor-pointer items-center justify-center border-b border-[var(--color-app-border)] text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[var(--color-app-surface-secondary)] disabled:hover:text-[var(--color-app-text-muted)]"

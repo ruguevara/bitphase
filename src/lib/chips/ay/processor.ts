@@ -16,11 +16,26 @@ import { normalizeSamplePlaybackBounds } from './sample-region';
 
 type WorkletInstrument = Instrument & {
 	timerRows?: Record<string, unknown>[];
-	timerPwmDuty?: number;
-	timerPwmSweepMin?: number;
-	timerPwmSweep?: number;
-	timerPwmPreserveOnNewNote?: boolean;
+	timerPwmSidSyncDuty?: number;
+	timerPwmSidSyncSweepMin?: number;
+	timerPwmSidSyncSweep?: number;
+	timerPwmFmDuty?: number;
+	timerPwmFmSweepMin?: number;
+	timerPwmFmSweep?: number;
+	timerPwmEfmDuty?: number;
+	timerPwmEfmSweepMin?: number;
+	timerPwmEfmSweep?: number;
+	timerPwmSidSyncSweepShape?: string;
+	timerPwmSidSyncAutomationTrigger?: string;
+	timerPwmSidSyncReverseSweep?: boolean;
+	timerPwmFmSweepShape?: string;
+	timerPwmFmAutomationTrigger?: string;
+	timerPwmFmReverseSweep?: boolean;
+	timerPwmEfmSweepShape?: string;
+	timerPwmEfmAutomationTrigger?: string;
+	timerPwmEfmReverseSweep?: boolean;
 	timerPwmReverseSweep?: boolean;
+	timerPwmSweepShape?: string;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -34,8 +49,7 @@ type WorkletInstrument = Instrument & {
 export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletInstrument {
 	const extended = instrument as WorkletInstrument;
 	const sampleData =
-		extended.sampleData?.length &&
-		isValidInstrumentSampleByteLength(extended.sampleData.length)
+		extended.sampleData?.length && isValidInstrumentSampleByteLength(extended.sampleData.length)
 			? extended.sampleData.map((value) => value & 0xff)
 			: undefined;
 	return {
@@ -43,17 +57,41 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 		rows: Array.from(instrument.rows).map((row) => ({ ...row })),
 		loop: instrument.loop,
 		name: instrument.name,
-		timerPwmDuty: extended.timerPwmDuty,
-		timerPwmSweepMin: extended.timerPwmSweepMin,
-		timerPwmSweep: extended.timerPwmSweep,
-		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote,
+		timerPwmSidSyncDuty: extended.timerPwmSidSyncDuty,
+		timerPwmSidSyncSweepMin: extended.timerPwmSidSyncSweepMin,
+		timerPwmSidSyncSweep: extended.timerPwmSidSyncSweep,
+		timerPwmFmDuty: extended.timerPwmFmDuty,
+		timerPwmFmSweepMin: extended.timerPwmFmSweepMin,
+		timerPwmFmSweep: extended.timerPwmFmSweep,
+		timerPwmEfmDuty: extended.timerPwmEfmDuty,
+		timerPwmEfmSweepMin: extended.timerPwmEfmSweepMin,
+		timerPwmEfmSweep: extended.timerPwmEfmSweep,
+		timerPwmSidSyncSweepShape: extended.timerPwmSidSyncSweepShape,
+		timerPwmSidSyncAutomationTrigger: extended.timerPwmSidSyncAutomationTrigger,
+		timerPwmSidSyncReverseSweep: extended.timerPwmSidSyncReverseSweep,
+		timerPwmFmSweepShape: extended.timerPwmFmSweepShape,
+		timerPwmFmAutomationTrigger: extended.timerPwmFmAutomationTrigger,
+		timerPwmFmReverseSweep: extended.timerPwmFmReverseSweep,
+		timerPwmEfmSweepShape: extended.timerPwmEfmSweepShape,
+		timerPwmEfmAutomationTrigger: extended.timerPwmEfmAutomationTrigger,
+		timerPwmEfmReverseSweep: extended.timerPwmEfmReverseSweep,
 		timerPwmReverseSweep: extended.timerPwmReverseSweep,
-		timerRows: extended.timerRows?.map((row) => ({
-			...row,
-			timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
-				? [...((row as { timerWaveform?: number[] }).timerWaveform as number[])]
-				: undefined
-		})),
+		timerPwmSweepShape: extended.timerPwmSweepShape,
+		timerRows: extended.timerRows?.map((row) => {
+			const timerRow = row as {
+				timerWaveform?: number[];
+				fmTimerWaveform?: number[];
+				envFmTimerWaveform?: number[];
+			};
+			return {
+				...row,
+				timerWaveform: timerRow.timerWaveform ? [...timerRow.timerWaveform] : undefined,
+				fmTimerWaveform: timerRow.fmTimerWaveform ? [...timerRow.fmTimerWaveform] : undefined,
+				envFmTimerWaveform: timerRow.envFmTimerWaveform
+					? [...timerRow.envFmTimerWaveform]
+					: undefined
+			};
+		}),
 		...(sampleData?.length
 			? (() => {
 					const bounds = normalizeSamplePlaybackBounds({

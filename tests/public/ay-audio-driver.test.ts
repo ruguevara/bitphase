@@ -3,6 +3,23 @@ import AYAudioDriver from '../../public/ay-audio-driver.js';
 import AyumiState from '../../public/ayumi-state.js';
 import EffectAlgorithms from '../../public/effect-algorithms.js';
 
+function timerPwmSweepChannelState(sweep: number, direction: number) {
+	return {
+		channelTimerPwmSweepSidSync: [sweep],
+		channelTimerPwmSweepDirectionSidSync: [direction],
+		channelTimerPwmSweepFm: [sweep],
+		channelTimerPwmSweepDirectionFm: [direction],
+		channelTimerPwmSweepEfm: [sweep],
+		channelTimerPwmSweepDirectionEfm: [direction],
+		channelTimerPwmSweepOnceCompleteSidSync: [false],
+		channelTimerPwmSweepOnceCompleteFm: [false],
+		channelTimerPwmSweepOnceCompleteEfm: [false],
+		channelTimerPwmSweepOnceTurnedSidSync: [false],
+		channelTimerPwmSweepOnceTurnedFm: [false],
+		channelTimerPwmSweepOnceTurnedEfm: [false]
+	};
+}
+
 describe('AYAudioDriver', () => {
 	describe('constructor', () => {
 		it('initializes channelMixerState with all generators off', () => {
@@ -150,16 +167,15 @@ describe('AYAudioDriver', () => {
 				channelNoiseAccumulator: [0],
 				channelEnvelopeAccumulator: [0],
 				channelAmplitudeSliding: [0],
-				channelTimerPwmSweep: [25],
-				channelTimerPwmSweepDirection: [-1],
+				...timerPwmSweepChannelState(25, -1),
 				channelSlideStep: [0],
 				channelPortamentoActive: [false],
 				channelToneSliding: [0],
 				channelVibratoSliding: [0]
 			};
-			driver.resetInstrumentAccumulators(state, 0, { preserveTimerPwmSweep: true });
-			expect(state.channelTimerPwmSweep[0]).toBe(25);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+			driver.resetInstrumentAccumulators(state, 0, { preserveAllTimerPwmScopes: true });
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(25);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(-1);
 		});
 
 		it('does not reset timer pwm sweep on new note with portamento command', () => {
@@ -172,8 +188,7 @@ describe('AYAudioDriver', () => {
 				instruments: [{ rows: [{ tone: true, volume: 15 }] }],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
-				channelTimerPwmSweep: [30],
-				channelTimerPwmSweepDirection: [-1],
+				...timerPwmSweepChannelState(30, -1),
 				channelPortamentoActive: [true],
 				channelToneAccumulator: [0],
 				channelNoiseAccumulator: [0],
@@ -194,8 +209,8 @@ describe('AYAudioDriver', () => {
 
 			driver._processNote(state, 0, row, registerState);
 
-			expect(state.channelTimerPwmSweep[0]).toBe(30);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(30);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(-1);
 		});
 
 		it('does not retrigger sample playback on new note with portamento command', () => {
@@ -335,8 +350,7 @@ describe('AYAudioDriver', () => {
 				channelInstruments: [-1],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
-				channelTimerPwmSweep: [30],
-				channelTimerPwmSweepDirection: [-1],
+				...timerPwmSweepChannelState(30, -1),
 				channelPortamentoActive: [false],
 				channelToneAccumulator: [0],
 				channelNoiseAccumulator: [0],
@@ -357,8 +371,8 @@ describe('AYAudioDriver', () => {
 
 			driver._processNote(state, 0, row, registerState);
 
-			expect(state.channelTimerPwmSweep[0]).toBe(-1);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(1);
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(1);
 		});
 
 		it('resets timer pwm sweep direction to -1 on new note when reverse sweep is enabled', () => {
@@ -377,8 +391,7 @@ describe('AYAudioDriver', () => {
 				],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
-				channelTimerPwmSweep: [30],
-				channelTimerPwmSweepDirection: [1],
+				...timerPwmSweepChannelState(30, 1),
 				channelPortamentoActive: [false],
 				channelToneAccumulator: [0],
 				channelNoiseAccumulator: [0],
@@ -399,11 +412,11 @@ describe('AYAudioDriver', () => {
 
 			driver._processNote(state, 0, row, registerState);
 
-			expect(state.channelTimerPwmSweep[0]).toBe(-1);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(-1);
 		});
 
-		it('preserves timer pwm sweep on new note when instrument requests it', () => {
+		it('preserves timer pwm sweep on new note when trigger is free', () => {
 			const driver = new AYAudioDriver();
 			const state = {
 				channelMuted: [false],
@@ -414,13 +427,12 @@ describe('AYAudioDriver', () => {
 					{
 						rows: [{ tone: true, volume: 15 }],
 						timerRows: [{ sid: true, timerWaveform: [15, 0] }],
-						timerPwmPreserveOnNewNote: true
+						timerPwmSidSyncAutomationTrigger: 'free'
 					}
 				],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
-				channelTimerPwmSweep: [30],
-				channelTimerPwmSweepDirection: [-1],
+				...timerPwmSweepChannelState(30, -1),
 				channelPortamentoActive: [false],
 				channelToneAccumulator: [0],
 				channelNoiseAccumulator: [0],
@@ -441,11 +453,11 @@ describe('AYAudioDriver', () => {
 
 			driver._processNote(state, 0, row, registerState);
 
-			expect(state.channelTimerPwmSweep[0]).toBe(30);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(30);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(-1);
 		});
 
-		it('preserves timer pwm sweep on new note with new instrument when instrument requests it', () => {
+		it('preserves timer pwm sweep on new note with new instrument when trigger is free', () => {
 			const driver = new AYAudioDriver();
 			const state = {
 				channelMuted: [false],
@@ -463,13 +475,12 @@ describe('AYAudioDriver', () => {
 					{
 						rows: [{ tone: true, volume: 15 }],
 						timerRows: [{ sid: true, timerWaveform: [15, 0] }],
-						timerPwmPreserveOnNewNote: true
+						timerPwmSidSyncAutomationTrigger: 'free'
 					}
 				],
 				instrumentPositions: [0],
 				currentTuningTable: Array.from({ length: 96 }, (_, i) => 1000 + i),
-				channelTimerPwmSweep: [30],
-				channelTimerPwmSweepDirection: [-1],
+				...timerPwmSweepChannelState(30, -1),
 				channelPortamentoActive: [false],
 				channelToneAccumulator: [0],
 				channelNoiseAccumulator: [0],
@@ -490,8 +501,8 @@ describe('AYAudioDriver', () => {
 
 			driver._processNote(state, 0, row, registerState);
 
-			expect(state.channelTimerPwmSweep[0]).toBe(30);
-			expect(state.channelTimerPwmSweepDirection[0]).toBe(-1);
+			expect(state.channelTimerPwmSweepSidSync[0]).toBe(30);
+			expect(state.channelTimerPwmSweepDirectionSidSync[0]).toBe(-1);
 		});
 	});
 

@@ -1,6 +1,10 @@
 import {
 	createDefaultTimerEffect,
-	TIMER_EFFECT_KIND_NONE
+	TIMER_EFFECT_KIND_NONE,
+	TIMER_LAYER_VOLUME,
+	TIMER_LAYER_ENVELOPE_SHAPE,
+	TIMER_LAYER_TONE,
+	TIMER_LAYER_ENVELOPE_FM
 } from './ay-timer-effect-constants.js';
 
 const AY_REGISTER_COUNT = 14;
@@ -65,13 +69,19 @@ class AYChipRegisterState {
 			const timerEffect = this.channels[i].timerEffect;
 			copy.channels[i].timerEffect = {
 				enabled: timerEffect.enabled,
+				layers: timerEffect.layers ?? 0,
 				kind: timerEffect.kind ?? TIMER_EFFECT_KIND_NONE,
 				pwmMode: timerEffect.pwmMode ?? 0,
 				period: timerEffect.period,
 				periodLow: timerEffect.periodLow ?? timerEffect.period,
 				baseVolume: timerEffect.baseVolume ?? 0,
 				baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
+				baseEnvelopePeriod: timerEffect.baseEnvelopePeriod ?? timerEffect.baseTonePeriod ?? 1,
 				fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
+				volumeWaveform: [...(timerEffect.volumeWaveform ?? timerEffect.waveform ?? [15, 0])],
+				envelopeShapeWaveform: [...(timerEffect.envelopeShapeWaveform ?? [8])],
+				toneWaveform: [...(timerEffect.toneWaveform ?? [0, 7])],
+				envelopePeriodWaveform: [...(timerEffect.envelopePeriodWaveform ?? [-1, 1])],
 				waveform: [...(timerEffect.waveform ?? [15, 0])],
 				waveformLoop: timerEffect.waveformLoop ?? 0,
 				resetPhase: timerEffect.resetPhase ?? false
