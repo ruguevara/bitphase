@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AyumiEngine from '../../public/ayumi-engine.js';
 import AYChipRegisterState from '../../public/ay-chip-register-state.js';
 import {
-	TIMER_EFFECT_KIND_VOLUME,
-	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_EFFECT_TARGET_VOLUME,
+	TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
 	TIMER_PWM_MODE_OFF,
 	TIMER_PWM_MODE_BY_DUTY_INDEX,
 	createVolumeTimerEffect,
@@ -152,17 +152,19 @@ describe('AyumiEngine', () => {
 				mockPtr,
 				0,
 				1,
-				TIMER_EFFECT_KIND_VOLUME,
+				TIMER_EFFECT_TARGET_VOLUME,
 				TIMER_PWM_MODE_OFF,
 				503,
 				503,
 				15,
+				1,
 				1,
 				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_TARGET_VOLUME,
 				256,
 				2,
 				0
@@ -190,17 +192,19 @@ describe('AyumiEngine', () => {
 				mockPtr,
 				0,
 				1,
-				TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+				TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
 				TIMER_PWM_MODE_BY_DUTY_INDEX,
 				40,
 				60,
 				0,
+				1,
 				1,
 				0
 			);
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
 				256,
 				2,
 				0

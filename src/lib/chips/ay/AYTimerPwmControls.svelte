@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
+	import AYTimerWaveformLayerTabs from './AYTimerWaveformLayerTabs.svelte';
 	import {
 		AY_TIMER_PWM_DUTY_MAX,
+		type AyTimerEffectType,
 		sanitizeTimerPwmPercentInput,
 		sanitizeTimerPwmSweepInput
 	} from './instrument';
@@ -9,12 +11,14 @@
 	let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
 	const controller = getAyTimerEffectsContext();
-	const pwmSupported = $derived(controller.instrumentSupportsTimerPwm());
-	const minInputEnabled = $derived(pwmSupported && controller.timerPwmSweep() > 0);
+	const effectType = $derived(controller.pwmEditorTab);
+	const pwmSupported = $derived(controller.instrumentSupportsTimerPwm(effectType));
+	const minInputEnabled = $derived(pwmSupported && controller.timerPwmSweep(effectType) > 0);
 	const reverseSweepEnabled = $derived(minInputEnabled);
+
 	const pwmDisclaimer = $derived.by(() => {
 		if (!pwmSupported) {
-			return 'PWM min %, max %, and sweep need SID, syncbuzzer, or FM with exactly two waveform steps.';
+			return `${effectLabel(effectType)} PWM needs at least one row with this effect and exactly two waveform steps.`;
 		}
 		if (!minInputEnabled) {
 			return 'Min % is disabled while sweep is 0; max % sets the static pulse width.';
@@ -29,26 +33,41 @@
 	let pwmDutyFocused = $state(false);
 	let pwmSweepFocused = $state(false);
 
+	function effectLabel(type: AyTimerEffectType): string {
+		switch (type) {
+			case 'sid':
+				return 'SID';
+			case 'syncbuzzer':
+				return 'Syncbuzzer';
+			case 'fm':
+				return 'FM';
+			case 'envFm':
+				return 'Env FM';
+		}
+	}
+
 	$effect(() => {
-		controller.timerPwmSweep();
-		controller.timerPwmDuty();
+		controller.timerPwmSweep(effectType);
+		controller.timerPwmDuty(effectType);
 		if (!pwmSweepMinFocused) {
 			pwmSweepMinInput = String(
-				controller.timerPwmSweep() > 0 ? controller.timerPwmSweepMin() : 0
+				controller.timerPwmSweep(effectType) > 0
+					? controller.timerPwmSweepMin(effectType)
+					: 0
 			);
 		}
 	});
 
 	$effect(() => {
 		if (!pwmDutyFocused) {
-			pwmDutyInput = String(controller.timerPwmDuty());
+			pwmDutyInput = String(controller.timerPwmDuty(effectType));
 		}
 	});
 
 	$effect(() => {
 		controller.usesHexNumerals();
 		if (!pwmSweepFocused) {
-			pwmSweepInput = controller.formatNum(controller.timerPwmSweep());
+			pwmSweepInput = controller.formatNum(controller.timerPwmSweep(effectType));
 		}
 	});
 
@@ -75,7 +94,7 @@
 	}
 
 	function handlePwmSweepMinInput(raw: string, input: HTMLInputElement): void {
-		const sanitized = sanitizeTimerPwmPercentInput(raw, controller.timerPwmDuty());
+		const sanitized = sanitizeTimerPwmPercentInput(raw, controller.timerPwmDuty(effectType));
 		applySanitizedInput(input, sanitized, (value) => {
 			pwmSweepMinInput = value;
 		});
@@ -85,10 +104,12 @@
 		if (!minInputEnabled) return;
 		const parsed = Number.parseInt(pwmSweepMinInput, 10);
 		if (Number.isFinite(parsed)) {
-			controller.setTimerPwmSweepMin(parsed);
+			controller.setTimerPwmSweepMin(effectType, parsed);
 		}
 		pwmSweepMinInput = String(
-			controller.timerPwmSweep() > 0 ? controller.timerPwmSweepMin() : 0
+			controller.timerPwmSweep(effectType) > 0
+				? controller.timerPwmSweepMin(effectType)
+				: 0
 		);
 	}
 
@@ -102,9 +123,9 @@
 	function commitPwmDuty(): void {
 		const parsed = Number.parseInt(pwmDutyInput, 10);
 		if (Number.isFinite(parsed)) {
-			controller.setTimerPwmDuty(parsed);
+			controller.setTimerPwmDuty(effectType, parsed);
 		}
-		pwmDutyInput = String(controller.timerPwmDuty());
+		pwmDutyInput = String(controller.timerPwmDuty(effectType));
 	}
 
 	function handlePwmSweepInput(raw: string, input: HTMLInputElement): void {
@@ -119,12 +140,22 @@
 	}
 
 	function commitPwmSweep(): void {
-		controller.updateTimerPwmSweep(pwmSweepInput);
-		pwmSweepInput = controller.formatNum(controller.timerPwmSweep());
+		controller.updateTimerPwmSweep(effectType, pwmSweepInput);
+		pwmSweepInput = controller.formatNum(controller.timerPwmSweep(effectType));
 	}
 </script>
 
-<div class="px-2 py-1.5">
+<div class="px-2 py-2">
+	<div class="mb-2">
+		<AYTimerWaveformLayerTabs
+			activeTab={effectType}
+			sidEnabled={controller.instrumentSupportsTimerPwm('sid')}
+			syncbuzzerEnabled={controller.instrumentSupportsTimerPwm('syncbuzzer')}
+			fmEnabled={controller.instrumentSupportsTimerPwm('fm')}
+			envFmEnabled={controller.instrumentSupportsTimerPwm('envFm')}
+			compact={!isExpanded}
+			onchange={(tab) => controller.setPwmEditorTab(tab)} />
+	</div>
 	<div class="flex flex-wrap items-center gap-3">
 		<div class="flex items-center gap-1.5">
 			<span class="text-[var(--color-app-text-muted)] {isExpanded ? 'text-xs' : 'text-[0.65rem]'}">min</span>
@@ -136,10 +167,10 @@
 					value={pwmSweepMinInput}
 					disabled={!minInputEnabled}
 					title={!pwmSupported
-						? 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'
+						? `Disabled: ${effectLabel(effectType)} needs two-step waveforms`
 						: minInputEnabled
 							? 'Sweep min pulse width (0–50%, must be ≤ max)'
-							: 'Disabled while sweep is 0; only max % is used for static pulse width'}
+							: 'Disabled while sweep is 0'}
 					onfocus={(e) => {
 						pwmSweepMinFocused = true;
 						(e.target as HTMLInputElement).select();
@@ -170,7 +201,7 @@
 					disabled={!pwmSupported}
 					title={pwmSupported
 						? 'Pulse width max (0–50%, 50 = symmetric). Static duty when sweep is off.'
-						: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
+						: `Disabled: ${effectLabel(effectType)} needs two-step waveforms`}
 					onfocus={(e) => {
 						pwmDutyFocused = true;
 						(e.target as HTMLInputElement).select();
@@ -199,8 +230,8 @@
 				value={pwmSweepInput}
 				disabled={!pwmSupported}
 				title={pwmSupported
-					? `Pulse width sweep speed (0–${AY_TIMER_PWM_DUTY_MAX}, auto PWM bounce between min and max, 0 = off)`
-					: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
+					? `Pulse width sweep speed (0–${AY_TIMER_PWM_DUTY_MAX}, 0 = off)`
+					: `Disabled: ${effectLabel(effectType)} needs two-step waveforms`}
 				onfocus={(e) => {
 					pwmSweepFocused = true;
 					(e.target as HTMLInputElement).select();
@@ -224,13 +255,14 @@
 		<input
 			type="checkbox"
 			class="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-primary)] focus:ring-2 focus:ring-[var(--color-app-primary)] disabled:cursor-not-allowed"
-			checked={controller.timerPwmPreserveOnNewNote()}
+			checked={controller.timerPwmPreserveOnNewNote(effectType)}
 			disabled={!pwmSupported}
 			title={pwmSupported
-				? 'Keep PWM sweep position when retriggering notes or switching to this instrument'
-				: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
+				? `Keep ${effectLabel(effectType)} PWM sweep position on new notes`
+				: `Disabled: ${effectLabel(effectType)} needs two-step waveforms`}
 			onchange={(event) =>
 				controller.setTimerPwmPreserveOnNewNote(
+					effectType,
 					(event.currentTarget as HTMLInputElement).checked
 				)} />
 		<span class={isExpanded ? 'text-xs' : 'text-[0.65rem]'}>Don't restart PWM sweep on new notes</span>
@@ -242,15 +274,16 @@
 		<input
 			type="checkbox"
 			class="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-primary)] focus:ring-2 focus:ring-[var(--color-app-primary)] disabled:cursor-not-allowed"
-			checked={controller.timerPwmReverseSweep()}
+			checked={controller.timerPwmReverseSweep(effectType)}
 			disabled={!reverseSweepEnabled}
 			title={reverseSweepEnabled
 				? 'Start PWM sweep at max and sweep down toward min first'
 				: pwmSupported
 					? 'Disabled while sweep is 0'
-					: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
+					: `Disabled: ${effectLabel(effectType)} needs two-step waveforms`}
 			onchange={(event) =>
 				controller.setTimerPwmReverseSweep(
+					effectType,
 					(event.currentTarget as HTMLInputElement).checked
 				)} />
 		<span class={isExpanded ? 'text-xs' : 'text-[0.65rem]'}>Reverse PWM sweep</span>

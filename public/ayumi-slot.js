@@ -7,9 +7,9 @@ import {
 	DEFAULT_AYM_FREQUENCY
 } from './ayumi-constants.js';
 import {
-	TIMER_EFFECT_KIND_VOLUME,
-	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
-	TIMER_EFFECT_KIND_TONE
+	TIMER_EFFECT_TARGET_VOLUME,
+	TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
+	TIMER_EFFECT_TARGET_TONE
 } from './ay-timer-effect-constants.js';
 import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
@@ -208,12 +208,13 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			}
 
 			const timerEffect = channel?.timerEffect;
+			const targetMask = timerEffect?.targetMask ?? 0;
 			const volumeEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
+				timerEffect?.enabled && (targetMask & TIMER_EFFECT_TARGET_VOLUME) !== 0;
 			const toneEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_TONE;
+				timerEffect?.enabled && (targetMask & TIMER_EFFECT_TARGET_TONE) !== 0;
 			const envelopeShapeEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
+				timerEffect?.enabled && (targetMask & TIMER_EFFECT_TARGET_ENVELOPE_SHAPE) !== 0;
 
 			if (!volumeEffectActive && !toneEffectActive) {
 				sidTimerHz.push(null);

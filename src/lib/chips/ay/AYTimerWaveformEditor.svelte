@@ -2,10 +2,13 @@
 	import IconCarbonAdd from '~icons/carbon/add';
 	import IconCarbonSubtract from '~icons/carbon/subtract';
 	import IconCarbonClose from '~icons/carbon/close';
+	import IconCarbonChartWinLoss from '~icons/carbon/chart-win-loss';
+	import IconCarbonSettingsAdjust from '~icons/carbon/settings-adjust';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
+	import AYTimerWaveformLayerTabs from './AYTimerWaveformLayerTabs.svelte';
 	import {
 		amplitudeToNearestSidStep,
 		resolveAyChipVariant,
@@ -17,7 +20,8 @@
 		AY_TIMER_WAVEFORM_MIN_LENGTH,
 		AY_FM_PERIOD_OFFSET_MAX,
 		clampFmPeriodOffset,
-		clampFmSemitone
+		clampFmSemitone,
+		type AyTimerEffectType
 	} from './instrument';
 
 	let {
@@ -51,7 +55,8 @@
 		resolveAyChipVariant(containerContext.audioService.chipSettings.get('chipVariant'))
 	);
 
-	const waveform = $derived(controller.rowTimerWaveform(rowIndex));
+	const effectType = $derived(controller.waveformEditorTab);
+	const waveform = $derived(controller.rowWaveform(rowIndex, effectType));
 
 	const highlightedStepIndex = $derived(activeStepIndex ?? hoverStepIndex);
 
@@ -59,21 +64,43 @@
 		highlightedStepIndex !== null ? (waveform[highlightedStepIndex] ?? null) : null
 	);
 
-	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex));
-	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex));
+	const canAppendStep = $derived(controller.canAppendRowWaveformStep(rowIndex, effectType));
+	const canRemoveStep = $derived(controller.canRemoveRowWaveformStep(rowIndex, effectType));
 	const stepButtonIconClass = $derived(isExpanded ? 'h-4 w-4' : 'h-3.5 w-3.5');
-	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(rowIndex));
-	const usesFmSemitones = $derived(controller.rowTimerWaveformUsesFmSemitones(rowIndex));
-	const usesFmPeriodOffsets = $derived(controller.rowTimerWaveformUsesFmPeriodOffsets(rowIndex));
-	const editorTitle = $derived(
-		`${usesFmPeriodOffsets ? 'FM period offsets' : usesFmSemitones ? 'FM semitones' : usesEnvelopeShapes ? 'Envelope shapes' : 'SID steps'} · row ${rowIndex + 1}`
+	const usesEnvelopeShapes = $derived(
+		controller.rowWaveformUsesEnvelopeShapes(rowIndex, effectType)
 	);
+	const usesFmSemitones = $derived(
+		controller.rowWaveformUsesFmSemitones(rowIndex, effectType)
+	);
+	const usesFmPeriodOffsets = $derived(
+		controller.rowWaveformUsesFmPeriodOffsets(rowIndex, effectType)
+	);
+	const editorTitle = $derived.by(() => {
+		const layer =
+			effectType === 'envFm'
+				? usesFmPeriodOffsets
+					? 'Env FM period offsets'
+					: 'Env FM semitones'
+				: effectType === 'fm'
+					? usesFmPeriodOffsets
+						? 'FM period offsets'
+						: 'FM semitones'
+					: effectType === 'syncbuzzer'
+						? 'Envelope shapes'
+						: 'SID steps';
+		return `${layer} · row ${rowIndex + 1}`;
+	});
 	const editorSubtitle = $derived(
-		usesFmPeriodOffsets
-			? 'Raw tone period offsets added to base period'
-			: usesFmSemitones
-				? 'Signed semitone offsets'
-				: usesEnvelopeShapes
+		effectType === 'envFm'
+			? usesFmPeriodOffsets
+				? 'Raw envelope period offsets added to base period'
+				: 'Signed envelope semitone offsets via note conversion'
+			: effectType === 'fm'
+				? usesFmPeriodOffsets
+					? 'Raw tone period offsets added to base period'
+					: 'Signed semitone offsets'
+				: effectType === 'syncbuzzer'
 					? 'R13 values (0–15)'
 					: `${chipVariant} DAC curve`
 	);
@@ -81,13 +108,13 @@
 		`${waveform.length} ${usesFmPeriodOffsets || usesFmSemitones ? 'FM steps' : usesEnvelopeShapes ? 'envelope shapes' : 'SID steps'}`
 	);
 	const editorAriaLabel = $derived(
-		usesFmPeriodOffsets
-			? 'FM period offset editor'
-			: usesFmSemitones
-				? 'FM semitone editor'
-				: usesEnvelopeShapes
-					? 'Envelope shapes editor'
-					: 'SID steps editor'
+		effectType === 'fm' || effectType === 'envFm'
+			? usesFmPeriodOffsets
+				? 'FM period offset editor'
+				: 'FM semitone editor'
+			: effectType === 'syncbuzzer'
+				? 'Envelope shapes editor'
+				: 'SID steps editor'
 	);
 	const stepSingularLabel = $derived(
 		usesFmPeriodOffsets || usesFmSemitones
@@ -103,6 +130,84 @@
 				? 'envelope shapes'
 				: 'SID steps'
 	);
+	const showOffsetModeToggle = $derived(effectType === 'fm' || effectType === 'envFm');
+	const offsetModeIsPeriod = $derived(
+		effectType === 'fm'
+			? controller.rowFmOffsetMode(rowIndex) === 'period'
+			: controller.rowEnvFmOffsetMode(rowIndex) === 'period'
+	);
+
+	const waveformPlaceholder = $derived(
+		usesFmPeriodOffsets
+			? '0 16 0 -16'
+			: usesFmSemitones
+				? '0 7'
+				: usesEnvelopeShapes
+					? '8'
+					: '15 0'
+	);
+
+	const waveformInputTitle = $derived(
+		usesFmPeriodOffsets
+			? effectType === 'envFm'
+				? 'Space-separated raw envelope period offsets (signed)'
+				: 'Space-separated raw tone period offsets (signed)'
+			: usesFmSemitones
+				? effectType === 'envFm'
+					? 'Space-separated envelope semitone offsets (signed)'
+					: 'Space-separated semitone offsets (signed)'
+				: usesEnvelopeShapes
+					? 'Space-separated envelope shapes (0–15 hex). Pattern envelope digit overrides when set.'
+					: 'Space-separated SID steps (0–15)'
+	);
+
+	let waveformText = $state('');
+	let waveformInputFocused = $state(false);
+
+	$effect(() => {
+		controller.rowWaveform(rowIndex, effectType);
+		controller.formatRowWaveform(rowIndex, effectType);
+		if (!waveformInputFocused) {
+			waveformText = controller.formatRowWaveform(rowIndex, effectType);
+		}
+	});
+
+	function commitWaveformText(text: string): void {
+		const parsed = controller.parseWaveform(text, rowIndex, effectType);
+		if (parsed !== null) {
+			controller.setRowWaveform(rowIndex, effectType, parsed);
+		}
+	}
+
+	function handleWaveformFocus(event: FocusEvent): void {
+		waveformInputFocused = true;
+		waveformText = controller.formatRowWaveform(rowIndex, effectType);
+		(event.target as HTMLInputElement).select();
+	}
+
+	function handleWaveformBlur(): void {
+		waveformInputFocused = false;
+		commitWaveformText(waveformText);
+		waveformText = controller.formatRowWaveform(rowIndex, effectType);
+	}
+
+	function handleWaveformKeydown(event: KeyboardEvent): void {
+		if (event.key !== 'Enter') {
+			return;
+		}
+		event.preventDefault();
+		commitWaveformText(waveformText);
+		waveformText = controller.formatRowWaveform(rowIndex, effectType);
+		(event.currentTarget as HTMLInputElement).blur();
+	}
+
+	function handleWaveformTabChange(tab: AyTimerEffectType): void {
+		if (waveformInputFocused) {
+			commitWaveformText(waveformText);
+			waveformInputFocused = false;
+		}
+		controller.setWaveformEditorTab(tab);
+	}
 
 	const waveformGraphic = $derived.by(() => {
 		const steps = waveform.length;
@@ -291,7 +396,7 @@
 						SID_WAVEFORM_PREVIEW_BASE_VOLUME,
 						chipVariant
 					);
-		controller.setRowWaveformStep(rowIndex, index, step);
+		controller.setRowWaveformStep(rowIndex, effectType, index, step);
 	}
 
 	function handlePointerDown(event: PointerEvent): void {
@@ -324,25 +429,43 @@
 	}
 
 	function handleAppendStep(): void {
-		if (!controller.appendRowWaveformStep(rowIndex)) {
+		if (!controller.appendRowWaveformStep(rowIndex, effectType)) {
 			return;
 		}
-		activeStepIndex = controller.rowTimerWaveform(rowIndex).length - 1;
+		activeStepIndex = controller.rowWaveform(rowIndex, effectType).length - 1;
 	}
 
 	function handleRemoveStep(): void {
-		if (!controller.removeRowWaveformStep(rowIndex)) {
+		if (!controller.removeRowWaveformStep(rowIndex, effectType)) {
 			return;
 		}
-		const length = controller.rowTimerWaveform(rowIndex).length;
+		const length = controller.rowWaveform(rowIndex, effectType).length;
 		if (activeStepIndex !== null && activeStepIndex >= length) {
 			activeStepIndex = length > 0 ? length - 1 : null;
+		}
+	}
+
+	function toggleOffsetMode(): void {
+		if (effectType === 'fm') {
+			controller.toggleFmOffsetMode(rowIndex);
+		} else if (effectType === 'envFm') {
+			controller.toggleEnvFmOffsetMode(rowIndex);
 		}
 	}
 </script>
 
 <div
-	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3">
+	class="mx-2 mt-3 rounded-xl border border-[var(--color-app-border)] bg-gradient-to-b from-[var(--color-app-surface-secondary)] to-[var(--color-app-surface)] p-3 shadow-sm">
+	<div class="mb-3">
+		<AYTimerWaveformLayerTabs
+			activeTab={effectType}
+			sidEnabled={controller.rowSidEnabled(rowIndex)}
+			syncbuzzerEnabled={controller.rowSyncbuzzerEnabled(rowIndex)}
+			fmEnabled={controller.rowFmEnabled(rowIndex)}
+			envFmEnabled={controller.rowEnvFmEnabled(rowIndex)}
+			compact={!isExpanded}
+			onchange={handleWaveformTabChange} />
+	</div>
 	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
 		<div
 			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
@@ -363,6 +486,23 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
+			{#if showOffsetModeToggle}
+				<button
+					type="button"
+					class="inline-flex cursor-pointer items-center gap-1 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1 text-[var(--color-app-text-secondary)] transition-colors hover:bg-[var(--color-app-surface-hover)]"
+					title={offsetModeIsPeriod
+						? 'Period offset mode. Click for semitones.'
+						: 'Semitone mode. Click for period offsets.'}
+					onclick={toggleOffsetMode}>
+					{#if offsetModeIsPeriod}
+						<IconCarbonSettingsAdjust class={iconSizeClass} />
+						<span>Period</span>
+					{:else}
+						<IconCarbonChartWinLoss class={iconSizeClass} />
+						<span>Semitone</span>
+					{/if}
+				</button>
+			{/if}
 			<span>{stepCountLabel}</span>
 			{#if activeStepValue !== null && highlightedStepIndex !== null}
 				<span
@@ -512,5 +652,22 @@
 				<IconCarbonAdd class={stepButtonIconClass} />
 			</button>
 		</div>
+	</div>
+
+	<div class="mt-2">
+		<label class="mb-1 block text-[10px] text-[var(--color-app-text-tertiary)]">Steps</label>
+		<input
+			type="text"
+			class="box-border w-full min-w-0 rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1.5 font-mono {isExpanded
+				? 'text-xs'
+				: 'text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+			value={waveformText}
+			placeholder={waveformPlaceholder}
+			spellcheck="false"
+			title={waveformInputTitle}
+			onfocus={handleWaveformFocus}
+			oninput={(event) => (waveformText = (event.currentTarget as HTMLInputElement).value)}
+			onkeydown={handleWaveformKeydown}
+			onblur={handleWaveformBlur} />
 	</div>
 </div>

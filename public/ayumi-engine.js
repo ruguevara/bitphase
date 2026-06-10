@@ -1,7 +1,10 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import {
-	TIMER_EFFECT_KIND_NONE,
-	TIMER_EFFECT_KIND_TONE,
+	TIMER_EFFECT_TARGET_NONE,
+	TIMER_EFFECT_TARGET_VOLUME,
+	TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
+	TIMER_EFFECT_TARGET_TONE,
+	TIMER_EFFECT_TARGET_ENVELOPE_PERIOD,
 	TIMER_FM_OFFSET_PERIOD,
 	resolveTimerFmOffsetMode
 } from './ay-timer-effect-constants.js';
@@ -11,6 +14,29 @@ import {
 	AY_FM_SEMITONE_MAX,
 	AY_FM_SEMITONE_MIN
 } from './ay-instrument-utils.js';
+
+const TIMER_EFFECT_WAVEFORM_TARGETS = [
+	{
+		target: TIMER_EFFECT_TARGET_VOLUME,
+		waveformKey: 'volumeWaveform',
+		loopKey: 'volumeWaveformLoop'
+	},
+	{
+		target: TIMER_EFFECT_TARGET_ENVELOPE_SHAPE,
+		waveformKey: 'envelopeShapeWaveform',
+		loopKey: 'envelopeShapeWaveformLoop'
+	},
+	{
+		target: TIMER_EFFECT_TARGET_TONE,
+		waveformKey: 'toneWaveform',
+		loopKey: 'toneWaveformLoop'
+	},
+	{
+		target: TIMER_EFFECT_TARGET_ENVELOPE_PERIOD,
+		waveformKey: 'envelopePeriodWaveform',
+		loopKey: 'envelopePeriodWaveformLoop'
+	}
+];
 
 class AyumiEngine {
 	constructor(wasmModule, ayumiPtr) {
@@ -40,96 +66,137 @@ class AyumiEngine {
 		return ptr;
 	}
 
+	_waveformsEqual(left, right) {
+		const a = left ?? [];
+		const b = right ?? [];
+		return a.length === b.length && a.every((value, index) => value === b[index]);
+	}
+
+	_clampWaveformValue(target, raw, fmOffsetMode) {
+		if (target === TIMER_EFFECT_TARGET_ENVELOPE_PERIOD) {
+			return Math.max(1, raw & 0xffff);
+		}
+		if (target === TIMER_EFFECT_TARGET_TONE) {
+			return fmOffsetMode === TIMER_FM_OFFSET_PERIOD
+				? Math.max(AY_FM_PERIOD_OFFSET_MIN, Math.min(AY_FM_PERIOD_OFFSET_MAX, raw))
+				: Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, raw));
+		}
+		return raw & 0xf;
+	}
+
+	_uploadTimerEffectWaveform(channelIndex, target, waveform, waveformLoop, fmOffsetMode) {
+		if (!waveform || waveform.length <= 0) {
+			return;
+		}
+		const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, waveform.length);
+		const memory = new Int32Array(this.wasmModule.memory.buffer);
+		const offset = ptr >> 2;
+		for (let i = 0; i < waveform.length; i++) {
+			memory[offset + i] = this._clampWaveformValue(target, waveform[i] | 0, fmOffsetMode);
+		}
+		this.wasmModule.ayumi_set_timer_effect_waveform(
+			this.ayumiPtr,
+			channelIndex,
+			target,
+			ptr,
+			waveform.length,
+			waveformLoop ?? 0
+		);
+	}
+
 	_applyTimerEffect(channelIndex, timerEffect, lastTimerEffect, forceApply = false) {
 		const enabled = timerEffect.enabled ? 1 : 0;
-		const kind = timerEffect.kind ?? TIMER_EFFECT_KIND_NONE;
+		const targetMask = timerEffect.targetMask ?? TIMER_EFFECT_TARGET_NONE;
 		const pwmMode = timerEffect.pwmMode ?? 0;
 		const period = timerEffect.period > 0 ? timerEffect.period : 1;
 		const periodLow = timerEffect.periodLow > 0 ? timerEffect.periodLow : period;
 		const baseVolume = timerEffect.baseVolume & 0xf;
 		const baseTonePeriod = Math.max(1, timerEffect.baseTonePeriod & 0xfff);
+		const baseEnvelopePeriod = Math.max(1, timerEffect.baseEnvelopePeriod & 0xffff);
 		const fmOffsetMode = resolveTimerFmOffsetMode(timerEffect.fmOffsetMode);
 		const wasEnabled = lastTimerEffect.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
-		const kindChanged = kind !== (lastTimerEffect.kind ?? TIMER_EFFECT_KIND_NONE);
+		const targetMaskChanged =
+			targetMask !== (lastTimerEffect.targetMask ?? TIMER_EFFECT_TARGET_NONE);
 		const pwmModeChanged = pwmMode !== (lastTimerEffect.pwmMode ?? 0);
 		const lastBaseTonePeriod = lastTimerEffect.baseTonePeriod ?? 1;
+		const lastBaseEnvelopePeriod = lastTimerEffect.baseEnvelopePeriod ?? 1;
 		const lastFmOffsetMode = resolveTimerFmOffsetMode(lastTimerEffect.fmOffsetMode);
 
 		if (
 			forceApply ||
 			enableChanged ||
-			kindChanged ||
+			targetMaskChanged ||
 			pwmModeChanged ||
 			period !== lastTimerEffect.period ||
 			periodLow !== lastTimerEffect.periodLow ||
 			baseVolume !== lastTimerEffect.baseVolume ||
 			baseTonePeriod !== lastBaseTonePeriod ||
+			baseEnvelopePeriod !== lastBaseEnvelopePeriod ||
 			fmOffsetMode !== lastFmOffsetMode
 		) {
 			this.wasmModule.ayumi_set_timer_effect(
 				this.ayumiPtr,
 				channelIndex,
 				enabled,
-				kind,
+				targetMask,
 				pwmMode,
 				period,
 				periodLow,
 				baseVolume,
 				baseTonePeriod,
+				baseEnvelopePeriod,
 				fmOffsetMode
 			);
 			lastTimerEffect.enabled = timerEffect.enabled;
-			lastTimerEffect.kind = kind;
+			lastTimerEffect.targetMask = targetMask;
 			lastTimerEffect.pwmMode = pwmMode;
 			lastTimerEffect.period = period;
 			lastTimerEffect.periodLow = periodLow;
 			lastTimerEffect.baseVolume = baseVolume;
 			lastTimerEffect.baseTonePeriod = baseTonePeriod;
+			lastTimerEffect.baseEnvelopePeriod = baseEnvelopePeriod;
 			lastTimerEffect.fmOffsetMode = fmOffsetMode;
 		}
 
-		const waveform = timerEffect.waveform ?? [15, 0];
-		const waveformLoop = timerEffect.waveformLoop ?? 0;
-		const lastWaveform = lastTimerEffect.waveform ?? [15, 0];
-		const waveformChanged =
-			waveform.length !== lastWaveform.length ||
-			waveformLoop !== (lastTimerEffect.waveformLoop ?? 0) ||
-			waveform.some((value, index) => value !== lastWaveform[index]);
-
-		if (
-			timerEffect.enabled &&
-			waveform.length > 0 &&
-			(forceApply ||
-				waveformChanged ||
-				enableChanged ||
-				kindChanged ||
-				pwmModeChanged ||
-				fmOffsetMode !== lastFmOffsetMode)
-		) {
-			const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, waveform.length);
-			const memory = new Int32Array(this.wasmModule.memory.buffer);
-			const offset = ptr >> 2;
-			for (let i = 0; i < waveform.length; i++) {
-				const raw = waveform[i] | 0;
-				if (kind === TIMER_EFFECT_KIND_TONE) {
-					memory[offset + i] =
-						fmOffsetMode === TIMER_FM_OFFSET_PERIOD
-							? Math.max(AY_FM_PERIOD_OFFSET_MIN, Math.min(AY_FM_PERIOD_OFFSET_MAX, raw))
-							: Math.max(AY_FM_SEMITONE_MIN, Math.min(AY_FM_SEMITONE_MAX, raw));
-				} else {
-					memory[offset + i] = raw & 0xf;
-				}
+		if (!timerEffect.enabled || targetMask === TIMER_EFFECT_TARGET_NONE) {
+			if (timerEffect.resetPhase) {
+				this.wasmModule.ayumi_timer_effect_reset(this.ayumiPtr, channelIndex);
+				timerEffect.resetPhase = false;
 			}
-			this.wasmModule.ayumi_set_timer_effect_waveform(
-				this.ayumiPtr,
-				channelIndex,
-				ptr,
-				waveform.length,
-				waveformLoop
-			);
-			lastTimerEffect.waveform = [...waveform];
-			lastTimerEffect.waveformLoop = waveformLoop;
+			return;
+		}
+
+		for (const { target, waveformKey, loopKey } of TIMER_EFFECT_WAVEFORM_TARGETS) {
+			if ((targetMask & target) === 0) {
+				continue;
+			}
+			const waveform = timerEffect[waveformKey] ?? [];
+			const waveformLoop = timerEffect[loopKey] ?? 0;
+			const lastWaveform = lastTimerEffect[waveformKey] ?? [];
+			const lastWaveformLoop = lastTimerEffect[loopKey] ?? 0;
+			const waveformChanged =
+				!this._waveformsEqual(waveform, lastWaveform) || waveformLoop !== lastWaveformLoop;
+
+			if (
+				waveform.length > 0 &&
+				(forceApply ||
+					waveformChanged ||
+					enableChanged ||
+					targetMaskChanged ||
+					pwmModeChanged ||
+					fmOffsetMode !== lastFmOffsetMode)
+			) {
+				this._uploadTimerEffectWaveform(
+					channelIndex,
+					target,
+					waveform,
+					waveformLoop,
+					fmOffsetMode
+				);
+				lastTimerEffect[waveformKey] = [...waveform];
+				lastTimerEffect[loopKey] = waveformLoop;
+			}
 		}
 
 		if (timerEffect.resetPhase) {
@@ -231,11 +298,7 @@ class AyumiEngine {
 			return;
 		}
 		this.lastSampleSidVolumes[channelIndex] = volume;
-		const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, 1);
-		const memory = new Int32Array(this.wasmModule.memory.buffer);
-		const offset = ptr >> 2;
-		memory[offset] = volume;
-		this.wasmModule.ayumi_set_timer_effect_waveform(this.ayumiPtr, channelIndex, ptr, 1, 0);
+		this._uploadTimerEffectWaveform(channelIndex, TIMER_EFFECT_TARGET_VOLUME, [volume], 0, 0);
 	}
 
 	reset() {

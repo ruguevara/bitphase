@@ -16,11 +16,10 @@ import { normalizeSamplePlaybackBounds } from './sample-region';
 
 type WorkletInstrument = Instrument & {
 	timerRows?: Record<string, unknown>[];
-	timerPwmDuty?: number;
-	timerPwmSweepMin?: number;
-	timerPwmSweep?: number;
-	timerPwmPreserveOnNewNote?: boolean;
-	timerPwmReverseSweep?: boolean;
+	sidTimerPwm?: Record<string, unknown>;
+	syncbuzzerTimerPwm?: Record<string, unknown>;
+	fmTimerPwm?: Record<string, unknown>;
+	envFmTimerPwm?: Record<string, unknown>;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -43,17 +42,29 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 		rows: Array.from(instrument.rows).map((row) => ({ ...row })),
 		loop: instrument.loop,
 		name: instrument.name,
-		timerPwmDuty: extended.timerPwmDuty,
-		timerPwmSweepMin: extended.timerPwmSweepMin,
-		timerPwmSweep: extended.timerPwmSweep,
-		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote,
-		timerPwmReverseSweep: extended.timerPwmReverseSweep,
-		timerRows: extended.timerRows?.map((row) => ({
-			...row,
-			timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
-				? [...((row as { timerWaveform?: number[] }).timerWaveform as number[])]
-				: undefined
-		})),
+		sidTimerPwm: extended.sidTimerPwm ? { ...extended.sidTimerPwm } : undefined,
+		syncbuzzerTimerPwm: extended.syncbuzzerTimerPwm
+			? { ...extended.syncbuzzerTimerPwm }
+			: undefined,
+		fmTimerPwm: extended.fmTimerPwm ? { ...extended.fmTimerPwm } : undefined,
+		envFmTimerPwm: extended.envFmTimerPwm ? { ...extended.envFmTimerPwm } : undefined,
+		timerRows: extended.timerRows?.map((row) => {
+			const typedRow = row as {
+				sidWaveform?: number[];
+				syncbuzzerWaveform?: number[];
+				fmWaveform?: number[];
+				envFmWaveform?: number[];
+			};
+			return {
+				...row,
+				sidWaveform: typedRow.sidWaveform ? [...typedRow.sidWaveform] : undefined,
+				syncbuzzerWaveform: typedRow.syncbuzzerWaveform
+					? [...typedRow.syncbuzzerWaveform]
+					: undefined,
+				fmWaveform: typedRow.fmWaveform ? [...typedRow.fmWaveform] : undefined,
+				envFmWaveform: typedRow.envFmWaveform ? [...typedRow.envFmWaveform] : undefined
+			};
+		}),
 		...(sampleData?.length
 			? (() => {
 					const bounds = normalizeSamplePlaybackBounds({

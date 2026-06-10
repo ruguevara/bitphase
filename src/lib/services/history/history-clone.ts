@@ -123,62 +123,116 @@ export class HistoryClone {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envFm?: boolean;
 				fmOffsetMode?: 'semitone' | 'period';
+				envFmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 				semitone?: number;
-				timerWaveform?: number[];
-				timerWaveformLoop?: number;
-				timerPwmDuty?: number;
-				timerPwmSweepMin?: number;
-				timerPwmSweep?: number;
+				sidWaveform?: number[];
+				sidWaveformLoop?: number;
+				syncbuzzerWaveform?: number[];
+				syncbuzzerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
 			}[];
-			timerPwmDuty?: number;
-			timerPwmSweepMin?: number;
-			timerPwmSweep?: number;
-			timerPwmPreserveOnNewNote?: boolean;
-			timerPwmReverseSweep?: boolean;
+			sidTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			syncbuzzerTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			fmTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			envFmTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
 				sid: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envFm?: boolean;
 				fmOffsetMode?: 'semitone' | 'period';
+				envFmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
 				semitone?: number;
-				timerWaveform?: number[];
-				timerWaveformLoop?: number;
-				timerPwmDuty?: number;
-				timerPwmSweepMin?: number;
-				timerPwmSweep?: number;
+				sidWaveform?: number[];
+				sidWaveformLoop?: number;
+				syncbuzzerWaveform?: number[];
+				syncbuzzerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
 			}[];
-			timerPwmDuty?: number;
-			timerPwmSweepMin?: number;
-			timerPwmSweep?: number;
-			timerPwmPreserveOnNewNote?: boolean;
-			timerPwmReverseSweep?: boolean;
+			sidTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			syncbuzzerTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			fmTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
+			envFmTimerPwm?: {
+				duty?: number;
+				sweepMin?: number;
+				sweep?: number;
+				preserveOnNewNote?: boolean;
+				reverseSweep?: boolean;
+			};
 		};
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
 				...row,
-				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+				sidWaveform: row.sidWaveform ? [...row.sidWaveform] : undefined,
+				syncbuzzerWaveform: row.syncbuzzerWaveform ? [...row.syncbuzzerWaveform] : undefined,
+				fmWaveform: row.fmWaveform ? [...row.fmWaveform] : undefined,
+				envFmWaveform: row.envFmWaveform ? [...row.envFmWaveform] : undefined
 			}));
 		}
-		if (extended.timerPwmDuty !== undefined) clonedExtended.timerPwmDuty = extended.timerPwmDuty;
-		if (extended.timerPwmSweepMin !== undefined) {
-			clonedExtended.timerPwmSweepMin = extended.timerPwmSweepMin;
+		if (extended.sidTimerPwm) clonedExtended.sidTimerPwm = { ...extended.sidTimerPwm };
+		if (extended.syncbuzzerTimerPwm) {
+			clonedExtended.syncbuzzerTimerPwm = { ...extended.syncbuzzerTimerPwm };
 		}
-		if (extended.timerPwmSweep !== undefined) clonedExtended.timerPwmSweep = extended.timerPwmSweep;
-		if (extended.timerPwmPreserveOnNewNote !== undefined) {
-			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
-		}
-		if (extended.timerPwmReverseSweep !== undefined) {
-			clonedExtended.timerPwmReverseSweep = extended.timerPwmReverseSweep;
-		}
+		if (extended.fmTimerPwm) clonedExtended.fmTimerPwm = { ...extended.fmTimerPwm };
+		if (extended.envFmTimerPwm) clonedExtended.envFmTimerPwm = { ...extended.envFmTimerPwm };
 		return cloned;
 	}
 

@@ -62,7 +62,7 @@
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
 	const FIXED_TABLE_COLUMNS = 3;
-	const TIMER_EFFECT_COLUMNS = 6;
+	const TIMER_EFFECT_COLUMNS = 7;
 	const MIXER_EFFECT_COLUMNS = 13;
 	const tableColSpan = $derived(
 		activeTab === 'mixer'

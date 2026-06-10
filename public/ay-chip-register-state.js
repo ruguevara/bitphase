@@ -1,10 +1,33 @@
 import {
 	createDefaultTimerEffect,
-	TIMER_EFFECT_KIND_NONE
+	TIMER_EFFECT_TARGET_NONE
 } from './ay-timer-effect-constants.js';
 
 const AY_REGISTER_COUNT = 14;
 const AY_TONE_CHANNELS = 3;
+
+function copyTimerEffect(timerEffect) {
+	return {
+		enabled: timerEffect.enabled,
+		targetMask: timerEffect.targetMask ?? TIMER_EFFECT_TARGET_NONE,
+		pwmMode: timerEffect.pwmMode ?? 0,
+		period: timerEffect.period,
+		periodLow: timerEffect.periodLow ?? timerEffect.period,
+		baseVolume: timerEffect.baseVolume ?? 0,
+		baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
+		baseEnvelopePeriod: timerEffect.baseEnvelopePeriod ?? 1,
+		fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
+		volumeWaveform: [...(timerEffect.volumeWaveform ?? [15, 0])],
+		envelopeShapeWaveform: [...(timerEffect.envelopeShapeWaveform ?? [8])],
+		toneWaveform: [...(timerEffect.toneWaveform ?? [0, 7])],
+		envelopePeriodWaveform: [...(timerEffect.envelopePeriodWaveform ?? [0, 7])],
+		volumeWaveformLoop: timerEffect.volumeWaveformLoop ?? 0,
+		envelopeShapeWaveformLoop: timerEffect.envelopeShapeWaveformLoop ?? 0,
+		toneWaveformLoop: timerEffect.toneWaveformLoop ?? 0,
+		envelopePeriodWaveformLoop: timerEffect.envelopePeriodWaveformLoop ?? 0,
+		resetPhase: timerEffect.resetPhase ?? false
+	};
+}
 
 class AYChipRegisterState {
 	constructor(channelCount = 3) {
@@ -62,20 +85,7 @@ class AYChipRegisterState {
 				noise: this.channels[i].mixer.noise,
 				envelope: this.channels[i].mixer.envelope
 			};
-			const timerEffect = this.channels[i].timerEffect;
-			copy.channels[i].timerEffect = {
-				enabled: timerEffect.enabled,
-				kind: timerEffect.kind ?? TIMER_EFFECT_KIND_NONE,
-				pwmMode: timerEffect.pwmMode ?? 0,
-				period: timerEffect.period,
-				periodLow: timerEffect.periodLow ?? timerEffect.period,
-				baseVolume: timerEffect.baseVolume ?? 0,
-				baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
-				fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
-				waveform: [...(timerEffect.waveform ?? [15, 0])],
-				waveformLoop: timerEffect.waveformLoop ?? 0,
-				resetPhase: timerEffect.resetPhase ?? false
-			};
+			copy.channels[i].timerEffect = copyTimerEffect(this.channels[i].timerEffect);
 		}
 		copy.noise = this.noise;
 		copy.envelopePeriod = this.envelopePeriod;
