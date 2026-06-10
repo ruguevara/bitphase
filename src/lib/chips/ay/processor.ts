@@ -13,6 +13,7 @@ import type { CatchUpSegment } from '../../services/audio/play-from-position';
 import { MixerWorkletBridge } from '../../services/audio/mixer-worklet-bridge';
 import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
 import { normalizeSamplePlaybackBounds } from './sample-region';
+import type { AyTimerPwmSweepShape } from './instrument';
 
 type WorkletInstrument = Instrument & {
 	timerRows?: Record<string, unknown>[];
@@ -21,6 +22,8 @@ type WorkletInstrument = Instrument & {
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
 	timerPwmReverseSweep?: boolean;
+	timerPwmSweepStartPhase?: number;
+	timerPwmSweepShape?: AyTimerPwmSweepShape;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -47,6 +50,8 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 		timerPwmSweepMin: extended.timerPwmSweepMin,
 		timerPwmSweep: extended.timerPwmSweep,
 		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote,
+		timerPwmSweepStartPhase: extended.timerPwmSweepStartPhase,
+		timerPwmSweepShape: extended.timerPwmSweepShape,
 		timerPwmReverseSweep: extended.timerPwmReverseSweep,
 		timerRows: extended.timerRows?.map((row) => ({
 			...row,

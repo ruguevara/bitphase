@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AyTimerEffectsController } from '@/lib/chips/ay/ay-timer-effects-controller.svelte.ts';
+import { AyTimerEffectsController } from '@/lib/chips/ay/ay-timer-effects-controller.svelte';
 import {
 	AY_TIMER_WAVEFORM_MIN_LENGTH,
 	AY_TIMER_WAVEFORM_MAX_LENGTH
@@ -9,8 +9,11 @@ import { HistoryClone } from '@/lib/services/history/history-clone';
 
 function createInstrument(
 	timerRows: {
-		sid: boolean;
+		sid?: boolean;
 		syncbuzzer?: boolean;
+		fm?: boolean;
+		envFm?: boolean;
+		fmOffsetMode?: 'semitone' | 'period';
 		sidPeriodMode?: 'auto' | 'manual';
 		timerWaveform?: number[];
 		timerWaveformLoop?: number;
@@ -152,7 +155,9 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.timerPwmSweep()).toBe(0);
 		expect(controller.timerPwmSweepMin()).toBe(0);
 		controller.updateTimerPwmSweep('99');
-		expect(controller.timerPwmSweep()).toBe(50);
+		expect(controller.timerPwmSweep()).toBe(99);
+		controller.updateTimerPwmSweep('150');
+		expect(controller.timerPwmSweep()).toBe(100);
 	});
 
 	it('tracks instrument sweep min globally', () => {
@@ -287,7 +292,7 @@ describe('AyTimerEffectsController', () => {
 		).toBe(true);
 	});
 
-	it('tracks instrument-level reverse pwm sweep', () => {
+	it('tracks instrument-level pwm sweep start phase', () => {
 		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], {
 			timerPwmSweep: 4
 		});
@@ -299,12 +304,32 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		expect(controller.timerPwmReverseSweep()).toBe(false);
-		controller.setTimerPwmReverseSweep(true);
-		expect(controller.timerPwmReverseSweep()).toBe(true);
+		expect(controller.timerPwmSweepStartPhase()).toBe(0);
+		controller.setTimerPwmSweepStartPhase(750);
+		expect(controller.timerPwmSweepStartPhase()).toBe(750);
 		expect(
-			(current as Instrument & { timerPwmReverseSweep?: boolean }).timerPwmReverseSweep
-		).toBe(true);
+			(current as Instrument & { timerPwmSweepStartPhase?: number }).timerPwmSweepStartPhase
+		).toBe(750);
+	});
+
+	it('tracks instrument-level pwm sweep shape', () => {
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }], {
+			timerPwmSweep: 4
+		});
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		expect(controller.timerPwmSweepShape()).toBe('triangle');
+		controller.setTimerPwmSweepShape('sine');
+		expect(controller.timerPwmSweepShape()).toBe('sine');
+		expect(
+			(current as Instrument & { timerPwmSweepShape?: string }).timerPwmSweepShape
+		).toBe('sine');
 	});
 
 	it('opens and closes the waveform editor for a row', () => {

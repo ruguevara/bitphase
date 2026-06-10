@@ -273,6 +273,8 @@ function reconstructInstrument(data: any): Instrument {
 		timerPwmSweep?: number;
 		timerPwmPreserveOnNewNote?: boolean;
 		timerPwmReverseSweep?: boolean;
+		timerPwmSweepStartPhase?: number;
+		timerPwmSweepShape?: string;
 	};
 	if (data.timerPwmDuty !== undefined) extended.timerPwmDuty = data.timerPwmDuty;
 	if (data.timerPwmSweepMin !== undefined) extended.timerPwmSweepMin = data.timerPwmSweepMin;
@@ -280,8 +282,14 @@ function reconstructInstrument(data: any): Instrument {
 	if (data.timerPwmPreserveOnNewNote !== undefined) {
 		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
 	}
+	if (data.timerPwmSweepStartPhase !== undefined) {
+		extended.timerPwmSweepStartPhase = data.timerPwmSweepStartPhase;
+	}
 	if (data.timerPwmReverseSweep !== undefined) {
 		extended.timerPwmReverseSweep = data.timerPwmReverseSweep === true;
+	}
+	if (data.timerPwmSweepShape !== undefined) {
+		extended.timerPwmSweepShape = data.timerPwmSweepShape as typeof extended.timerPwmSweepShape;
 	}
 	const withSample = extended as Instrument & {
 		sampleData?: number[];

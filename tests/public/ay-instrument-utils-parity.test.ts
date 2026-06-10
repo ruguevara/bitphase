@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as ts from '@/lib/chips/ay/instrument';
 import * as jsModule from '../../public/ay-instrument-utils.js';
 
@@ -7,11 +7,12 @@ const js = jsModule as unknown as Record<string, (...args: never[]) => unknown> 
 
 type InstrumentInput = Parameters<typeof ts.normalizeAyInstrumentFields>[0];
 
-const DUTY_INPUTS = [-10, -1, 0, 1, 5, 10, 24, 25, 26, 49, 50, 51, 75, 100, 3.7, 49.9];
+const DUTY_INPUTS = [-10, -1, 0, 1, 5, 10, 24, 25, 26, 49, 50, 51, 75, 99, 100, 101, 150, 3.7, 49.9];
 const PERIOD_INPUTS = [0, 1, 2, 3, 10, 100, 249, 333, 1000, 4095, 65535];
 const SWEEP_INPUTS = [-5, 0, 1, 2, 3, 7, 50, 100];
-const DIRECTIONS = [-1, 1];
-const CURRENT_DUTIES = [-1, 0, 1, 5, 24, 25, 26, 49, 50];
+const SWEEP_SHAPES = ['triangle', 'sine', 'sawUp', 'sawDown', 'square', 'random'] as const;
+const CURRENT_PHASES = [-1, 0, 1, 5, 250, 500, 750, 1000];
+const RANDOM_HOLDS = [-1, 0, 25, 50, 75, 100];
 
 const SHARED_CONSTANTS = [
 	'DEFAULT_AY_SID_PERIOD',
@@ -31,6 +32,11 @@ const SHARED_CONSTANTS = [
 	'DEFAULT_AY_TIMER_PWM_SWEEP_MIN',
 	'DEFAULT_AY_TIMER_PWM_SWEEP',
 	'TIMER_PWM_SWEEP_UNINITIALIZED',
+	'AY_TIMER_PWM_SWEEP_START_PHASE_MAX',
+	'DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE',
+	'AY_TIMER_PWM_SWEEP_START_PHASE_PEAK',
+	'DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE',
+	'TIMER_PWM_SWEEP_HOLD_UNINITIALIZED',
 	'AY_TONE_REGISTER_PRESCALER',
 	'AY_AUTO_TIMER_TONE_MULTIPLIER'
 ] as const;
@@ -76,7 +82,7 @@ const INSTRUMENT_CASES: InstrumentInput[] = [
 		timerPwmSweepMin: 8,
 		timerPwmSweep: 4,
 		timerPwmPreserveOnNewNote: true,
-		timerPwmReverseSweep: true
+		timerPwmSweepStartPhase: 500
 	} as unknown as InstrumentInput,
 	{
 		id: '03',
@@ -152,27 +158,67 @@ describe('ay-instrument-utils TS/JS parity', () => {
 	});
 
 	it('advanceTimerPwmSweep matches across all parameter combinations', () => {
-		for (const reverseSweep of [false, true]) {
-			for (const current of CURRENT_DUTIES) {
-				for (const direction of DIRECTIONS) {
-					for (const sweep of SWEEP_INPUTS) {
-						for (const min of [0, 5, 25, 50]) {
-							for (const max of [0, 10, 25, 50]) {
-								const label = `reverse=${reverseSweep} c=${current} dir=${direction} s=${sweep} min=${min} max=${max}`;
-								expect(
-									js.advanceTimerPwmSweep(
-										current as never,
-										direction as never,
-										sweep as never,
-										min as never,
-										max as never,
-										reverseSweep as never
-									),
-									label
-								).toEqual(
-									ts.advanceTimerPwmSweep(current, direction, sweep, min, max, reverseSweep)
-								);
+		const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+		try {
+			for (const shape of SWEEP_SHAPES) {
+				for (const startPhase of [0, 250, 500, 750, 1000]) {
+					for (const current of CURRENT_PHASES) {
+						for (const hold of RANDOM_HOLDS) {
+							for (const sweep of SWEEP_INPUTS) {
+								for (const min of [0, 5, 25, 50, 75]) {
+									for (const max of [0, 10, 25, 50, 100]) {
+										const label = `shape=${shape} phase=${startPhase} c=${current} hold=${hold} s=${sweep} min=${min} max=${max}`;
+										expect(
+											js.advanceTimerPwmSweep(
+												current as never,
+												hold as never,
+												sweep as never,
+												min as never,
+												max as never,
+												startPhase as never,
+												shape as never
+											),
+											label
+										).toEqual(
+											ts.advanceTimerPwmSweep(
+												current,
+												hold,
+												sweep,
+												min,
+												max,
+												startPhase,
+												shape
+											)
+										);
+									}
+								}
 							}
+						}
+					}
+				}
+			}
+		} finally {
+			randomSpy.mockRestore();
+		}
+	});
+
+	it('pwmSweepDutyAtPhase matches', () => {
+		for (const shape of SWEEP_SHAPES) {
+			for (const phase of [0, 250, 500, 750, 1000]) {
+				for (const min of [0, 25, 50]) {
+					for (const max of [25, 50, 100]) {
+						for (const hold of RANDOM_HOLDS) {
+							const label = `shape=${shape} phase=${phase} min=${min} max=${max} hold=${hold}`;
+							expect(
+								js.pwmSweepDutyAtPhase(
+									phase as never,
+									shape as never,
+									min as never,
+									max as never,
+									hold as never
+								),
+								label
+							).toBe(ts.pwmSweepDutyAtPhase(phase, shape, min, max, hold));
 						}
 					}
 				}

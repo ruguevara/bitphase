@@ -10,11 +10,24 @@ export const AY_FM_SEMITONE_MAX = 128;
 export const AY_FM_PERIOD_OFFSET_MIN = -4095;
 export const AY_FM_PERIOD_OFFSET_MAX = 4095;
 export const AY_TIMER_PWM_DUTY_MIN = 0;
-export const AY_TIMER_PWM_DUTY_MAX = 50;
+export const AY_TIMER_PWM_DUTY_MAX = 100;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
 export const DEFAULT_AY_TIMER_PWM_SWEEP_MIN = 0;
 export const DEFAULT_AY_TIMER_PWM_SWEEP = 0;
 export const TIMER_PWM_SWEEP_UNINITIALIZED = -1;
+export const AY_TIMER_PWM_SWEEP_START_PHASE_MAX = 1000;
+export const DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE = 0;
+export const AY_TIMER_PWM_SWEEP_START_PHASE_PEAK = AY_TIMER_PWM_SWEEP_START_PHASE_MAX / 2;
+export const AY_TIMER_PWM_SWEEP_SHAPES = [
+	'triangle',
+	'sine',
+	'sawUp',
+	'sawDown',
+	'square',
+	'random'
+];
+export const DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE = 'triangle';
+export const TIMER_PWM_SWEEP_HOLD_UNINITIALIZED = -1;
 export const AY_TONE_REGISTER_PRESCALER = 16;
 export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
 
@@ -57,6 +70,94 @@ export function clampTimerPwmDuty(duty) {
 
 export function clampTimerPwmSweep(sweep) {
 	return Math.max(0, Math.min(AY_TIMER_PWM_DUTY_MAX, sweep | 0));
+}
+
+export function clampTimerPwmSweepStartPhase(phase) {
+	return Math.max(
+		0,
+		Math.min(AY_TIMER_PWM_SWEEP_START_PHASE_MAX, Math.round(phase) | 0)
+	);
+}
+
+export function resolveTimerPwmSweepStartPhase(source) {
+	if (source.timerPwmSweepStartPhase !== undefined) {
+		return clampTimerPwmSweepStartPhase(source.timerPwmSweepStartPhase);
+	}
+	if (source.timerPwmReverseSweep === true) {
+		return AY_TIMER_PWM_SWEEP_START_PHASE_PEAK;
+	}
+	return DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE;
+}
+
+export function resolveTimerPwmSweepShape(shape) {
+	if (typeof shape === 'string' && AY_TIMER_PWM_SWEEP_SHAPES.includes(shape)) {
+		return shape;
+	}
+	return DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE;
+}
+
+export function pwmSweepDutyAtPhase(
+	phase,
+	shape,
+	minDuty,
+	maxDuty,
+	randomHold = TIMER_PWM_SWEEP_HOLD_UNINITIALIZED
+) {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	if (min >= max) {
+		return max;
+	}
+	const p = clampTimerPwmSweepStartPhase(phase);
+	const span = max - min;
+	const t = p / AY_TIMER_PWM_SWEEP_START_PHASE_MAX;
+	const half = AY_TIMER_PWM_SWEEP_START_PHASE_MAX / 2;
+
+	switch (shape) {
+		case 'sine':
+			return Math.round(
+				min + span * (1 - Math.cos((2 * Math.PI * p) / AY_TIMER_PWM_SWEEP_START_PHASE_MAX)) / 2
+			);
+		case 'sawUp':
+			return Math.round(min + span * t);
+		case 'sawDown':
+			return Math.round(max - span * t);
+		case 'square':
+			return p < half ? max : min;
+		case 'random':
+			if (randomHold >= min && randomHold <= max) {
+				return randomHold;
+			}
+			return Math.round(min + span / 2);
+		case 'triangle':
+		default:
+			if (p <= half) {
+				return Math.round(min + span * (p / half));
+			}
+			return Math.round(max - span * ((p - half) / half));
+	}
+}
+
+export function createTimerPwmSweepRandomHold(minDuty, maxDuty) {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	if (min >= max) {
+		return max;
+	}
+	return Math.round(min + Math.random() * (max - min));
+}
+
+export function resolveTimerPwmSweepStart(
+	startPhase,
+	minDuty,
+	maxDuty,
+	shape = DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE
+) {
+	const phase = clampTimerPwmSweepStartPhase(startPhase);
+	return {
+		phase,
+		duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty)
+	};
 }
 
 export function computeTimerPwmPeriods(basePeriod, dutyPercent) {
@@ -200,38 +301,46 @@ export function clampTimerPwmSweepMin(min, maxDuty) {
 }
 
 export function advanceTimerPwmSweep(
-	currentDuty,
-	direction,
+	currentPhase,
+	randomHold,
 	sweepSpeed,
 	minDuty,
 	maxDuty,
-	reverseSweep = false
+	startPhase = DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE,
+	shape = DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE
 ) {
 	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
 	const max = clampTimerPwmDuty(maxDuty);
 
 	if (sweepSpeed <= 0 || min >= max) {
-		return { duty: max, direction: 1 };
+		return { phase: 0, duty: max, randomHold: TIMER_PWM_SWEEP_HOLD_UNINITIALIZED };
 	}
 
-	if (currentDuty < 0) {
-		return reverseSweep
-			? { duty: max, direction: -1 }
-			: { duty: min, direction: 1 };
+	if (currentPhase < 0) {
+		const phase = clampTimerPwmSweepStartPhase(startPhase);
+		let hold = randomHold;
+		if (shape === 'random' && hold < min) {
+			hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
+		}
+		return {
+			phase,
+			duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty, hold),
+			randomHold: hold
+		};
 	}
 
-	let duty = currentDuty + sweepSpeed * direction;
-	let nextDirection = direction;
-
-	if (duty >= max) {
-		duty = max;
-		nextDirection = -1;
-	} else if (duty <= min) {
-		duty = min;
-		nextDirection = 1;
+	const modulus = AY_TIMER_PWM_SWEEP_START_PHASE_MAX + 1;
+	const nextPhase = (currentPhase + sweepSpeed) % modulus;
+	let hold = randomHold;
+	if (shape === 'random' && nextPhase <= currentPhase) {
+		hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
 	}
 
-	return { duty, direction: nextDirection };
+	return {
+		phase: nextPhase,
+		duty: pwmSweepDutyAtPhase(nextPhase, shape, minDuty, maxDuty, hold),
+		randomHold: hold
+	};
 }
 
 function createDefaultInstrumentTimerPwmFields() {
@@ -358,7 +467,8 @@ export function normalizeAyInstrumentFields(instrument) {
 		timerRows,
 		...resolveInstrumentTimerPwmFields(instrument, sourceRows),
 		timerPwmPreserveOnNewNote: instrument.timerPwmPreserveOnNewNote === true,
-		timerPwmReverseSweep: instrument.timerPwmReverseSweep === true
+		timerPwmSweepStartPhase: resolveTimerPwmSweepStartPhase(instrument),
+		timerPwmSweepShape: resolveTimerPwmSweepShape(instrument.timerPwmSweepShape)
 	};
 }
 

@@ -35,10 +35,13 @@ import {
 	clampTimerPwmDuty,
 	clampTimerPwmSweep,
 	clampTimerPwmSweepMin,
+	clampTimerPwmSweepStartPhase,
 	AY_TIMER_WAVEFORM_MIN_LENGTH,
 	AY_TIMER_WAVEFORM_MAX_LENGTH,
+	resolveTimerPwmSweepShape,
 	type AyFmOffsetMode,
 	type AyInstrumentFields,
+	type AyTimerPwmSweepShape,
 	type AyTimerRow
 } from './instrument';
 
@@ -111,7 +114,8 @@ export class AyTimerEffectsController {
 			timerPwmSweepMin: normalized.timerPwmSweepMin,
 			timerPwmSweep: normalized.timerPwmSweep,
 			timerPwmPreserveOnNewNote: normalized.timerPwmPreserveOnNewNote,
-			timerPwmReverseSweep: normalized.timerPwmReverseSweep
+			timerPwmSweepStartPhase: normalized.timerPwmSweepStartPhase,
+			timerPwmSweepShape: normalized.timerPwmSweepShape
 		};
 		if (
 			this.waveformEditorRowIndex !== null &&
@@ -156,7 +160,8 @@ export class AyTimerEffectsController {
 			timerPwmSweepMin: next.timerPwmSweepMin,
 			timerPwmSweep: next.timerPwmSweep,
 			timerPwmPreserveOnNewNote: next.timerPwmPreserveOnNewNote,
-			timerPwmReverseSweep: next.timerPwmReverseSweep
+			timerPwmSweepStartPhase: next.timerPwmSweepStartPhase,
+			timerPwmSweepShape: next.timerPwmSweepShape
 		});
 	}
 
@@ -195,13 +200,28 @@ export class AyTimerEffectsController {
 		this.commitFields({ ...this.fields, timerPwmPreserveOnNewNote: preserve });
 	}
 
-	timerPwmReverseSweep(): boolean {
-		return this.fields.timerPwmReverseSweep;
+	timerPwmSweepStartPhase(): number {
+		return this.fields.timerPwmSweepStartPhase;
 	}
 
-	setTimerPwmReverseSweep(reverse: boolean): void {
+	setTimerPwmSweepStartPhase(phase: number): void {
 		if (!this.instrumentSupportsTimerPwm() || this.timerPwmSweep() <= 0) return;
-		this.commitFields({ ...this.fields, timerPwmReverseSweep: reverse });
+		this.commitFields({
+			...this.fields,
+			timerPwmSweepStartPhase: clampTimerPwmSweepStartPhase(phase)
+		});
+	}
+
+	timerPwmSweepShape(): AyTimerPwmSweepShape {
+		return this.fields.timerPwmSweepShape;
+	}
+
+	setTimerPwmSweepShape(shape: AyTimerPwmSweepShape): void {
+		if (!this.instrumentSupportsTimerPwm() || this.timerPwmSweep() <= 0) return;
+		this.commitFields({
+			...this.fields,
+			timerPwmSweepShape: resolveTimerPwmSweepShape(shape)
+		});
 	}
 
 	setTimerPwmDuty(duty: number): void {

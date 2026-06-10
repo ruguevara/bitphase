@@ -1,7 +1,7 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
-import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowFmWaveform, resolveAyFmOffsetMode, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY } from './ay-instrument-utils.js';
+import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowFmWaveform, resolveAyFmOffsetMode, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY, TIMER_PWM_SWEEP_HOLD_UNINITIALIZED } from './ay-instrument-utils.js';
 import {
 	instrumentHasSample,
 	computeSampleSidPeriod,
@@ -76,19 +76,17 @@ class AYAudioDriver {
 		if (
 			!options.preserveTimerPwmSweep &&
 			state.channelTimerPwmSweep &&
-			state.channelTimerPwmSweepDirection
+			state.channelTimerPwmSweepHold
 		) {
-			const instrumentIndex = state.channelInstruments?.[channelIndex] ?? -1;
-			const reverseSweep = this.instrumentReverseTimerPwmSweep(state, instrumentIndex);
 			state.channelTimerPwmSweep[channelIndex] = -1;
-			state.channelTimerPwmSweepDirection[channelIndex] = reverseSweep ? -1 : 1;
+			state.channelTimerPwmSweepHold[channelIndex] = TIMER_PWM_SWEEP_HOLD_UNINITIALIZED;
 		}
 		if (state.channelTimerEffectReset) {
 			const hasActiveSlide =
 				state.channelSlideStep && state.channelSlideStep[channelIndex] !== 0;
 			const hasActivePortamento =
 				state.channelPortamentoActive && state.channelPortamentoActive[channelIndex];
-			if (!hasActiveSlide && !hasActivePortamento) {
+			if (!hasActiveSlide && !hasActivePortamento && !options.preserveTimerPwmSweep) {
 				state.channelTimerEffectReset[channelIndex] = true;
 			}
 		}
@@ -176,7 +174,8 @@ class AYAudioDriver {
 		if (row.note.name === 1) {
 			state.channelSoundEnabled[channelIndex] = false;
 			registerState.channels[channelIndex].tone = 0;
-			this.resetInstrumentAccumulators(state, channelIndex);
+			const preserveTimerPwmSweep = this.shouldPreserveTimerPwmSweep(state, channelIndex, row);
+			this.resetInstrumentAccumulators(state, channelIndex, { preserveTimerPwmSweep });
 			state.instrumentPositions[channelIndex] = 0;
 			const offInstrumentIndex = state.channelInstruments[channelIndex];
 			const offInstrument =
@@ -267,15 +266,15 @@ class AYAudioDriver {
 		return normalizeAyInstrumentFields(instrument).timerPwmPreserveOnNewNote === true;
 	}
 
-	instrumentReverseTimerPwmSweep(state, instrumentIndex) {
+	resolveInstrumentAyFields(state, instrumentIndex) {
 		if (instrumentIndex === undefined || instrumentIndex < 0) {
-			return false;
+			return null;
 		}
 		const instrument = state.instruments?.[instrumentIndex];
 		if (!instrument) {
-			return false;
+			return null;
 		}
-		return normalizeAyInstrumentFields(instrument).timerPwmReverseSweep === true;
+		return normalizeAyInstrumentFields(instrument);
 	}
 
 	shouldPreserveSamplePlayback(state, channelIndex, row) {
@@ -1017,14 +1016,15 @@ class AYAudioDriver {
 				if (pwmSweepSpeed !== 0) {
 					const advanced = advanceTimerPwmSweep(
 						state.channelTimerPwmSweep[channelIndex],
-						state.channelTimerPwmSweepDirection[channelIndex],
+						state.channelTimerPwmSweepHold[channelIndex],
 						pwmSweepSpeed,
 						minPwmDuty,
 						maxPwmDuty,
-						ayFields.timerPwmReverseSweep === true
+						ayFields.timerPwmSweepStartPhase,
+						ayFields.timerPwmSweepShape
 					);
-					state.channelTimerPwmSweep[channelIndex] = advanced.duty;
-					state.channelTimerPwmSweepDirection[channelIndex] = advanced.direction;
+					state.channelTimerPwmSweep[channelIndex] = advanced.phase;
+					state.channelTimerPwmSweepHold[channelIndex] = advanced.randomHold;
 					effectivePwmDuty = advanced.duty;
 				}
 				const timerPwmPeriods = computeTimerPwmPeriods(timerEffectPeriod, effectivePwmDuty);

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
+	import AYTimerPwmSweepStartEditor from './AYTimerPwmSweepStartEditor.svelte';
 	import {
 		AY_TIMER_PWM_DUTY_MAX,
 		sanitizeTimerPwmPercentInput,
@@ -11,7 +12,7 @@
 	const controller = getAyTimerEffectsContext();
 	const pwmSupported = $derived(controller.instrumentSupportsTimerPwm());
 	const minInputEnabled = $derived(pwmSupported && controller.timerPwmSweep() > 0);
-	const reverseSweepEnabled = $derived(minInputEnabled);
+	const sweepStartEnabled = $derived(minInputEnabled);
 	const pwmDisclaimer = $derived.by(() => {
 		if (!pwmSupported) {
 			return 'PWM min %, max %, and sweep need SID, syncbuzzer, or FM with exactly two waveform steps.';
@@ -138,7 +139,7 @@
 					title={!pwmSupported
 						? 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'
 						: minInputEnabled
-							? 'Sweep min pulse width (0–50%, must be ≤ max)'
+							? 'Sweep min pulse width (0–100%, must be ≤ max)'
 							: 'Disabled while sweep is 0; only max % is used for static pulse width'}
 					onfocus={(e) => {
 						pwmSweepMinFocused = true;
@@ -169,7 +170,7 @@
 					value={pwmDutyInput}
 					disabled={!pwmSupported}
 					title={pwmSupported
-						? 'Pulse width max (0–50%, 50 = symmetric). Static duty when sweep is off.'
+						? 'Pulse width max (0–100%, 50 = symmetric). Static duty when sweep is off.'
 						: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
 					onfocus={(e) => {
 						pwmDutyFocused = true;
@@ -235,26 +236,6 @@
 				)} />
 		<span class={isExpanded ? 'text-xs' : 'text-[0.65rem]'}>Don't restart PWM sweep on new notes</span>
 	</label>
-	<label
-		class="mt-1.5 flex cursor-pointer items-center gap-1.5 {reverseSweepEnabled
-			? 'text-[var(--color-app-text-secondary)]'
-			: 'cursor-not-allowed text-[var(--color-app-text-tertiary)] opacity-60'}">
-		<input
-			type="checkbox"
-			class="h-3.5 w-3.5 shrink-0 cursor-pointer rounded border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] text-[var(--color-app-primary)] focus:ring-2 focus:ring-[var(--color-app-primary)] disabled:cursor-not-allowed"
-			checked={controller.timerPwmReverseSweep()}
-			disabled={!reverseSweepEnabled}
-			title={reverseSweepEnabled
-				? 'Start PWM sweep at max and sweep down toward min first'
-				: pwmSupported
-					? 'Disabled while sweep is 0'
-					: 'Disabled: requires SID, syncbuzzer, or FM with exactly two waveform steps'}
-			onchange={(event) =>
-				controller.setTimerPwmReverseSweep(
-					(event.currentTarget as HTMLInputElement).checked
-				)} />
-		<span class={isExpanded ? 'text-xs' : 'text-[0.65rem]'}>Reverse PWM sweep</span>
-	</label>
 	{#if pwmDisclaimer}
 		<p
 			class="mt-1.5 text-[var(--color-app-text-tertiary)] {isExpanded
@@ -264,3 +245,4 @@
 		</p>
 	{/if}
 </div>
+<AYTimerPwmSweepStartEditor {isExpanded} enabled={sweepStartEnabled} />

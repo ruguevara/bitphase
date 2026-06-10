@@ -28,7 +28,19 @@ import {
 	sanitizeTimerPwmPercentInput,
 	sanitizeTimerPwmSweepInput,
 	advanceTimerPwmSweep,
+	clampTimerPwmDuty,
+	clampTimerPwmSweep,
+	AY_TIMER_PWM_DUTY_MAX,
+	AY_TIMER_PWM_SWEEP_START_PHASE_PEAK,
+	DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE,
+	pwmSweepDutyAtPhase,
+	previewRandomSweepDutyAtPhase,
+	resolveTimerPwmSweepStart,
+	resolveTimerPwmSweepStartPhase,
+	resolveTimerPwmSweepShape,
+	timerPwmSweepPhaseToPoint,
 	TIMER_PWM_SWEEP_UNINITIALIZED,
+	TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
 	AY_AUTO_TIMER_TONE_MULTIPLIER,
 	AY_TONE_REGISTER_PRESCALER,
 	DEFAULT_AY_SID_PERIOD,
@@ -54,7 +66,7 @@ describe('ay instrument timer fields', () => {
 		expect(fields.timerPwmSweepMin).toBe(DEFAULT_AY_TIMER_PWM_SWEEP_MIN);
 		expect(fields.timerPwmSweep).toBe(DEFAULT_AY_TIMER_PWM_SWEEP);
 		expect(fields.timerPwmPreserveOnNewNote).toBe(false);
-		expect(fields.timerPwmReverseSweep).toBe(false);
+		expect(fields.timerPwmSweepStartPhase).toBe(DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE);
 	});
 
 	it('normalizes pwm preserve on new note from instrument data', () => {
@@ -66,12 +78,24 @@ describe('ay instrument timer fields', () => {
 		expect(normalizeAyInstrumentFields(instrument).timerPwmPreserveOnNewNote).toBe(true);
 	});
 
-	it('normalizes reverse pwm sweep from instrument data', () => {
+	it('normalizes pwm sweep start phase from instrument data', () => {
+		const instrument = new Instrument('01', [
+			{ tone: true, noise: false, envelope: false, volume: 15 }
+		]);
+		(
+			instrument as Instrument & { timerPwmSweepStartPhase?: number }
+		).timerPwmSweepStartPhase = 250;
+		expect(normalizeAyInstrumentFields(instrument).timerPwmSweepStartPhase).toBe(250);
+	});
+
+	it('migrates legacy reverse pwm sweep to peak start phase', () => {
 		const instrument = new Instrument('01', [
 			{ tone: true, noise: false, envelope: false, volume: 15 }
 		]);
 		(instrument as Instrument & { timerPwmReverseSweep?: boolean }).timerPwmReverseSweep = true;
-		expect(normalizeAyInstrumentFields(instrument).timerPwmReverseSweep).toBe(true);
+		expect(normalizeAyInstrumentFields(instrument).timerPwmSweepStartPhase).toBe(
+			AY_TIMER_PWM_SWEEP_START_PHASE_PEAK
+		);
 	});
 
 	it('syncs timer rows when mixer rows are added', () => {
@@ -184,27 +208,33 @@ describe('ay instrument timer fields', () => {
 		expect(rowSupportsTimerPwm({ sid: true, timerWaveform: [15, 0] })).toBe(true);
 		expect(rowSupportsTimerPwm({ sid: true, timerWaveform: [15, 14] })).toBe(true);
 		expect(rowSupportsTimerPwm({ sid: true, timerWaveform: [15, 14, 13] })).toBe(false);
-		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
-		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [8] })).toBe(false);
-		expect(rowSupportsTimerPwm({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
-		expect(rowSupportsTimerPwm({ fm: true, timerWaveform: [0, 12] })).toBe(true);
-		expect(rowSupportsTimerPwm({ fm: true, timerWaveform: [0, 1, 0, -1] })).toBe(false);
-		expect(rowSupportsTimerPwm({ fm: true })).toBe(true);
+		expect(rowSupportsTimerPwm({ sid: false, syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
+		expect(rowSupportsTimerPwm({ sid: false, syncbuzzer: true, timerWaveform: [8] })).toBe(false);
+		expect(rowSupportsTimerPwm({ sid: false, syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
+		expect(rowSupportsTimerPwm({ sid: false, fm: true, timerWaveform: [0, 12] })).toBe(true);
+		expect(rowSupportsTimerPwm({ sid: false, fm: true, timerWaveform: [0, 1, 0, -1] })).toBe(false);
+		expect(rowSupportsTimerPwm({ sid: false, fm: true })).toBe(true);
 		expect(rowSupportsTimerPwm({ sid: false, envFm: true, timerWaveform: [0, 12] })).toBe(true);
 		expect(
 			rowSupportsTimerPwm({ sid: false, envFm: true, timerWaveform: [0, 1, 0, -1] })
 		).toBe(false);
 		expect(rowSupportsTimerPwm({ sid: false, envFm: true })).toBe(true);
-		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
-		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
+		expect(rowUsesSyncbuzzerPwmDuty({ sid: false, syncbuzzer: true, timerWaveform: [13, 9] })).toBe(
+			true
+		);
+		expect(
+			rowUsesSyncbuzzerPwmDuty({ sid: false, syncbuzzer: true, timerWaveform: [8, 12, 8] })
+		).toBe(false);
 	});
 
 	it('resolves syncbuzzer steps with zero placeholders from pattern envelope shape', () => {
-		const timerRow = { syncbuzzer: true, timerWaveform: [0, 8, 0, 8] };
+		const timerRow = { sid: false, syncbuzzer: true, timerWaveform: [0, 8, 0, 8] };
 		expect(resolveSyncbuzzerWaveform(timerRow, 0)).toEqual([0, 8, 0, 8]);
 		expect(resolveSyncbuzzerWaveform(timerRow, 15)).toEqual([0, 8, 0, 8]);
 		expect(resolveSyncbuzzerWaveform(timerRow, 12)).toEqual([12, 8, 12, 8]);
-		expect(resolveSyncbuzzerWaveform({ syncbuzzer: true, timerWaveform: [8] }, 12)).toEqual([8]);
+		expect(
+			resolveSyncbuzzerWaveform({ sid: false, syncbuzzer: true, timerWaveform: [8] }, 12)
+		).toEqual([8]);
 	});
 
 	it('uses instrument-level pwm values for pwm-eligible rows only', () => {
@@ -242,64 +272,130 @@ describe('ay instrument timer fields', () => {
 		expect(fields.timerPwmDuty).toBe(25);
 		expect(fields.timerPwmSweepMin).toBe(8);
 		expect(fields.timerPwmSweep).toBe(4);
-		expect(fields.timerRows[0]?.timerPwmDuty).toBeUndefined();
+		expect(
+			(fields.timerRows[0] as { timerPwmDuty?: number } | undefined)?.timerPwmDuty
+		).toBeUndefined();
 	});
 
-	it('bounces pwm sweep duty between configured min and max', () => {
-		let duty = TIMER_PWM_SWEEP_UNINITIALIZED;
-		let direction = 1;
-		({ duty, direction } = advanceTimerPwmSweep(duty, direction, 5, 5, 25));
-		expect(duty).toBe(5);
-		expect(direction).toBe(1);
+	it('advances triangle pwm sweep by phase', () => {
+		let result = advanceTimerPwmSweep(
+			TIMER_PWM_SWEEP_UNINITIALIZED,
+			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
+			250,
+			0,
+			100,
+			0,
+			'triangle'
+		);
+		expect(result.phase).toBe(0);
+		expect(result.duty).toBe(0);
 
-		({ duty, direction } = advanceTimerPwmSweep(duty, direction, 5, 5, 25));
-		expect(duty).toBe(10);
+		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		expect(result.phase).toBe(250);
+		expect(result.duty).toBe(50);
 
-		({ duty, direction } = advanceTimerPwmSweep(22, 1, 5, 5, 25));
-		expect(duty).toBe(25);
-		expect(direction).toBe(-1);
+		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		expect(result.phase).toBe(500);
+		expect(result.duty).toBe(100);
 
-		({ duty, direction } = advanceTimerPwmSweep(7, -1, 5, 5, 25));
-		expect(duty).toBe(5);
-		expect(direction).toBe(1);
+		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		expect(result.phase).toBe(750);
+		expect(result.duty).toBe(50);
 
-		({ duty, direction } = advanceTimerPwmSweep(duty, direction, 0, 5, 25));
-		expect(duty).toBe(25);
+		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		expect(result.phase).toBe(1000);
+		expect(result.duty).toBe(0);
+
+		result = advanceTimerPwmSweep(result.phase, result.randomHold, 1, 0, 100, 0, 'triangle');
+		expect(result.phase).toBe(0);
+		expect(result.duty).toBe(0);
 	});
 
-	it('starts reverse pwm sweep at max and sweeps down first', () => {
-		let duty = TIMER_PWM_SWEEP_UNINITIALIZED;
-		let direction = -1;
-		({ duty, direction } = advanceTimerPwmSweep(duty, direction, 5, 5, 25, true));
-		expect(duty).toBe(25);
-		expect(direction).toBe(-1);
+	it('returns max duty when pwm sweep speed is zero', () => {
+		const result = advanceTimerPwmSweep(
+			TIMER_PWM_SWEEP_UNINITIALIZED,
+			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
+			0,
+			5,
+			25
+		);
+		expect(result.duty).toBe(25);
+	});
 
-		({ duty, direction } = advanceTimerPwmSweep(duty, direction, 5, 5, 25, true));
-		expect(duty).toBe(20);
-		expect(direction).toBe(-1);
+	it('starts pwm sweep from configured start phase', () => {
+		const result = advanceTimerPwmSweep(
+			TIMER_PWM_SWEEP_UNINITIALIZED,
+			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
+			10,
+			0,
+			100,
+			AY_TIMER_PWM_SWEEP_START_PHASE_PEAK,
+			'triangle'
+		);
+		expect(result.phase).toBe(AY_TIMER_PWM_SWEEP_START_PHASE_PEAK);
+		expect(result.duty).toBe(100);
+	});
 
-		({ duty, direction } = advanceTimerPwmSweep(7, -1, 5, 5, 25, true));
-		expect(duty).toBe(5);
-		expect(direction).toBe(1);
+	it('maps pwm sweep shapes to duty at phase', () => {
+		expect(pwmSweepDutyAtPhase(0, 'triangle', 0, 100)).toBe(0);
+		expect(pwmSweepDutyAtPhase(500, 'triangle', 0, 100)).toBe(100);
+		expect(pwmSweepDutyAtPhase(0, 'sawUp', 0, 100)).toBe(0);
+		expect(pwmSweepDutyAtPhase(500, 'sawUp', 0, 100)).toBe(50);
+		expect(pwmSweepDutyAtPhase(0, 'sawDown', 0, 100)).toBe(100);
+		expect(pwmSweepDutyAtPhase(500, 'sawDown', 0, 100)).toBe(50);
+		expect(pwmSweepDutyAtPhase(0, 'square', 0, 100)).toBe(100);
+		expect(pwmSweepDutyAtPhase(500, 'square', 0, 100)).toBe(0);
+		expect(pwmSweepDutyAtPhase(250, 'random', 0, 100, 42)).toBe(42);
+	});
+
+	it('resolves pwm sweep start from phase and shape', () => {
+		expect(resolveTimerPwmSweepStart(0, 0, 100)).toEqual({ phase: 0, duty: 0 });
+		expect(resolveTimerPwmSweepStart(500, 0, 100)).toEqual({ phase: 500, duty: 100 });
+		expect(resolveTimerPwmSweepStart(250, 0, 100)).toEqual({ phase: 250, duty: 50 });
+		expect(resolveTimerPwmSweepStart(750, 0, 100)).toEqual({ phase: 750, duty: 50 });
+		expect(resolveTimerPwmSweepStartPhase({ timerPwmReverseSweep: true })).toBe(
+			AY_TIMER_PWM_SWEEP_START_PHASE_PEAK
+		);
+		expect(resolveTimerPwmSweepShape('sine')).toBe('sine');
+		expect(resolveTimerPwmSweepShape('invalid')).toBe('triangle');
+	});
+
+	it('aligns random preview marker duty with step plateaus', () => {
+		for (const phase of [0, 166, 167, 333, 500, 833, 1000]) {
+			const previewDuty = previewRandomSweepDutyAtPhase(phase, 0, 100);
+			const marker = timerPwmSweepPhaseToPoint(phase, 0, 100, 220, 72, 10, 'random');
+			expect(marker.duty, `phase=${phase}`).toBe(previewDuty);
+		}
 	});
 
 	it('sanitizes pwm percent and sweep text inputs', () => {
-		expect(sanitizeTimerPwmPercentInput('1230123', 50)).toBe('12');
+		expect(sanitizeTimerPwmPercentInput('1230123', 100)).toBe('100');
 		expect(sanitizeTimerPwmPercentInput('51', 50)).toBe('50');
 		expect(sanitizeTimerPwmPercentInput('5011', 50)).toBe('50');
-		expect(sanitizeTimerPwmPercentInput('5', 50)).toBe('5');
-		expect(sanitizeTimerPwmSweepInput('500000', 50, false)).toBe('50');
-		expect(sanitizeTimerPwmSweepInput('99', 50, false)).toBe('50');
-		expect(sanitizeTimerPwmSweepInput('33', 50, true)).toBe('32');
+		expect(sanitizeTimerPwmPercentInput('101', 100)).toBe('100');
+		expect(sanitizeTimerPwmPercentInput('100', 100)).toBe('100');
+		expect(sanitizeTimerPwmPercentInput('5', 100)).toBe('5');
+		expect(sanitizeTimerPwmSweepInput('500000', 100, false)).toBe('100');
+		expect(sanitizeTimerPwmSweepInput('99', 100, false)).toBe('99');
+		expect(sanitizeTimerPwmSweepInput('FF', 100, true)).toBe('64');
+	});
+
+	it('clamps pwm duty and sweep at 100', () => {
+		expect(AY_TIMER_PWM_DUTY_MAX).toBe(100);
+		expect(clampTimerPwmDuty(100)).toBe(100);
+		expect(clampTimerPwmDuty(150)).toBe(100);
+		expect(clampTimerPwmDuty(-5)).toBe(0);
+		expect(clampTimerPwmSweep(100)).toBe(100);
+		expect(clampTimerPwmSweep(101)).toBe(100);
 	});
 
 	it('clamps instrument pwm sweep speed to duty max', () => {
 		expect(
 			normalizeInstrumentTimerPwmFields({
 				timerPwmDuty: 25,
-				timerPwmSweep: 99
+				timerPwmSweep: 150
 			}).timerPwmSweep
-		).toBe(50);
+		).toBe(100);
 	});
 
 	it('resets sweep min to zero when sweep is disabled', () => {
@@ -328,7 +424,9 @@ describe('ay instrument timer fields', () => {
 		expect(computeTimerPwmPeriods(100, 50)).toEqual({ highPeriod: 100, lowPeriod: 100 });
 		expect(computeTimerPwmPeriods(100, 25)).toEqual({ highPeriod: 50, lowPeriod: 150 });
 		expect(computeTimerPwmPeriods(100, 0)).toEqual({ highPeriod: 1, lowPeriod: 200 });
-		expect(computeTimerPwmPeriods(100, 88)).toEqual({ highPeriod: 100, lowPeriod: 100 });
+		expect(computeTimerPwmPeriods(100, 88)).toEqual({ highPeriod: 176, lowPeriod: 24 });
+		expect(computeTimerPwmPeriods(100, 100)).toEqual({ highPeriod: 200, lowPeriod: 1 });
+		expect(computeTimerPwmPeriods(100, 150)).toEqual({ highPeriod: 200, lowPeriod: 1 });
 		expect(computeTimerPwmLowPeriod(100, 50)).toBe(100);
 		expect(effectiveInstrumentTimerPwmDuty(normalizeAyInstrumentFields(
 			new Instrument('01', [{ tone: true, volume: 15 }])

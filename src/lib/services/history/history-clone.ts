@@ -140,6 +140,8 @@ export class HistoryClone {
 			timerPwmSweep?: number;
 			timerPwmPreserveOnNewNote?: boolean;
 			timerPwmReverseSweep?: boolean;
+			timerPwmSweepStartPhase?: number;
+			timerPwmSweepShape?: string;
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
@@ -163,6 +165,8 @@ export class HistoryClone {
 			timerPwmSweep?: number;
 			timerPwmPreserveOnNewNote?: boolean;
 			timerPwmReverseSweep?: boolean;
+			timerPwmSweepStartPhase?: number;
+			timerPwmSweepShape?: string;
 		};
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
@@ -178,8 +182,14 @@ export class HistoryClone {
 		if (extended.timerPwmPreserveOnNewNote !== undefined) {
 			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
 		}
+		if (extended.timerPwmSweepStartPhase !== undefined) {
+			clonedExtended.timerPwmSweepStartPhase = extended.timerPwmSweepStartPhase;
+		}
 		if (extended.timerPwmReverseSweep !== undefined) {
 			clonedExtended.timerPwmReverseSweep = extended.timerPwmReverseSweep;
+		}
+		if (extended.timerPwmSweepShape !== undefined) {
+			clonedExtended.timerPwmSweepShape = extended.timerPwmSweepShape;
 		}
 		return cloned;
 	}

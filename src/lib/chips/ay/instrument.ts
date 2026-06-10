@@ -25,7 +25,8 @@ export type AyInstrumentFields = {
 	timerPwmSweepMin: number;
 	timerPwmSweep: number;
 	timerPwmPreserveOnNewNote: boolean;
-	timerPwmReverseSweep: boolean;
+	timerPwmSweepStartPhase: number;
+	timerPwmSweepShape: AyTimerPwmSweepShape;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -48,12 +49,36 @@ export const AY_FM_SEMITONE_MAX = 128;
 export const AY_FM_PERIOD_OFFSET_MIN = -4095;
 export const AY_FM_PERIOD_OFFSET_MAX = 4095;
 export const AY_TIMER_PWM_DUTY_MIN = 0;
-export const AY_TIMER_PWM_DUTY_MAX = 50;
-export const AY_TIMER_PWM_PERCENT_MAX_DIGITS = 2;
+export const AY_TIMER_PWM_DUTY_MAX = 100;
+export const AY_TIMER_PWM_PERCENT_MAX_DIGITS = 3;
 export const DEFAULT_AY_TIMER_PWM_DUTY = 50;
 export const DEFAULT_AY_TIMER_PWM_SWEEP_MIN = 0;
 export const DEFAULT_AY_TIMER_PWM_SWEEP = 0;
 export const TIMER_PWM_SWEEP_UNINITIALIZED = -1;
+export const AY_TIMER_PWM_SWEEP_START_PHASE_MAX = 1000;
+export const DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE = 0;
+export const AY_TIMER_PWM_SWEEP_START_PHASE_PEAK = AY_TIMER_PWM_SWEEP_START_PHASE_MAX / 2;
+export const AY_TIMER_PWM_SWEEP_SHAPES = [
+	'triangle',
+	'sine',
+	'sawUp',
+	'sawDown',
+	'square',
+	'random'
+] as const;
+export type AyTimerPwmSweepShape = (typeof AY_TIMER_PWM_SWEEP_SHAPES)[number];
+export const DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE: AyTimerPwmSweepShape = 'triangle';
+export const TIMER_PWM_SWEEP_HOLD_UNINITIALIZED = -1;
+export const AY_TIMER_PWM_SWEEP_SHAPE_LABELS: Record<AyTimerPwmSweepShape, string> = {
+	triangle: 'Triangle',
+	sine: 'Sine',
+	sawUp: 'Saw up',
+	sawDown: 'Saw down',
+	square: 'Square',
+	random: 'Random'
+};
+const PREVIEW_RANDOM_HOLD_FRACTIONS = [0.2, 0.78, 0.38, 0.92, 0.55, 0.12];
+const PREVIEW_RANDOM_STEP_COUNT = PREVIEW_RANDOM_HOLD_FRACTIONS.length;
 export const AY_TIMER_WAVEFORM_MIN_LENGTH = 1;
 export const AY_TIMER_WAVEFORM_MAX_LENGTH = 32;
 export const AY_TONE_REGISTER_PRESCALER = 16;
@@ -66,6 +91,8 @@ type ExtendedInstrument = Instrument & {
 	timerPwmSweep?: number;
 	timerPwmPreserveOnNewNote?: boolean;
 	timerPwmReverseSweep?: boolean;
+	timerPwmSweepStartPhase?: number;
+	timerPwmSweepShape?: AyTimerPwmSweepShape;
 	sampleData?: number[];
 	sampleRate?: number;
 	sampleStart?: number;
@@ -285,39 +312,105 @@ export function clampTimerPwmSweepMin(min: number, maxDuty: number): number {
 	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(clampedMax, min | 0));
 }
 
+export function resolveTimerPwmSweepShape(shape: unknown): AyTimerPwmSweepShape {
+	if (typeof shape === 'string' && AY_TIMER_PWM_SWEEP_SHAPES.includes(shape as AyTimerPwmSweepShape)) {
+		return shape as AyTimerPwmSweepShape;
+	}
+	return DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE;
+}
+
+export function pwmSweepDutyAtPhase(
+	phase: number,
+	shape: AyTimerPwmSweepShape,
+	minDuty: number,
+	maxDuty: number,
+	randomHold = TIMER_PWM_SWEEP_HOLD_UNINITIALIZED
+): number {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	if (min >= max) {
+		return max;
+	}
+	const p = clampTimerPwmSweepStartPhase(phase);
+	const span = max - min;
+	const t = p / AY_TIMER_PWM_SWEEP_START_PHASE_MAX;
+	const half = AY_TIMER_PWM_SWEEP_START_PHASE_MAX / 2;
+
+	switch (shape) {
+		case 'sine':
+			return Math.round(
+				min + span * (1 - Math.cos((2 * Math.PI * p) / AY_TIMER_PWM_SWEEP_START_PHASE_MAX)) / 2
+			);
+		case 'sawUp':
+			return Math.round(min + span * t);
+		case 'sawDown':
+			return Math.round(max - span * t);
+		case 'square':
+			return p < half ? max : min;
+		case 'random':
+			if (randomHold >= min && randomHold <= max) {
+				return randomHold;
+			}
+			return Math.round(min + span / 2);
+		case 'triangle':
+		default:
+			if (p <= half) {
+				return Math.round(min + span * (p / half));
+			}
+			return Math.round(max - span * ((p - half) / half));
+	}
+}
+
+export function createTimerPwmSweepRandomHold(minDuty: number, maxDuty: number): number {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	if (min >= max) {
+		return max;
+	}
+	return Math.round(min + Math.random() * (max - min));
+}
+
 export function advanceTimerPwmSweep(
-	currentDuty: number,
-	direction: number,
+	currentPhase: number,
+	randomHold: number,
 	sweepSpeed: number,
 	minDuty: number,
 	maxDuty: number,
-	reverseSweep = false
-): { duty: number; direction: number } {
+	startPhase = DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE,
+	shape: AyTimerPwmSweepShape = DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE
+): { phase: number; duty: number; randomHold: number } {
 	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
 	const max = clampTimerPwmDuty(maxDuty);
 
 	if (sweepSpeed <= 0 || min >= max) {
-		return { duty: max, direction: 1 };
+		return { phase: 0, duty: max, randomHold: TIMER_PWM_SWEEP_HOLD_UNINITIALIZED };
 	}
 
-	if (currentDuty < 0) {
-		return reverseSweep
-			? { duty: max, direction: -1 }
-			: { duty: min, direction: 1 };
+	if (currentPhase < 0) {
+		const phase = clampTimerPwmSweepStartPhase(startPhase);
+		let hold = randomHold;
+		if (shape === 'random' && hold < min) {
+			hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
+		}
+		return {
+			phase,
+			duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty, hold),
+			randomHold: hold
+		};
 	}
 
-	let duty = currentDuty + sweepSpeed * direction;
-	let nextDirection = direction;
-
-	if (duty >= max) {
-		duty = max;
-		nextDirection = -1;
-	} else if (duty <= min) {
-		duty = min;
-		nextDirection = 1;
+	const modulus = AY_TIMER_PWM_SWEEP_START_PHASE_MAX + 1;
+	const nextPhase = (currentPhase + sweepSpeed) % modulus;
+	let hold = randomHold;
+	if (shape === 'random' && nextPhase <= currentPhase) {
+		hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
 	}
 
-	return { duty, direction: nextDirection };
+	return {
+		phase: nextPhase,
+		duty: pwmSweepDutyAtPhase(nextPhase, shape, minDuty, maxDuty, hold),
+		randomHold: hold
+	};
 }
 
 export function resolveAyTimerRowSidPeriodMode(row: AyTimerRow | undefined): AySidPeriodMode {
@@ -359,6 +452,206 @@ export function clampTimerPwmDuty(duty: number): number {
 
 export function clampTimerPwmSweep(sweep: number): number {
 	return Math.max(0, Math.min(AY_TIMER_PWM_DUTY_MAX, sweep | 0));
+}
+
+export function clampTimerPwmSweepStartPhase(phase: number): number {
+	return Math.max(
+		0,
+		Math.min(AY_TIMER_PWM_SWEEP_START_PHASE_MAX, Math.round(phase) | 0)
+	);
+}
+
+export function resolveTimerPwmSweepStartPhase(
+	source: Partial<Pick<AyInstrumentFields, 'timerPwmSweepStartPhase'>> & {
+		timerPwmReverseSweep?: boolean;
+	}
+): number {
+	if (source.timerPwmSweepStartPhase !== undefined) {
+		return clampTimerPwmSweepStartPhase(source.timerPwmSweepStartPhase);
+	}
+	if (source.timerPwmReverseSweep === true) {
+		return AY_TIMER_PWM_SWEEP_START_PHASE_PEAK;
+	}
+	return DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE;
+}
+
+export function resolveTimerPwmSweepStart(
+	startPhase: number,
+	minDuty: number,
+	maxDuty: number,
+	shape: AyTimerPwmSweepShape = DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE
+): { phase: number; duty: number } {
+	const phase = clampTimerPwmSweepStartPhase(startPhase);
+	return {
+		phase,
+		duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty)
+	};
+}
+
+function previewRandomStepBounds(step: number): { phaseStart: number; phaseEnd: number } {
+	const phaseStart = Math.round((step / PREVIEW_RANDOM_STEP_COUNT) * AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+	const phaseEnd =
+		step === PREVIEW_RANDOM_STEP_COUNT - 1
+			? AY_TIMER_PWM_SWEEP_START_PHASE_MAX
+			: Math.round(((step + 1) / PREVIEW_RANDOM_STEP_COUNT) * AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+	return { phaseStart, phaseEnd };
+}
+
+function previewRandomStepIndexForPhase(phase: number): number {
+	const clampedPhase = clampTimerPwmSweepStartPhase(phase);
+	for (let step = PREVIEW_RANDOM_STEP_COUNT - 1; step >= 0; step--) {
+		if (clampedPhase >= previewRandomStepBounds(step).phaseStart) {
+			return step;
+		}
+	}
+	return 0;
+}
+
+function previewRandomSweepDutyForStep(
+	step: number,
+	minDuty: number,
+	maxDuty: number
+): number {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	const span = max - min;
+	return Math.round(min + span * PREVIEW_RANDOM_HOLD_FRACTIONS[step]);
+}
+
+export function previewRandomSweepDutyAtPhase(
+	phase: number,
+	minDuty: number,
+	maxDuty: number
+): number {
+	return previewRandomSweepDutyForStep(
+		previewRandomStepIndexForPhase(phase),
+		minDuty,
+		maxDuty
+	);
+}
+
+export function timerPwmSweepPhaseToPoint(
+	startPhase: number,
+	minDuty: number,
+	maxDuty: number,
+	width: number,
+	height: number,
+	padding: number,
+	shape: AyTimerPwmSweepShape = DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE
+): { x: number; y: number; duty: number } {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	const innerWidth = Math.max(1, width - padding * 2);
+	const innerHeight = Math.max(1, height - padding * 2);
+	const phase = clampTimerPwmSweepStartPhase(startPhase);
+	const duty =
+		shape === 'random'
+			? previewRandomSweepDutyAtPhase(phase, minDuty, maxDuty)
+			: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty);
+	const dutySpan = Math.max(1, max - min);
+	const y = padding + innerHeight * (1 - (duty - min) / dutySpan);
+	const x = padding + innerWidth * (phase / AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+	return { x, y, duty };
+}
+
+export function timerPwmSweepPointToPhase(
+	x: number,
+	width: number,
+	padding: number
+): number {
+	const innerWidth = Math.max(1, width - padding * 2);
+	const relX = Math.max(0, Math.min(1, (x - padding) / innerWidth));
+	return clampTimerPwmSweepStartPhase(
+		Math.round(relX * AY_TIMER_PWM_SWEEP_START_PHASE_MAX)
+	);
+}
+
+export function buildTimerPwmSweepShapePath(
+	shape: AyTimerPwmSweepShape,
+	minDuty: number,
+	maxDuty: number,
+	width: number,
+	height: number,
+	padding: number,
+	segments = 64
+): string {
+	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
+	const max = clampTimerPwmDuty(maxDuty);
+	const innerWidth = Math.max(1, width - padding * 2);
+	const innerHeight = Math.max(1, height - padding * 2);
+	const dutySpan = Math.max(1, max - min);
+	const yForDuty = (duty: number) => padding + innerHeight * (1 - (duty - min) / dutySpan);
+
+	if (shape === 'random') {
+		const parts: string[] = [];
+		for (let step = 0; step < PREVIEW_RANDOM_STEP_COUNT; step++) {
+			const { phaseStart, phaseEnd } = previewRandomStepBounds(step);
+			const duty = previewRandomSweepDutyForStep(step, minDuty, maxDuty);
+			const xStart = padding + innerWidth * (phaseStart / AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+			const xEnd = padding + innerWidth * (phaseEnd / AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+			const y = yForDuty(duty);
+			if (step === 0) {
+				parts.push(`M ${xStart} ${y}`);
+			}
+			parts.push(`L ${xEnd} ${y}`);
+			if (step < PREVIEW_RANDOM_STEP_COUNT - 1) {
+				const nextY = yForDuty(previewRandomSweepDutyForStep(step + 1, minDuty, maxDuty));
+				parts.push(`L ${xEnd} ${nextY}`);
+			}
+		}
+		return parts.join(' ');
+	}
+
+	const parts: string[] = [];
+	for (let index = 0; index <= segments; index++) {
+		const phase = Math.round((index / segments) * AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+		const duty = pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty);
+		const x = padding + innerWidth * (phase / AY_TIMER_PWM_SWEEP_START_PHASE_MAX);
+		const y = yForDuty(duty);
+		parts.push(`${index === 0 ? 'M' : 'L'} ${x} ${y}`);
+	}
+	return parts.join(' ');
+}
+
+export function buildTimerPwmSweepShapeFillPath(
+	shape: AyTimerPwmSweepShape,
+	minDuty: number,
+	maxDuty: number,
+	width: number,
+	height: number,
+	padding: number,
+	segments = 64
+): string {
+	const linePath = buildTimerPwmSweepShapePath(shape, minDuty, maxDuty, width, height, padding, segments);
+	if (!linePath) {
+		return '';
+	}
+	const innerHeight = Math.max(1, height - padding * 2);
+	const baseY = padding + innerHeight;
+	const innerWidth = Math.max(1, width - padding * 2);
+	const rightX = padding + innerWidth;
+	const leftX = padding;
+	return `${linePath} L ${rightX} ${baseY} L ${leftX} ${baseY} Z`;
+}
+
+export function buildTimerPwmSweepTrianglePath(
+	minDuty: number,
+	maxDuty: number,
+	width: number,
+	height: number,
+	padding: number
+): string {
+	return buildTimerPwmSweepShapePath('triangle', minDuty, maxDuty, width, height, padding, 2);
+}
+
+export function buildTimerPwmSweepTriangleFillPath(
+	minDuty: number,
+	maxDuty: number,
+	width: number,
+	height: number,
+	padding: number
+): string {
+	return buildTimerPwmSweepShapeFillPath('triangle', minDuty, maxDuty, width, height, padding, 2);
 }
 
 export function sanitizeTimerPwmPercentInput(
@@ -522,7 +815,8 @@ export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumen
 		timerRows,
 		...resolveInstrumentTimerPwmFields(extended, sourceRows),
 		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote === true,
-		timerPwmReverseSweep: extended.timerPwmReverseSweep === true
+		timerPwmSweepStartPhase: resolveTimerPwmSweepStartPhase(extended),
+		timerPwmSweepShape: resolveTimerPwmSweepShape(extended.timerPwmSweepShape)
 	};
 }
 
@@ -698,7 +992,9 @@ export function syncAyInstrumentTimerRows(instrument: Instrument, rowCount: numb
 	extended.timerPwmSweepMin = fields.timerPwmSweepMin;
 	extended.timerPwmSweep = fields.timerPwmSweep;
 	extended.timerPwmPreserveOnNewNote = fields.timerPwmPreserveOnNewNote;
-	extended.timerPwmReverseSweep = fields.timerPwmReverseSweep;
+	extended.timerPwmSweepStartPhase = fields.timerPwmSweepStartPhase;
+	extended.timerPwmSweepShape = fields.timerPwmSweepShape;
+	delete extended.timerPwmReverseSweep;
 	return timerRows;
 }
 
@@ -717,7 +1013,9 @@ export function copyAyInstrumentFields(
 	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
 	target.timerPwmSweep = normalized.timerPwmSweep;
 	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
-	target.timerPwmReverseSweep = normalized.timerPwmReverseSweep;
+	target.timerPwmSweepStartPhase = normalized.timerPwmSweepStartPhase;
+	target.timerPwmSweepShape = normalized.timerPwmSweepShape;
+	delete target.timerPwmReverseSweep;
 	if (
 		source.sampleData?.length &&
 		isValidInstrumentSampleByteLength(source.sampleData.length)
