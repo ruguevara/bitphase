@@ -21,6 +21,7 @@ export type AyTimerRow = {
 
 export type AyInstrumentFields = {
 	timerRows: AyTimerRow[];
+	timerLoop: number;
 	timerPwmDuty: number;
 	timerPwmSweepMin: number;
 	timerPwmSweep: number;
@@ -81,6 +82,7 @@ export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
 
 type ExtendedInstrument = Instrument & {
 	timerRows?: AyTimerRow[];
+	timerLoop?: number;
 	timerPwmDuty?: number;
 	timerPwmSweepMin?: number;
 	timerPwmSweep?: number;
@@ -707,8 +709,24 @@ function resolveInstrumentTimerPwmFields(
 	return createDefaultInstrumentTimerPwmFields();
 }
 
+export function resolveTimerRowCount(instrument: Instrument): number {
+	const extended = instrument as ExtendedInstrument;
+	if (extended.timerRows && extended.timerRows.length > 0) {
+		return extended.timerRows.length;
+	}
+	return Math.max(instrument.rows.length, 1);
+}
+
+export function resolveTimerLoop(instrument: Instrument): number {
+	const extended = instrument as ExtendedInstrument;
+	if (extended.timerLoop !== undefined) {
+		return extended.timerLoop;
+	}
+	return instrument.loop ?? 0;
+}
+
 export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumentFields {
-	const rowCount = Math.max(instrument.rows.length, 1);
+	const rowCount = resolveTimerRowCount(instrument);
 	const extended = instrument as ExtendedInstrument;
 	const sourceRows = extended.timerRows ?? [];
 	const timerRows = Array.from({ length: rowCount }, (_, index) =>
@@ -717,6 +735,7 @@ export function normalizeAyInstrumentFields(instrument: Instrument): AyInstrumen
 
 	return {
 		timerRows,
+		timerLoop: resolveTimerLoop(instrument),
 		...resolveInstrumentTimerPwmFields(extended, sourceRows),
 		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote === true,
 		timerPwmSweepStartPhase: resolveTimerPwmSweepStartPhase(extended),
@@ -898,6 +917,7 @@ export function syncAyInstrumentTimerRows(instrument: Instrument, rowCount: numb
 	extended.timerPwmPreserveOnNewNote = fields.timerPwmPreserveOnNewNote;
 	extended.timerPwmSweepStartPhase = fields.timerPwmSweepStartPhase;
 	extended.timerPwmSweepShape = fields.timerPwmSweepShape;
+	extended.timerLoop = fields.timerLoop;
 	delete extended.timerPwmReverseSweep;
 	return timerRows;
 }
@@ -913,6 +933,7 @@ export function copyAyInstrumentFields(
 			timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
 		}));
 	}
+	target.timerLoop = normalized.timerLoop;
 	target.timerPwmDuty = normalized.timerPwmDuty;
 	target.timerPwmSweepMin = normalized.timerPwmSweepMin;
 	target.timerPwmSweep = normalized.timerPwmSweep;

@@ -4,6 +4,7 @@
 	import IconCarbonSettingsAdjust from '~icons/carbon/settings-adjust';
 	import { ROW_SELECTION_STYLES } from '../../utils/row-selection';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
+	import type { TimerEffectDragField } from './ay-timer-effects-controller.svelte';
 
 	let {
 		index,
@@ -156,9 +157,18 @@
 		controller.updateRowDetune(index, detuneText);
 		detuneText = controller.formatSignedNum(controller.rowDetune(index));
 	}
+
+	function handleEffectPointerDown(event: PointerEvent, field: TimerEffectDragField): void {
+		event.preventDefault();
+		controller.beginDragTimerEffect(index, field);
+		event.currentTarget.closest('table')?.setPointerCapture(event.pointerId);
+	}
 </script>
 
 <td
+	data-timer-effect-cell
+	data-row-index={index}
+	data-timer-effect-field="sid"
 	class="{isExpanded
 		? 'w-8 min-w-8 px-1'
 		: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
@@ -167,12 +177,13 @@
 			? 'instrument-cell-boolean-on'
 			: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 	tabindex="-1"
-	onmousedown={() => controller.beginDragSid(index)}
-	onmouseover={() => controller.dragOverSid(index)}
-	onfocus={() => controller.dragOverSid(index)}>
+	onpointerdown={(event) => handleEffectPointerDown(event, 'sid')}>
 	{sidEnabled ? '✓' : ''}
 </td>
 <td
+	data-timer-effect-cell
+	data-row-index={index}
+	data-timer-effect-field="syncbuzzer"
 	class="{isExpanded
 		? 'w-8 min-w-8 px-1'
 		: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
@@ -181,12 +192,13 @@
 			? 'instrument-cell-boolean-on'
 			: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 	tabindex="-1"
-	onmousedown={() => controller.beginDragSyncbuzzer(index)}
-	onmouseover={() => controller.dragOverSyncbuzzer(index)}
-	onfocus={() => controller.dragOverSyncbuzzer(index)}>
+	onpointerdown={(event) => handleEffectPointerDown(event, 'syncbuzzer')}>
 	{syncbuzzerEnabled ? '✓' : ''}
 </td>
 <td
+	data-timer-effect-cell
+	data-row-index={index}
+	data-timer-effect-field="fm"
 	class="{isExpanded
 		? 'w-8 min-w-8 px-1'
 		: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
@@ -195,12 +207,13 @@
 			? 'instrument-cell-boolean-on'
 			: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 	tabindex="-1"
-	onmousedown={() => controller.beginDragFm(index)}
-	onmouseover={() => controller.dragOverFm(index)}
-	onfocus={() => controller.dragOverFm(index)}>
+	onpointerdown={(event) => handleEffectPointerDown(event, 'fm')}>
 	{fmEnabled ? '✓' : ''}
 </td>
 <td
+	data-timer-effect-cell
+	data-row-index={index}
+	data-timer-effect-field="envFm"
 	class="{isExpanded
 		? 'w-9 min-w-9 px-1'
 		: 'w-9 min-w-9 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
@@ -209,9 +222,7 @@
 			? 'instrument-cell-boolean-on'
 			: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
 	tabindex="-1"
-	onmousedown={() => controller.beginDragEnvFm(index)}
-	onmouseover={() => controller.dragOverEnvFm(index)}
-	onfocus={() => controller.dragOverEnvFm(index)}>
+	onpointerdown={(event) => handleEffectPointerDown(event, 'envFm')}>
 	{envFmEnabled ? '✓' : ''}
 </td>
 <td class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 px-0.5'}>

@@ -142,6 +142,7 @@ export class HistoryClone {
 			timerPwmReverseSweep?: boolean;
 			timerPwmSweepStartPhase?: number;
 			timerPwmSweepShape?: string;
+			timerLoop?: number;
 		};
 		const clonedExtended = cloned as Instrument & {
 			timerRows?: {
@@ -167,6 +168,7 @@ export class HistoryClone {
 			timerPwmReverseSweep?: boolean;
 			timerPwmSweepStartPhase?: number;
 			timerPwmSweepShape?: string;
+			timerLoop?: number;
 		};
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
@@ -174,6 +176,7 @@ export class HistoryClone {
 				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
 			}));
 		}
+		if (extended.timerLoop !== undefined) clonedExtended.timerLoop = extended.timerLoop;
 		if (extended.timerPwmDuty !== undefined) clonedExtended.timerPwmDuty = extended.timerPwmDuty;
 		if (extended.timerPwmSweepMin !== undefined) {
 			clonedExtended.timerPwmSweepMin = extended.timerPwmSweepMin;

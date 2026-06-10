@@ -95,12 +95,23 @@ describe('ay instrument timer fields', () => {
 		);
 	});
 
-	it('syncs timer rows when mixer rows are added', () => {
+	it('syncs timer rows to an explicit row count', () => {
 		const instrument = new Instrument('01', [{ tone: true, volume: 15 }]);
 		const timerRows = syncAyInstrumentTimerRows(instrument, 3);
 		expect(timerRows).toHaveLength(3);
 		expect(timerRows.every((row) => row.sid === false)).toBe(true);
 		expect(timerRows.every((row) => effectiveRowTimerWaveform(row).length === 2)).toBe(true);
+	});
+
+	it('keeps timer row count independent from mixer rows', () => {
+		const instrument = new Instrument('01', [{ tone: true, volume: 15 }, { tone: false, volume: 10 }]);
+		(instrument as Instrument & { timerRows: { sid: boolean }[]; timerLoop: number }).timerRows = [
+			{ sid: true }
+		];
+		(instrument as Instrument & { timerLoop: number }).timerLoop = 0;
+		const fields = normalizeAyInstrumentFields(instrument);
+		expect(fields.timerRows).toHaveLength(1);
+		expect(fields.timerLoop).toBe(0);
 	});
 
 	it('computes auto sid period aligned to tone prescaler ratio', () => {

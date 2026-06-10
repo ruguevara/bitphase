@@ -47,15 +47,13 @@ import {
 
 type ExtendedInstrument = Instrument & Partial<AyInstrumentFields>;
 
+export type TimerEffectDragField = 'sid' | 'syncbuzzer' | 'fm' | 'envFm';
+
 export class AyTimerEffectsController {
 	fields = $state(normalizeAyInstrumentFields(new Instrument('', [])));
 	waveformEditorRowIndex = $state<number | null>(null);
 	isDragging = $state(false);
-	dragType = $state<'sid' | 'syncbuzzer' | 'fm' | 'envFm' | null>(null);
-	dragSidValue = $state<boolean | null>(null);
-	dragSyncbuzzerValue = $state<boolean | null>(null);
-	dragFmValue = $state<boolean | null>(null);
-	dragEnvFmValue = $state<boolean | null>(null);
+	dragPaintValue = $state<boolean | null>(null);
 
 	private lastInstrumentId = '';
 	private lastSyncedRowCount = 0;
@@ -99,17 +97,10 @@ export class AyTimerEffectsController {
 	}
 
 	syncFromInstrument(instrument: Instrument): void {
-		const rowCount = Math.max(instrument.rows.length, 1);
 		const normalized = normalizeAyInstrumentFields(instrument);
-		const timerRows = [...normalized.timerRows];
-		while (timerRows.length < rowCount) {
-			timerRows.push(createDefaultAyTimerRow());
-		}
-		if (timerRows.length > rowCount) {
-			timerRows.length = rowCount;
-		}
 		this.fields = {
-			timerRows,
+			timerRows: normalized.timerRows.map((row) => ({ ...row })),
+			timerLoop: normalized.timerLoop,
 			timerPwmDuty: normalized.timerPwmDuty,
 			timerPwmSweepMin: normalized.timerPwmSweepMin,
 			timerPwmSweep: normalized.timerPwmSweep,
@@ -119,21 +110,17 @@ export class AyTimerEffectsController {
 		};
 		if (
 			this.waveformEditorRowIndex !== null &&
-			this.waveformEditorRowIndex >= timerRows.length
+			this.waveformEditorRowIndex >= this.fields.timerRows.length
 		) {
 			this.waveformEditorRowIndex = null;
 		}
-		this.lastSyncedRowCount = instrument.rows.length;
+		this.lastSyncedRowCount = this.fields.timerRows.length;
 		this.lastInstrumentId = instrument.id;
 	}
 
 	stopDrag(): void {
 		this.isDragging = false;
-		this.dragType = null;
-		this.dragSidValue = null;
-		this.dragSyncbuzzerValue = null;
-		this.dragFmValue = null;
-		this.dragEnvFmValue = null;
+		this.dragPaintValue = null;
 	}
 
 	openWaveformEditor(rowIndex: number): void {
@@ -156,12 +143,74 @@ export class AyTimerEffectsController {
 		this.fields = next;
 		this.updateInstrument({
 			timerRows: next.timerRows,
+			timerLoop: next.timerLoop,
 			timerPwmDuty: next.timerPwmDuty,
 			timerPwmSweepMin: next.timerPwmSweepMin,
 			timerPwmSweep: next.timerPwmSweep,
 			timerPwmPreserveOnNewNote: next.timerPwmPreserveOnNewNote,
 			timerPwmSweepStartPhase: next.timerPwmSweepStartPhase,
 			timerPwmSweepShape: next.timerPwmSweepShape
+		});
+	}
+
+	private clampTimerLoop(loop: number): number {
+		const maxLoop = Math.max(this.fields.timerRows.length - 1, 0);
+		return Math.max(0, Math.min(maxLoop, loop));
+	}
+
+	setTimerLoop(loop: number): void {
+		this.commitFields({ ...this.fields, timerLoop: this.clampTimerLoop(loop) });
+	}
+
+	addTimerRow(): void {
+		this.updateTimerRows([...this.fields.timerRows, createDefaultAyTimerRow()]);
+	}
+
+	setTimerRowCount(targetCount: number): void {
+		const count = Math.max(1, Math.min(512, targetCount));
+		const currentRows = this.fields.timerRows;
+		if (count === currentRows.length) {
+			return;
+		}
+		let nextRows: AyTimerRow[];
+		if (count > currentRows.length) {
+			nextRows = [
+				...currentRows,
+				...Array.from({ length: count - currentRows.length }, () => createDefaultAyTimerRow())
+			];
+		} else {
+			nextRows = currentRows.slice(0, count);
+		}
+		this.commitFields({
+			...this.fields,
+			timerRows: nextRows,
+			timerLoop: this.clampTimerLoop(this.fields.timerLoop)
+		});
+	}
+
+	removeTimerRow(index: number): void {
+		if (this.fields.timerRows.length === 1) {
+			return;
+		}
+		this.commitFields({
+			...this.fields,
+			timerRows: this.fields.timerRows.filter((_, rowIndex) => rowIndex !== index),
+			timerLoop: this.clampTimerLoop(this.fields.timerLoop)
+		});
+	}
+
+	removeTimerRowsFromBottom(index: number): void {
+		if (this.fields.timerRows.length === 1) {
+			return;
+		}
+		const rowsToKeep = index + 1;
+		if (rowsToKeep >= this.fields.timerRows.length) {
+			return;
+		}
+		this.commitFields({
+			...this.fields,
+			timerRows: this.fields.timerRows.slice(0, rowsToKeep),
+			timerLoop: this.clampTimerLoop(this.fields.timerLoop)
 		});
 	}
 
@@ -388,59 +437,54 @@ export class AyTimerEffectsController {
 		this.updateFmOffsetMode(index, nextMode);
 	}
 
-	beginDragSid(index: number): void {
+	beginDragTimerEffect(index: number, field: TimerEffectDragField): void {
+		const currentValue = this.timerEffectFieldValue(index, field);
 		this.isDragging = true;
-		this.dragType = 'sid';
-		this.dragSidValue = !this.fields.timerRows[index].sid;
-		this.updateSidRow(index, this.dragSidValue);
+		this.dragPaintValue = !currentValue;
+		this.applyTimerEffectField(index, field, this.dragPaintValue);
 	}
 
-	dragOverSid(index: number): void {
-		if (this.isDragging && this.dragType === 'sid' && this.dragSidValue !== null) {
-			this.updateSidRow(index, this.dragSidValue);
+	dragOverTimerEffect(index: number, field: TimerEffectDragField): void {
+		if (this.isDragging && this.dragPaintValue !== null) {
+			this.applyTimerEffectField(index, field, this.dragPaintValue);
 		}
 	}
 
-	beginDragSyncbuzzer(index: number): void {
-		this.isDragging = true;
-		this.dragType = 'syncbuzzer';
-		this.dragSyncbuzzerValue = !this.fields.timerRows[index]?.syncbuzzer;
-		this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
-	}
-
-	dragOverSyncbuzzer(index: number): void {
-		if (
-			this.isDragging &&
-			this.dragType === 'syncbuzzer' &&
-			this.dragSyncbuzzerValue !== null
-		) {
-			this.updateSyncbuzzerRow(index, this.dragSyncbuzzerValue);
+	private timerEffectFieldValue(index: number, field: TimerEffectDragField): boolean {
+		const row = this.fields.timerRows[index];
+		if (!row) {
+			return false;
+		}
+		switch (field) {
+			case 'sid':
+				return row.sid;
+			case 'syncbuzzer':
+				return !!row.syncbuzzer;
+			case 'fm':
+				return !!row.fm;
+			case 'envFm':
+				return !!row.envFm;
 		}
 	}
 
-	beginDragFm(index: number): void {
-		this.isDragging = true;
-		this.dragType = 'fm';
-		this.dragFmValue = !this.fields.timerRows[index]?.fm;
-		this.updateFmRow(index, this.dragFmValue);
-	}
-
-	dragOverFm(index: number): void {
-		if (this.isDragging && this.dragType === 'fm' && this.dragFmValue !== null) {
-			this.updateFmRow(index, this.dragFmValue);
-		}
-	}
-
-	beginDragEnvFm(index: number): void {
-		this.isDragging = true;
-		this.dragType = 'envFm';
-		this.dragEnvFmValue = !this.fields.timerRows[index]?.envFm;
-		this.updateEnvFmRow(index, this.dragEnvFmValue);
-	}
-
-	dragOverEnvFm(index: number): void {
-		if (this.isDragging && this.dragType === 'envFm' && this.dragEnvFmValue !== null) {
-			this.updateEnvFmRow(index, this.dragEnvFmValue);
+	private applyTimerEffectField(
+		index: number,
+		field: TimerEffectDragField,
+		value: boolean
+	): void {
+		switch (field) {
+			case 'sid':
+				this.updateSidRow(index, value);
+				break;
+			case 'syncbuzzer':
+				this.updateSyncbuzzerRow(index, value);
+				break;
+			case 'fm':
+				this.updateFmRow(index, value);
+				break;
+			case 'envFm':
+				this.updateEnvFmRow(index, value);
+				break;
 		}
 	}
 

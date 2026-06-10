@@ -267,6 +267,13 @@ function reconstructInstrument(data: any): Instrument {
 			}
 		);
 	}
+	if (data.timerLoop !== undefined) {
+		(
+			instrument as Instrument & {
+				timerLoop?: number;
+			}
+		).timerLoop = data.timerLoop;
+	}
 	const extended = instrument as Instrument & {
 		timerPwmDuty?: number;
 		timerPwmSweepMin?: number;

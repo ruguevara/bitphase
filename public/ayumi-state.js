@@ -4,6 +4,7 @@ import TrackerState from './tracker-state.js';
 const AY_CHANNEL_ARRAY_SPECS = [
 	['channelInstruments', -1],
 	['instrumentPositions', 0],
+	['channelTimerPositions', 0],
 	['channelInstrumentVolumes', 0],
 	['channelToneAccumulator', 0],
 	['channelNoiseAccumulator', 0],

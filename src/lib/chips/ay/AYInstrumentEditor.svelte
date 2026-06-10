@@ -33,8 +33,9 @@
 	import AYTimerPwmControls from './AYTimerPwmControls.svelte';
 	import AYInstrumentSamplePanel from './AYInstrumentSamplePanel.svelte';
 	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
+	import type { TimerEffectDragField } from './ay-timer-effects-controller.svelte';
 	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
-	import { syncAyInstrumentTimerRows, type AyInstrumentFields } from './instrument';
+	import { type AyInstrumentFields } from './instrument';
 	import { instrumentHasSample } from './sample-region';
 
 	type InstrumentTab = 'mixer' | 'timer' | 'sample';
@@ -364,8 +365,85 @@
 	function updateArraysAfterRowChange(newRows: any[]) {
 		rows = newRows;
 		if (loopRow >= rows.length) loopRow = rows.length - 1;
-		const timerRows = syncAyInstrumentTimerRows(instrument, rows.length);
-		updateInstrument({ rows, timerRows });
+		updateInstrument({ rows, loop: loopRow });
+	}
+
+	const displayRowCount = $derived(
+		activeTab === 'timer' ? timerEffects.fields.timerRows.length : rows.length
+	);
+
+	const activeLoopRow = $derived(
+		activeTab === 'timer' ? timerEffects.fields.timerLoop : loopRow
+	);
+
+	function setActiveLoop(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.setTimerLoop(index);
+		} else {
+			setLoop(index);
+		}
+	}
+
+	function addDisplayRow(): void {
+		if (activeTab === 'timer') {
+			timerEffects.addTimerRow();
+		} else {
+			addRow();
+		}
+	}
+
+	function setDisplayRowCount(targetCount: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.setTimerRowCount(targetCount);
+		} else {
+			setRowCount(targetCount);
+		}
+	}
+
+	function removeDisplayRow(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.removeTimerRow(index);
+		} else {
+			removeRow(index);
+		}
+	}
+
+	function removeDisplayRowsFromBottom(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.removeTimerRowsFromBottom(index);
+		} else {
+			removeRowsFromBottom(index);
+		}
+	}
+
+	function paintTimerEffectAt(clientX: number, clientY: number): void {
+		const target = document.elementFromPoint(clientX, clientY);
+		const cell = target?.closest('[data-timer-effect-cell]') as HTMLElement | null;
+		if (!cell) {
+			return;
+		}
+		const rowIndex = Number(cell.dataset.rowIndex);
+		const field = cell.dataset.timerEffectField as TimerEffectDragField | undefined;
+		if (!field || Number.isNaN(rowIndex)) {
+			return;
+		}
+		timerEffects.dragOverTimerEffect(rowIndex, field);
+	}
+
+	function handleTimerEffectPointerMove(event: PointerEvent): void {
+		if (activeTab !== 'timer' || !timerEffects.isDragging) {
+			return;
+		}
+		paintTimerEffectAt(event.clientX, event.clientY);
+	}
+
+	function handleTimerEffectPointerEnd(event: PointerEvent): void {
+		if (!timerEffects.isDragging) {
+			return;
+		}
+		paintTimerEffectAt(event.clientX, event.clientY);
+		timerEffects.stopDrag();
+		tableRef?.releasePointerCapture(event.pointerId);
 	}
 
 	function addRow() {
@@ -412,8 +490,8 @@
 	$effect(() => {
 		const table = tableRef;
 		const container = table?.parentElement;
-		const currentLoopRow = loopRow;
-		const rowCount = rows.length;
+		const currentLoopRow = activeLoopRow;
+		const rowCount = displayRowCount;
 		void isExpanded;
 		void activeTab;
 		void timerTableLayoutKey;
@@ -515,7 +593,7 @@
 	});
 
 	$effect(() => {
-		const validIndices = filterValidSelection(selectedRowIndices, rows.length);
+		const validIndices = filterValidSelection(selectedRowIndices, displayRowCount);
 		if (validIndices.length !== selectedRowIndices.length) {
 			selectedRowIndices = validIndices;
 		}
@@ -716,6 +794,9 @@
 					{/if}
 					<table
 						bind:this={tableRef}
+						onpointermove={handleTimerEffectPointerMove}
+						onpointerup={handleTimerEffectPointerEnd}
+						onpointercancel={handleTimerEffectPointerEnd}
 						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none {activeTab ===
 						'timer'
 							? 'w-full'
@@ -726,7 +807,7 @@
 									class={isExpanded
 										? 'w-14 min-w-14 px-2 py-1.5'
 										: 'w-8 min-w-8 px-1 py-1'}>row</th>
-								<th class={isExpanded ? 'w-8 min-w-8 px-1.5' : 'w-6 min-w-6 px-0.5'}></th>
+								<th class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 min-w-10 px-0.5'}></th>
 								<th
 									class={isExpanded ? 'w-6 min-w-6 px-1.5' : 'w-4 min-w-4 px-0.5'}
 									>{isExpanded ? 'loop' : 'lp'}</th>
@@ -883,7 +964,7 @@
 							{/if}
 						</thead>
 						<tbody>
-							{#each rows as row, index}
+							{#each activeTab === 'timer' ? timerEffects.timerRows : rows as _, index (index)}
 								{@const selected = isRowSelected(index)}
 								<tr
 									class="{isExpanded ? 'h-8' : 'h-7'} {selected
@@ -897,20 +978,20 @@
 											: 'w-8 min-w-8 px-1 py-1 text-[0.65rem]'}
 										onmousedown={(e) => handleRowSelect(index, e)} />
 									<td
-										class="border border-[var(--color-app-border)] {selected
+										class="overflow-hidden border border-[var(--color-app-border)] {selected
 											? ROW_SELECTION_STYLES.cell
 											: 'bg-[var(--color-app-surface-secondary)]'} {isExpanded
-											? 'w-8 px-1.5'
-											: 'w-6 px-0.5'}">
+											? 'w-12 min-w-12 px-1'
+											: 'w-10 min-w-10 px-0.5'}">
 										<div
-											class="flex items-center justify-center {isExpanded
-												? 'gap-1'
-												: 'gap-0.5'}">
+											class="flex min-w-0 items-center justify-center {isExpanded
+												? 'gap-0.5'
+												: 'gap-0'}">
 											<button
-												class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
+												class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 												onclick={(e) => {
 													e.stopPropagation();
-													removeRow(index);
+													removeDisplayRow(index);
 												}}
 												title="Remove this row">
 												<IconCarbonTrashCan
@@ -918,12 +999,12 @@
 														? 'h-3.5 w-3.5'
 														: 'h-3 w-3'} />
 											</button>
-											{#if index < rows.length - 1}
+											{#if index < displayRowCount - 1}
 												<button
-													class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
+													class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 													onclick={(e) => {
 														e.stopPropagation();
-														removeRowsFromBottom(index);
+														removeDisplayRowsFromBottom(index);
 													}}
 													title="Remove all rows from bottom up to this one">
 													<IconCarbonDelete
@@ -940,9 +1021,10 @@
 											: 'w-4 min-w-4 cursor-pointer px-0.5 text-center text-[0.65rem]'} {selected
 											? ROW_SELECTION_STYLES.cell
 											: ''}"
-										onclick={() => setLoop(index)}>
+										onclick={() => setActiveLoop(index)}>
 									</td>
 									{#if activeTab === 'mixer'}
+										{@const row = rows[index]}
 										<!-- Tone -->
 										<td
 											class="{isExpanded
@@ -1188,7 +1270,7 @@
 									<div class="flex items-center justify-center">
 										<button
 											class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
-											onclick={addRow}
+											onclick={addDisplayRow}
 											title="Add new row">
 											<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
 											<span class="mr-1 text-xs">Add new row</span>
@@ -1201,8 +1283,8 @@
 									colspan={tableColSpan}
 									class="border-t border-[var(--color-app-border)] p-0">
 									<RowResizeHandle
-										rowCount={rows.length}
-										onRowCountChange={setRowCount}
+										rowCount={displayRowCount}
+										onRowCountChange={setDisplayRowCount}
 										rowHeightPx={isExpanded ? 32 : 28}
 										maxRows={MAX_ROWS} />
 								</td>

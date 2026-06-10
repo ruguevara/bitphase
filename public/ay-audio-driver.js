@@ -19,6 +19,16 @@ import {
 	createEnvelopePeriodTimerEffect,
 	disableTimerEffect
 } from './ay-timer-effect-constants.js';
+
+function advanceInstrumentRowPosition(position, rowsLength, loop) {
+	const length = rowsLength > 0 ? rowsLength : 1;
+	let next = position + 1;
+	if (next >= length) {
+		next = loop > 0 && loop < length ? loop : 0;
+	}
+	return next;
+}
+
 class AYAudioDriver {
 	constructor(channelCount = 3) {
 		this.channelMixerState = [];
@@ -39,6 +49,40 @@ class AYAudioDriver {
 		}
 		if (this.channelMixerState.length > newCount) {
 			this.channelMixerState.length = newCount;
+		}
+	}
+
+	resolveTimerRowPlayback(instrument) {
+		const ayFields = normalizeAyInstrumentFields(instrument);
+		return {
+			timerRowsLength: Math.max(ayFields.timerRows.length, 1),
+			timerLoop: ayFields.timerLoop ?? instrument.loop ?? 0
+		};
+	}
+
+	advanceChannelInstrumentRows(
+		state,
+		channelIndex,
+		mixerRowsLength,
+		mixerLoop,
+		timerRowsLength,
+		timerLoop,
+		onOffHalted
+	) {
+		if (onOffHalted) {
+			return;
+		}
+		state.instrumentPositions[channelIndex] = advanceInstrumentRowPosition(
+			state.instrumentPositions[channelIndex],
+			mixerRowsLength,
+			mixerLoop
+		);
+		if (state.channelTimerPositions) {
+			state.channelTimerPositions[channelIndex] = advanceInstrumentRowPosition(
+				state.channelTimerPositions[channelIndex],
+				timerRowsLength,
+				timerLoop
+			);
 		}
 	}
 
@@ -172,6 +216,9 @@ class AYAudioDriver {
 			const preserveTimerPwmSweep = this.shouldPreserveTimerPwmSweep(state, channelIndex, row);
 			this.resetInstrumentAccumulators(state, channelIndex, { preserveTimerPwmSweep });
 			state.instrumentPositions[channelIndex] = 0;
+			if (state.channelTimerPositions) {
+				state.channelTimerPositions[channelIndex] = 0;
+			}
 			const offInstrumentIndex = state.channelInstruments[channelIndex];
 			const offInstrument =
 				offInstrumentIndex >= 0 ? state.instruments[offInstrumentIndex] : null;
@@ -194,6 +241,9 @@ class AYAudioDriver {
 			const instrument = instrumentIndex >= 0 ? state.instruments[instrumentIndex] : null;
 			if (state.instrumentPositions && !(preserveSamplePlayback && instrumentHasSample(instrument))) {
 				state.instrumentPositions[channelIndex] = 0;
+				if (state.channelTimerPositions) {
+					state.channelTimerPositions[channelIndex] = 0;
+				}
 			}
 			if (!preserveSamplePlayback) {
 				if (instrumentHasSample(instrument)) {
@@ -221,6 +271,9 @@ class AYAudioDriver {
 				const preserveSamplePlayback = this.shouldPreserveSamplePlayback(state, channelIndex, row);
 				if (!(preserveSamplePlayback && instrumentHasSample(instrument))) {
 					state.instrumentPositions[channelIndex] = 0;
+					if (state.channelTimerPositions) {
+						state.channelTimerPositions[channelIndex] = 0;
+					}
 				}
 				if (instrumentHasSample(instrument) && !preserveSamplePlayback) {
 					resetChannelSamplePlayback(state, channelIndex, instrument);
@@ -603,6 +656,7 @@ class AYAudioDriver {
 		const effectiveRows = hasRows ? instrument.rows : [defaultInstrumentRow];
 		const effectiveRowsLength = effectiveRows.length;
 		const effectiveLoop = hasRows ? instrument.loop : 0;
+		const timerPlayback = this.resolveTimerRowPlayback(instrument);
 		const rowIndex = state.instrumentPositions[channelIndex] % effectiveRowsLength;
 		const instrumentRow = effectiveRows[rowIndex];
 		if (!instrumentRow) {
@@ -613,16 +667,15 @@ class AYAudioDriver {
 			this.channelMixerState[channelIndex].noise = false;
 			this.channelMixerState[channelIndex].envelope = false;
 			disableTimerEffect(registerState.channels[channelIndex].timerEffect);
-			if (!onOffHalted) {
-				state.instrumentPositions[channelIndex]++;
-				if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
-					if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
-						state.instrumentPositions[channelIndex] = effectiveLoop;
-					} else {
-						state.instrumentPositions[channelIndex] = 0;
-					}
-				}
-			}
+			this.advanceChannelInstrumentRows(
+				state,
+				channelIndex,
+				effectiveRowsLength,
+				effectiveLoop,
+				timerPlayback.timerRowsLength,
+				timerPlayback.timerLoop,
+				onOffHalted
+			);
 			return;
 		}
 
@@ -695,14 +748,15 @@ class AYAudioDriver {
 		}
 
 		if (!onOffHalted) {
-			state.instrumentPositions[channelIndex]++;
-			if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
-				if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
-					state.instrumentPositions[channelIndex] = effectiveLoop;
-				} else {
-					state.instrumentPositions[channelIndex] = 0;
-				}
-			}
+			this.advanceChannelInstrumentRows(
+				state,
+				channelIndex,
+				effectiveRowsLength,
+				effectiveLoop,
+				timerPlayback.timerRowsLength,
+				timerPlayback.timerLoop,
+				onOffHalted
+			);
 		}
 	}
 
@@ -837,6 +891,7 @@ class AYAudioDriver {
 			const effectiveRows = hasRows ? instrument.rows : [defaultInstrumentRow];
 			const effectiveRowsLength = effectiveRows.length;
 			const effectiveLoop = hasRows ? instrument.loop : 0;
+			const timerPlayback = this.resolveTimerRowPlayback(instrument);
 			const rowIndex = state.instrumentPositions[channelIndex] % effectiveRowsLength;
 			const instrumentRow = effectiveRows[rowIndex];
 			if (!instrumentRow) {
@@ -846,31 +901,29 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].tone = false;
 				this.channelMixerState[channelIndex].noise = false;
 				this.channelMixerState[channelIndex].envelope = false;
-				if (!onOffHalted) {
-					state.instrumentPositions[channelIndex]++;
-					if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
-						if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
-							state.instrumentPositions[channelIndex] = effectiveLoop;
-						} else {
-							state.instrumentPositions[channelIndex] = 0;
-						}
-					}
-				}
+				this.advanceChannelInstrumentRows(
+					state,
+					channelIndex,
+					effectiveRowsLength,
+					effectiveLoop,
+					timerPlayback.timerRowsLength,
+					timerPlayback.timerLoop,
+					onOffHalted
+				);
 				continue;
 			}
 
 			const effectiveTone = this.getEffectiveTone(state, channelIndex);
 			if (effectiveTone === 0) {
-				if (!onOffHalted) {
-					state.instrumentPositions[channelIndex]++;
-					if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
-						if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
-							state.instrumentPositions[channelIndex] = effectiveLoop;
-						} else {
-							state.instrumentPositions[channelIndex] = 0;
-						}
-					}
-				}
+				this.advanceChannelInstrumentRows(
+					state,
+					channelIndex,
+					effectiveRowsLength,
+					effectiveLoop,
+					timerPlayback.timerRowsLength,
+					timerPlayback.timerLoop,
+					onOffHalted
+				);
 				continue;
 			}
 
@@ -955,7 +1008,9 @@ class AYAudioDriver {
 				this.channelMixerState[channelIndex].noise = instrumentRow.noise;
 
 				const ayFields = normalizeAyInstrumentFields(instrument);
-				const timerRow = ayFields.timerRows[rowIndex] ?? {
+				const timerRowIndex =
+					state.channelTimerPositions[channelIndex] % timerPlayback.timerRowsLength;
+				const timerRow = ayFields.timerRows[timerRowIndex] ?? {
 					sid: false,
 					syncbuzzer: false,
 					fm: false,
@@ -1100,16 +1155,15 @@ class AYAudioDriver {
 				}
 			}
 
-			if (!onOffHalted) {
-				state.instrumentPositions[channelIndex]++;
-				if (state.instrumentPositions[channelIndex] >= effectiveRowsLength) {
-					if (effectiveLoop > 0 && effectiveLoop < effectiveRowsLength) {
-						state.instrumentPositions[channelIndex] = effectiveLoop;
-					} else {
-						state.instrumentPositions[channelIndex] = 0;
-					}
-				}
-			}
+			this.advanceChannelInstrumentRows(
+				state,
+				channelIndex,
+				effectiveRowsLength,
+				effectiveLoop,
+				timerPlayback.timerRowsLength,
+				timerPlayback.timerLoop,
+				onOffHalted
+			);
 		}
 
 		for (let channelIndex = 0; channelIndex < state.channelInstruments.length; channelIndex++) {

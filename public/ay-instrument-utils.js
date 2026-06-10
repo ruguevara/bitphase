@@ -424,14 +424,20 @@ function resolveInstrumentTimerPwmFields(instrument, sourceRows) {
 }
 
 export function normalizeAyInstrumentFields(instrument) {
-	const rowCount = Math.max(instrument.rows?.length ?? 0, 1);
+	const rowCount =
+		instrument.timerRows?.length > 0
+			? instrument.timerRows.length
+			: Math.max(instrument.rows?.length ?? 0, 1);
 	const sourceRows = instrument.timerRows ?? [];
 	const timerRows = Array.from({ length: rowCount }, (_, index) =>
 		normalizeTimerRow(sourceRows[index])
 	);
+	const timerLoop =
+		instrument.timerLoop !== undefined ? instrument.timerLoop : (instrument.loop ?? 0);
 
 	return {
 		timerRows,
+		timerLoop,
 		...resolveInstrumentTimerPwmFields(instrument, sourceRows),
 		timerPwmPreserveOnNewNote: instrument.timerPwmPreserveOnNewNote === true,
 		timerPwmSweepStartPhase: resolveTimerPwmSweepStartPhase(instrument),

@@ -16,6 +16,7 @@ import { normalizeSamplePlaybackBounds } from './sample-region';
 import type { AyTimerPwmSweepShape } from './instrument';
 
 type WorkletInstrument = Instrument & {
+	timerLoop?: number;
 	timerRows?: Record<string, unknown>[];
 	timerPwmDuty?: number;
 	timerPwmSweepMin?: number;
@@ -46,6 +47,7 @@ export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletIns
 		rows: Array.from(instrument.rows).map((row) => ({ ...row })),
 		loop: instrument.loop,
 		name: instrument.name,
+		timerLoop: extended.timerLoop ?? instrument.loop,
 		timerPwmDuty: extended.timerPwmDuty,
 		timerPwmSweepMin: extended.timerPwmSweepMin,
 		timerPwmSweep: extended.timerPwmSweep,
