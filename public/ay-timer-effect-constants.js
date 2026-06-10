@@ -2,6 +2,7 @@ export const TIMER_EFFECT_KIND_NONE = 0;
 export const TIMER_EFFECT_KIND_VOLUME = 1;
 export const TIMER_EFFECT_KIND_ENVELOPE_SHAPE = 2;
 export const TIMER_EFFECT_KIND_TONE = 3;
+export const TIMER_EFFECT_KIND_ENVELOPE_PERIOD = 4;
 
 export const TIMER_PWM_MODE_OFF = 0;
 export const TIMER_PWM_MODE_BY_STEP_VALUE = 1;
@@ -81,6 +82,32 @@ export function createToneTimerEffect({
 		periodLow,
 		baseVolume: 0,
 		baseTonePeriod,
+		fmOffsetMode: resolveTimerFmOffsetMode(fmOffsetMode),
+		waveform: [...waveform],
+		waveformLoop,
+		resetPhase
+	};
+}
+
+export function createEnvelopePeriodTimerEffect({
+	enabled = false,
+	pwm = false,
+	period = 100,
+	periodLow = period,
+	baseEnvelopePeriod = 1,
+	fmOffsetMode = TIMER_FM_OFFSET_SEMITONE,
+	waveform = [0, 7],
+	waveformLoop = 0,
+	resetPhase = false
+} = {}) {
+	return {
+		enabled,
+		kind: enabled ? TIMER_EFFECT_KIND_ENVELOPE_PERIOD : TIMER_EFFECT_KIND_NONE,
+		pwmMode: pwm ? TIMER_PWM_MODE_BY_DUTY_INDEX : TIMER_PWM_MODE_OFF,
+		period,
+		periodLow,
+		baseVolume: 0,
+		baseTonePeriod: baseEnvelopePeriod,
 		fmOffsetMode: resolveTimerFmOffsetMode(fmOffsetMode),
 		waveform: [...waveform],
 		waveformLoop,

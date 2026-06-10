@@ -202,6 +202,8 @@ function reconstructInstrument(data: any): Instrument {
 					sid: boolean;
 					syncbuzzer?: boolean;
 					fm?: boolean;
+					envFm?: boolean;
+					fmOffsetMode?: 'semitone' | 'period';
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
@@ -213,6 +215,8 @@ function reconstructInstrument(data: any): Instrument {
 				sid?: boolean;
 				syncbuzzer?: boolean;
 				fm?: boolean;
+				envFm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
 				sidPeriodMode?: 'auto' | 'manual';
 				detune?: number;
 				period?: number;
@@ -227,6 +231,8 @@ function reconstructInstrument(data: any): Instrument {
 					sid: boolean;
 					syncbuzzer?: boolean;
 					fm?: boolean;
+					envFm?: boolean;
+					fmOffsetMode?: 'semitone' | 'period';
 					sidPeriodMode?: 'auto' | 'manual';
 					detune?: number;
 					period?: number;
@@ -240,6 +246,8 @@ function reconstructInstrument(data: any): Instrument {
 					sid: row.sid ?? false,
 					syncbuzzer: row.syncbuzzer ?? false,
 					fm: row.fm ?? false,
+					envFm: row.envFm ?? false,
+					fmOffsetMode: row.fmOffsetMode === 'period' ? 'period' : 'semitone',
 					sidPeriodMode:
 						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
 							? row.sidPeriodMode

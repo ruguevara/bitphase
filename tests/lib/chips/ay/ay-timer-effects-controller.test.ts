@@ -361,6 +361,35 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 	});
 
+	it('enables env fm exclusively and uses fm waveform semantics', () => {
+		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+
+		controller.updateEnvFmRow(0, true);
+		expect(controller.rowEnvFmEnabled(0)).toBe(true);
+		expect(controller.rowSidEnabled(0)).toBe(false);
+		expect(controller.rowFmEnabled(0)).toBe(false);
+		expect(controller.rowSyncbuzzerEnabled(0)).toBe(false);
+		expect(controller.rowUsesFmWaveform(0)).toBe(true);
+		expect(controller.rowTimerWaveformUsesFmSemitones(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 7');
+
+		controller.toggleFmOffsetMode(0);
+		expect(controller.rowFmOffsetMode(0)).toBe('period');
+		expect(controller.rowTimerWaveformUsesFmPeriodOffsets(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 16 0 -16');
+
+		controller.updateFmRow(0, true);
+		expect(controller.rowFmEnabled(0)).toBe(true);
+		expect(controller.rowEnvFmEnabled(0)).toBe(false);
+	});
+
 	it('keeps waveform editing available for syncbuzzer rows', () => {
 		let current = createInstrument([{ sid: false, syncbuzzer: false }]);
 		const controller = new AyTimerEffectsController(

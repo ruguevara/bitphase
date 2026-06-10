@@ -2,6 +2,7 @@ import AYChipRegisterState from './ay-chip-register-state.js';
 import {
 	TIMER_EFFECT_KIND_NONE,
 	TIMER_EFFECT_KIND_TONE,
+	TIMER_EFFECT_KIND_ENVELOPE_PERIOD,
 	TIMER_FM_OFFSET_PERIOD,
 	resolveTimerFmOffsetMode
 } from './ay-timer-effect-constants.js';
@@ -47,7 +48,8 @@ class AyumiEngine {
 		const period = timerEffect.period > 0 ? timerEffect.period : 1;
 		const periodLow = timerEffect.periodLow > 0 ? timerEffect.periodLow : period;
 		const baseVolume = timerEffect.baseVolume & 0xf;
-		const baseTonePeriod = Math.max(1, timerEffect.baseTonePeriod & 0xfff);
+		const basePeriodMask = kind === TIMER_EFFECT_KIND_ENVELOPE_PERIOD ? 0xffff : 0xfff;
+		const baseTonePeriod = Math.max(1, timerEffect.baseTonePeriod & basePeriodMask);
 		const fmOffsetMode = resolveTimerFmOffsetMode(timerEffect.fmOffsetMode);
 		const wasEnabled = lastTimerEffect.enabled ? 1 : 0;
 		const enableChanged = enabled !== wasEnabled;
@@ -112,7 +114,7 @@ class AyumiEngine {
 			const offset = ptr >> 2;
 			for (let i = 0; i < waveform.length; i++) {
 				const raw = waveform[i] | 0;
-				if (kind === TIMER_EFFECT_KIND_TONE) {
+				if (kind === TIMER_EFFECT_KIND_TONE || kind === TIMER_EFFECT_KIND_ENVELOPE_PERIOD) {
 					memory[offset + i] =
 						fmOffsetMode === TIMER_FM_OFFSET_PERIOD
 							? Math.max(AY_FM_PERIOD_OFFSET_MIN, Math.min(AY_FM_PERIOD_OFFSET_MAX, raw))

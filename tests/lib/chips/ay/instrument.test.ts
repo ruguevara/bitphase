@@ -14,6 +14,7 @@ import {
 	parseAyFmWaveform,
 	parseAyTimerWaveformPartial,
 	effectiveRowTimerWaveform,
+	effectiveRowFmWaveform,
 	effectiveRowTimerPwmDuty,
 	effectiveRowTimerPwmSweep,
 	effectiveRowTimerPwmSweepMin,
@@ -101,21 +102,38 @@ describe('ay instrument timer fields', () => {
 		expect(computeSidPeriod(200, row)).toBe(42);
 	});
 
-	it('keeps sid, syncbuzzer, and fm mutually exclusive', () => {
+	it('keeps sid, syncbuzzer, fm, and envFm mutually exclusive', () => {
 		expect(resolveExclusiveTimerEffects({ sid: true, syncbuzzer: true })).toMatchObject({
 			sid: true,
 			syncbuzzer: false,
-			fm: false
+			fm: false,
+			envFm: false
 		});
 		expect(resolveExclusiveTimerEffects({ sid: false, syncbuzzer: true })).toMatchObject({
 			sid: false,
 			syncbuzzer: true,
-			fm: false
+			fm: false,
+			envFm: false
 		});
 		expect(resolveExclusiveTimerEffects({ sid: false, syncbuzzer: false, fm: true })).toMatchObject({
 			sid: false,
 			syncbuzzer: false,
-			fm: true
+			fm: true,
+			envFm: false
+		});
+		expect(
+			resolveExclusiveTimerEffects({ sid: false, syncbuzzer: false, fm: false, envFm: true })
+		).toMatchObject({
+			sid: false,
+			syncbuzzer: false,
+			fm: false,
+			envFm: true
+		});
+		expect(
+			resolveExclusiveTimerEffects({ sid: false, syncbuzzer: false, fm: true, envFm: true })
+		).toMatchObject({
+			fm: true,
+			envFm: false
 		});
 
 		const instrument = new Instrument('01', [{ tone: true, volume: 15 }]);
@@ -125,6 +143,20 @@ describe('ay instrument timer fields', () => {
 		expect(fields.timerRows[0]?.sid).toBe(true);
 		expect(fields.timerRows[0]?.syncbuzzer).toBe(false);
 		expect(fields.timerRows[0]?.fm).toBe(false);
+		expect(fields.timerRows[0]?.envFm).toBe(false);
+	});
+
+	it('normalizes env fm rows with fm waveform semantics', () => {
+		const instrument = new Instrument('01', [{ tone: true, volume: 15 }]);
+		(
+			instrument as Instrument & {
+				timerRows?: { sid: boolean; envFm?: boolean; timerWaveform?: number[] }[];
+			}
+		).timerRows = [{ sid: false, envFm: true, timerWaveform: [0, 200] }];
+		const fields = normalizeAyInstrumentFields(instrument);
+		expect(fields.timerRows[0]?.envFm).toBe(true);
+		expect(fields.timerRows[0]?.timerWaveform).toEqual([0, 128]);
+		expect(effectiveRowFmWaveform(fields.timerRows[0])).toEqual([0, 128]);
 	});
 
 	it('parses and formats fm semitone waveforms', () => {
@@ -158,6 +190,11 @@ describe('ay instrument timer fields', () => {
 		expect(rowSupportsTimerPwm({ fm: true, timerWaveform: [0, 12] })).toBe(true);
 		expect(rowSupportsTimerPwm({ fm: true, timerWaveform: [0, 1, 0, -1] })).toBe(false);
 		expect(rowSupportsTimerPwm({ fm: true })).toBe(true);
+		expect(rowSupportsTimerPwm({ sid: false, envFm: true, timerWaveform: [0, 12] })).toBe(true);
+		expect(
+			rowSupportsTimerPwm({ sid: false, envFm: true, timerWaveform: [0, 1, 0, -1] })
+		).toBe(false);
+		expect(rowSupportsTimerPwm({ sid: false, envFm: true })).toBe(true);
 		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [13, 9] })).toBe(true);
 		expect(rowUsesSyncbuzzerPwmDuty({ syncbuzzer: true, timerWaveform: [8, 12, 8] })).toBe(false);
 	});

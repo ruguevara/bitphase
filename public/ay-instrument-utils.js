@@ -107,8 +107,12 @@ export function normalizeFmWaveform(waveform, mode = 'semitone') {
 	return waveform.map((value) => clampFmWaveformValue(value, mode)).slice(0, 32);
 }
 
+export function rowUsesFmWaveform(row) {
+	return !!(row?.fm || row?.envFm);
+}
+
 export function effectiveRowFmWaveform(row) {
-	if (!row?.fm) {
+	if (!rowUsesFmWaveform(row)) {
 		return [...DEFAULT_AY_FM_WAVEFORM];
 	}
 	const mode = resolveAyFmOffsetMode(row);
@@ -153,10 +157,12 @@ export function resolveSyncbuzzerWaveform(timerRow, patternEnvelopeShape) {
 }
 
 export function rowSupportsTimerPwm(row) {
-	if (!row || (!row.sid && !row.syncbuzzer && !row.fm)) {
+	if (!row || (!row.sid && !row.syncbuzzer && !rowUsesFmWaveform(row))) {
 		return false;
 	}
-	const waveform = row.fm ? effectiveRowFmWaveform(row) : effectiveRowTimerWaveform(row);
+	const waveform = rowUsesFmWaveform(row)
+		? effectiveRowFmWaveform(row)
+		: effectiveRowTimerWaveform(row);
 	return waveform.length === 2;
 }
 
@@ -257,6 +263,7 @@ function createDefaultAyTimerRow() {
 		sid: false,
 		syncbuzzer: false,
 		fm: false,
+		envFm: false,
 		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
 		timerWaveformLoop: 0
 	};
@@ -265,21 +272,24 @@ function createDefaultAyTimerRow() {
 function normalizeTimerRow(row) {
 	const defaults = createDefaultAyTimerRow();
 	const fm = row?.fm ?? defaults.fm;
+	const envFm = row?.envFm ?? defaults.envFm;
+	const usesFmWaveform = fm || envFm;
 	const fmOffsetMode = resolveAyFmOffsetMode(row);
 	const normalized = {
 		sid: row?.sid ?? defaults.sid,
 		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
 		fm,
+		envFm,
 		fmOffsetMode,
 		sidPeriodMode:
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
 		timerWaveform: row?.timerWaveform?.length
-			? fm
+			? usesFmWaveform
 				? normalizeFmWaveform(row.timerWaveform, fmOffsetMode)
 				: row.timerWaveform.map((value) => value & 0xf).slice(0, 32)
-			: fm
+			: usesFmWaveform
 				? defaultAyFmWaveform(fmOffsetMode)
 				: [...defaults.timerWaveform],
 		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop
@@ -301,13 +311,16 @@ function normalizeTimerRow(row) {
 
 function applyExclusiveTimerEffects(row) {
 	if (row.sid) {
-		return { ...row, syncbuzzer: false, fm: false };
+		return { ...row, syncbuzzer: false, fm: false, envFm: false };
 	}
 	if (row.syncbuzzer) {
-		return { ...row, sid: false, fm: false };
+		return { ...row, sid: false, fm: false, envFm: false };
 	}
 	if (row.fm) {
-		return { ...row, sid: false, syncbuzzer: false };
+		return { ...row, sid: false, syncbuzzer: false, envFm: false };
+	}
+	if (row.envFm) {
+		return { ...row, sid: false, syncbuzzer: false, fm: false };
 	}
 	return row;
 }

@@ -48,7 +48,12 @@ const ROW_CASES: Array<Record<string, unknown> | undefined> = [
 	{ fm: true, timerWaveform: [0, 12] },
 	{ fm: true, timerWaveform: [0, 1, 0, -1] },
 	{ fm: true, fmOffsetMode: 'period', timerWaveform: [0, 16] },
-	{ fm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] }
+	{ fm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] },
+	{ envFm: true, timerWaveform: [0, 12] },
+	{ envFm: true, timerWaveform: [0, 1, 0, -1] },
+	{ envFm: true, fmOffsetMode: 'period', timerWaveform: [0, 16] },
+	{ envFm: true, fmOffsetMode: 'period', timerWaveform: [-100, 200] },
+	{ fm: true, envFm: true, timerWaveform: [0, 12] }
 ];
 
 const FIELD_CASES = [

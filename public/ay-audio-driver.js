@@ -16,6 +16,7 @@ import {
 	createVolumeTimerEffect,
 	createEnvelopeShapeTimerEffect,
 	createToneTimerEffect,
+	createEnvelopePeriodTimerEffect,
 	disableTimerEffect
 } from './ay-timer-effect-constants.js';
 class AYAudioDriver {
@@ -963,17 +964,20 @@ class AYAudioDriver {
 				const timerRow = ayFields.timerRows[rowIndex] ?? {
 					sid: false,
 					syncbuzzer: false,
-					fm: false
+					fm: false,
+					envFm: false
 				};
 				const sidActive =
 					timerRow.sid &&
 					!timerRow.syncbuzzer &&
 					!timerRow.fm &&
+					!timerRow.envFm &&
 					!instrumentRow.envelope;
 				const syncbuzzerActive =
 					timerRow.syncbuzzer &&
 					!timerRow.sid &&
 					!timerRow.fm &&
+					!timerRow.envFm &&
 					instrumentRow.envelope &&
 					state.channelEnvelopeEnabled[channelIndex] &&
 					!envelopeDisabledByOnOff;
@@ -981,16 +985,27 @@ class AYAudioDriver {
 					timerRow.fm &&
 					!timerRow.sid &&
 					!timerRow.syncbuzzer &&
+					!timerRow.envFm &&
 					instrumentRow.tone;
+				const envFmActive =
+					timerRow.envFm &&
+					!timerRow.sid &&
+					!timerRow.syncbuzzer &&
+					!timerRow.fm &&
+					instrumentRow.envelope &&
+					state.channelEnvelopeEnabled[channelIndex] &&
+					!envelopeDisabledByOnOff;
 				const timerEffectPeriod = computeTimerEffectPeriod(finalTone, timerRow);
 				const sidPwmSupported = sidActive && rowSupportsTimerPwm(timerRow);
 				const syncbuzzerPwmSupported =
 					syncbuzzerActive && rowUsesSyncbuzzerPwmDuty(timerRow);
 				const fmPwmSupported = fmActive && rowSupportsTimerPwm(timerRow);
+				const envFmPwmSupported = envFmActive && rowSupportsTimerPwm(timerRow);
 				const pwmSupported =
 					sidPwmSupported ||
 					syncbuzzerPwmSupported ||
-					fmPwmSupported;
+					fmPwmSupported ||
+					envFmPwmSupported;
 				const pwmSweepSpeed = pwmSupported ? effectiveRowTimerPwmSweep(ayFields, timerRow) : 0;
 				const maxPwmDuty = pwmSupported
 					? effectiveRowTimerPwmDuty(ayFields, timerRow)
@@ -1067,6 +1082,18 @@ class AYAudioDriver {
 						period: fmPwmSupported ? timerPwmPeriods.highPeriod : timerEffectPeriod,
 						periodLow: fmPwmSupported ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
 						baseTonePeriod: finalTone,
+						fmOffsetMode: resolveAyFmOffsetMode(timerRow),
+						waveform: effectiveRowFmWaveform(timerRow),
+						waveformLoop: effectiveRowTimerWaveformLoop(timerRow),
+						resetPhase: timerEffectReset
+					});
+				} else if (envFmActive) {
+					registerState.channels[channelIndex].timerEffect = createEnvelopePeriodTimerEffect({
+						enabled: true,
+						pwm: envFmPwmSupported,
+						period: envFmPwmSupported ? timerPwmPeriods.highPeriod : timerEffectPeriod,
+						periodLow: envFmPwmSupported ? timerPwmPeriods.lowPeriod : timerEffectPeriod,
+						baseEnvelopePeriod: Math.max(1, registerState.envelopePeriod & 0xffff),
 						fmOffsetMode: resolveAyFmOffsetMode(timerRow),
 						waveform: effectiveRowFmWaveform(timerRow),
 						waveformLoop: effectiveRowTimerWaveformLoop(timerRow),

@@ -31,6 +31,11 @@
 	<div class="flex items-center justify-center font-semibold">FM</div>
 </th>
 <th
+	class={isExpanded ? 'w-9 min-w-9 px-1' : 'w-9 min-w-9 px-0.5 text-[0.65rem]'}
+	title="Envelope FM (rapid envelope period offset switching). Mutually exclusive with SID, syncbuzzer, and FM.">
+	<div class="flex items-center justify-center font-semibold">EFM</div>
+</th>
+<th
 	class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 px-0.5 text-[0.65rem]'}
 	title="Detune (semitone) added to tone period">
 	<div class="flex items-center justify-center gap-0.5">

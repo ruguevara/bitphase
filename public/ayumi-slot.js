@@ -195,11 +195,20 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		const wasmModule = this.state.wasmModule;
 		const ayumiPtr = this.state.ayumiPtr;
 		const getTimerEffectActivePeriod = wasmModule?.ayumi_get_timer_effect_active_period;
+		const resolveHardwareChannelIndex = this.virtualChannelMixer?.hasVirtualChannels?.()
+			? (channelIndex) => this.virtualChannelMixer.getHardwareChannelIndex(channelIndex)
+			: (channelIndex) => channelIndex;
 		const toneHz = [];
 		const sidTimerHz = [];
 		const syncbuzzerTimerHz = [];
 		for (let i = 0; i < this.registerState.channelCount; i++) {
 			const channel = this.registerState.channels[i];
+			const hardwareChannelIndex = resolveHardwareChannelIndex(i);
+			const canQueryActivePeriod =
+				typeof getTimerEffectActivePeriod === 'function' &&
+				ayumiPtr &&
+				hardwareChannelIndex >= 0 &&
+				hardwareChannelIndex < 3;
 			if (!channel?.mixer?.tone) {
 				toneHz.push(null);
 			} else {
@@ -217,8 +226,8 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 			if (!volumeEffectActive && !toneEffectActive) {
 				sidTimerHz.push(null);
-			} else if (typeof getTimerEffectActivePeriod === 'function' && ayumiPtr) {
-				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, i) & 0xffff;
+			} else if (canQueryActivePeriod) {
+				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex) & 0xffff;
 				sidTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
 				const timerPeriod = timerEffect.period & 0xffff;
@@ -227,8 +236,8 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 			if (!envelopeShapeEffectActive) {
 				syncbuzzerTimerHz.push(null);
-			} else if (typeof getTimerEffectActivePeriod === 'function' && ayumiPtr) {
-				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, i) & 0xffff;
+			} else if (canQueryActivePeriod) {
+				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex) & 0xffff;
 				syncbuzzerTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
 				const timerPeriod = timerEffect.period & 0xffff;

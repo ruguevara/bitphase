@@ -4,10 +4,13 @@ import AYChipRegisterState from '../../public/ay-chip-register-state.js';
 import {
 	TIMER_EFFECT_KIND_VOLUME,
 	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_EFFECT_KIND_ENVELOPE_PERIOD,
 	TIMER_PWM_MODE_OFF,
 	TIMER_PWM_MODE_BY_DUTY_INDEX,
+	TIMER_FM_OFFSET_PERIOD,
 	createVolumeTimerEffect,
-	createEnvelopeShapeTimerEffect
+	createEnvelopeShapeTimerEffect,
+	createEnvelopePeriodTimerEffect
 } from '../../public/ay-timer-effect-constants.js';
 
 describe('AyumiEngine', () => {
@@ -205,6 +208,47 @@ describe('AyumiEngine', () => {
 				2,
 				0
 			);
+		});
+
+		it('uploads envelope-period timer effect with signed waveform and 16-bit base', () => {
+			const engine = new AyumiEngine(mockWasm as any, mockPtr);
+			const state = new AYChipRegisterState();
+			state.channels[0].mixer.tone = true;
+			state.channels[0].mixer.envelope = true;
+			state.channels[0].tone = 500;
+			state.channels[0].volume = 15;
+			state.channels[0].timerEffect = createEnvelopePeriodTimerEffect({
+				enabled: true,
+				pwm: false,
+				period: 80,
+				baseEnvelopePeriod: 0x1234,
+				fmOffsetMode: TIMER_FM_OFFSET_PERIOD,
+				waveform: [0, -16, 16, 9999],
+				waveformLoop: 0,
+				resetPhase: false
+			});
+			engine.applyRegisterState(state);
+			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				1,
+				TIMER_EFFECT_KIND_ENVELOPE_PERIOD,
+				TIMER_PWM_MODE_OFF,
+				80,
+				80,
+				0,
+				0x1234,
+				TIMER_FM_OFFSET_PERIOD
+			);
+			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
+				mockPtr,
+				0,
+				256,
+				4,
+				0
+			);
+			const uploaded = Array.from(new Int32Array(mockWasm.memory.buffer, 256, 4));
+			expect(uploaded).toEqual([0, -16, 16, 4095]);
 		});
 
 		it('does not re-upload unchanged volume timer effect waveform while enabled', () => {
