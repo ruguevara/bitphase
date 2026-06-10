@@ -192,10 +192,21 @@ export class AYProcessor
 			frequencies: (number | null)[];
 			sidTimerHz: (number | null)[];
 			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
 			registers: number[];
 		}) => void
 	): void {
 		this.bridge.setChannelToneHzCallback(callback);
+	}
+
+	setTimerPwmSweepPhaseCallback(
+		callback: (payload: {
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+		}) => void
+	): void {
+		this.bridge.setTimerPwmSweepPhaseCallback(callback);
 	}
 
 	play(initialSpeed?: number): void {

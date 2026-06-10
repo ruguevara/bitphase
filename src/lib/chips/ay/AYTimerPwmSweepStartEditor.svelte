@@ -1,6 +1,9 @@
 <script lang="ts">
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
+	import { playbackToneDebugStore } from '../../stores/playback-tone-debug.svelte';
+	import { projectStore } from '../../stores/project.svelte';
+	import { editorStateStore } from '../../stores/editor-state.svelte';
 	import {
 		AY_TIMER_PWM_SWEEP_SHAPE_LABELS,
 		AY_TIMER_PWM_SWEEP_SHAPES,
@@ -30,6 +33,7 @@
 	const DOT_RADIUS_PX = 2.5;
 	const DOT_RADIUS_ACTIVE_PX = 3.5;
 	const GRADIENT_ID = 'ay-timer-pwm-sweep-gradient';
+	const LIVE_SWEEP_COLOR = 'var(--color-pattern-envelope)';
 
 	let svgEl = $state<SVGSVGElement | null>(null);
 	let plotSize = $state({ width: 0, height: 0 });
@@ -40,11 +44,37 @@
 		controller.timerPwmSweep() > 0 ? controller.timerPwmSweepMin() : 0
 	);
 	const maxDuty = $derived(controller.timerPwmDuty());
+	const sweepSpeed = $derived(controller.timerPwmSweep());
 	const startPhase = $derived(controller.timerPwmSweepStartPhase());
 	const sweepShape = $derived(controller.timerPwmSweepShape());
 	const shapeLabel = $derived(AY_TIMER_PWM_SWEEP_SHAPE_LABELS[sweepShape]);
+	const instrumentIndex = $derived(
+		projectStore.instruments.findIndex(
+			(instrument) => instrument.id === editorStateStore.currentInstrument
+		)
+	);
 
-	const sweepGraphic = $derived.by(() => {
+	const syncedSweepPhase = $derived.by((): number | null => {
+		if (!enabled || sweepSpeed <= 0 || instrumentIndex < 0) {
+			return null;
+		}
+		for (const playback of playbackToneDebugStore.allChipPlaybackHz) {
+			const phases = playback.timerPwmSweepPhase;
+			const instruments = playback.channelInstrumentIndex;
+			if (!phases?.length) {
+				continue;
+			}
+			for (let channelIndex = 0; channelIndex < phases.length; channelIndex++) {
+				const phase = phases[channelIndex];
+				if (phase !== null && instruments?.[channelIndex] === instrumentIndex) {
+					return phase;
+				}
+			}
+		}
+		return null;
+	});
+
+	const sweepStaticGraphic = $derived.by(() => {
 		const innerWidth = VIEW_WIDTH - PLOT_PADDING * 2;
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const baseY = VIEW_HEIGHT - PLOT_PADDING;
@@ -90,12 +120,37 @@
 			shapeFillPath,
 			marker,
 			gridLines,
-			markerColumn
+			markerColumn,
+			highlightWidth
+		};
+	});
+
+	const liveMarkerGraphic = $derived.by(() => {
+		if (syncedSweepPhase === null) {
+			return null;
+		}
+		const marker = timerPwmSweepPhaseToPoint(
+			syncedSweepPhase,
+			minDuty,
+			maxDuty,
+			VIEW_WIDTH,
+			VIEW_HEIGHT,
+			PLOT_PADDING,
+			sweepShape
+		);
+		const highlightWidth = sweepStaticGraphic.highlightWidth;
+		return {
+			...marker,
+			column: {
+				x: Math.max(PLOT_PADDING, marker.x - highlightWidth / 2),
+				width: highlightWidth
+			}
 		};
 	});
 
 	const markerHighlighted = $derived(isDragging || isHovering);
 	const dotRadius = $derived.by(() => symmetricDotRadius(markerHighlighted));
+	const liveDotRadius = $derived.by(() => symmetricDotRadius(false));
 
 	function symmetricDotRadius(active: boolean): { rx: number; ry: number } {
 		if (plotSize.width <= 0 || plotSize.height <= 0) {
@@ -206,9 +261,15 @@
 			</div>
 		</div>
 		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
+			{#if liveMarkerGraphic}
+				<span
+					class="rounded-full border border-[var(--color-pattern-envelope)]/30 bg-[var(--color-pattern-envelope)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-envelope)]">
+					live = {liveMarkerGraphic.duty}%
+				</span>
+			{/if}
 			<span
 				class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
-				start = {sweepGraphic.marker.duty}%
+				start = {sweepStaticGraphic.marker.duty}%
 			</span>
 		</div>
 	</div>
@@ -260,12 +321,12 @@
 					x={PLOT_PADDING}
 					y={PLOT_PADDING}
 					width={VIEW_WIDTH - PLOT_PADDING * 2}
-					height={sweepGraphic.innerHeight}
+					height={sweepStaticGraphic.innerHeight}
 					fill="var(--color-app-surface-secondary)"
 					opacity="0.45"
 					rx="2" />
 
-				{#each sweepGraphic.gridLines as gridLine, gridIndex (gridIndex)}
+				{#each sweepStaticGraphic.gridLines as gridLine, gridIndex (gridIndex)}
 					<line
 						x1={PLOT_PADDING}
 						y1={gridLine.y}
@@ -278,33 +339,43 @@
 						opacity="0.55" />
 				{/each}
 
+				{#if liveMarkerGraphic}
+					<rect
+						x={liveMarkerGraphic.column.x}
+						y={PLOT_PADDING}
+						width={liveMarkerGraphic.column.width}
+						height={sweepStaticGraphic.innerHeight}
+						fill={LIVE_SWEEP_COLOR}
+						opacity="0.08" />
+				{/if}
+
 				{#if markerHighlighted}
 					<rect
-						x={sweepGraphic.markerColumn.x}
+						x={sweepStaticGraphic.markerColumn.x}
 						y={PLOT_PADDING}
-						width={sweepGraphic.markerColumn.width}
-						height={sweepGraphic.innerHeight}
+						width={sweepStaticGraphic.markerColumn.width}
+						height={sweepStaticGraphic.innerHeight}
 						fill="var(--color-pattern-note)"
 						opacity="0.08" />
 				{/if}
 
 				<line
 					x1={PLOT_PADDING}
-					y1={sweepGraphic.baseY}
+					y1={sweepStaticGraphic.baseY}
 					x2={VIEW_WIDTH - PLOT_PADDING}
-					y2={sweepGraphic.baseY}
+					y2={sweepStaticGraphic.baseY}
 					class="stroke-[var(--color-app-border-hover)]"
 					stroke-width="1"
 					vector-effect="non-scaling-stroke"
 					opacity="0.8" />
 
-				{#if sweepGraphic.shapeFillPath}
-					<path d={sweepGraphic.shapeFillPath} fill="url(#{GRADIENT_ID})" />
+				{#if sweepStaticGraphic.shapeFillPath}
+					<path d={sweepStaticGraphic.shapeFillPath} fill="url(#{GRADIENT_ID})" />
 				{/if}
 
-				{#if sweepGraphic.shapePath}
+				{#if sweepStaticGraphic.shapePath}
 					<path
-						d={sweepGraphic.shapePath}
+						d={sweepStaticGraphic.shapePath}
 						fill="none"
 						class="stroke-[var(--color-pattern-note)]"
 						stroke-width="2"
@@ -313,9 +384,22 @@
 						opacity="0.95" />
 				{/if}
 
+				{#if liveMarkerGraphic}
+					<line
+						x1={liveMarkerGraphic.x}
+						y1={PLOT_PADDING}
+						x2={liveMarkerGraphic.x}
+						y2={sweepStaticGraphic.baseY}
+						stroke={LIVE_SWEEP_COLOR}
+						stroke-width="1.5"
+						stroke-dasharray="2 3"
+						vector-effect="non-scaling-stroke"
+						opacity="0.85" />
+				{/if}
+
 				<ellipse
-					cx={sweepGraphic.marker.x}
-					cy={sweepGraphic.marker.y}
+					cx={sweepStaticGraphic.marker.x}
+					cy={sweepStaticGraphic.marker.y}
 					rx={dotRadius.rx}
 					ry={dotRadius.ry}
 					class={markerHighlighted
@@ -323,6 +407,18 @@
 						: 'fill-[var(--color-pattern-note)] stroke-[var(--color-app-surface)]'}
 					stroke-width="1.25"
 					vector-effect="non-scaling-stroke" />
+
+				{#if liveMarkerGraphic}
+					<ellipse
+						cx={liveMarkerGraphic.x}
+						cy={liveMarkerGraphic.y}
+						rx={liveDotRadius.rx}
+						ry={liveDotRadius.ry}
+						fill={LIVE_SWEEP_COLOR}
+						stroke="var(--color-app-surface)"
+						stroke-width="1.25"
+						vector-effect="non-scaling-stroke" />
+				{/if}
 			</svg>
 		</div>
 	</div>

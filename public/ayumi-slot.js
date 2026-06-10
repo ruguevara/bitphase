@@ -201,9 +201,19 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		const toneHz = [];
 		const sidTimerHz = [];
 		const syncbuzzerTimerHz = [];
+		const timerPwmSweepPhase = [];
+		const channelInstrumentIndex = [];
 		for (let i = 0; i < this.registerState.channelCount; i++) {
 			const channel = this.registerState.channels[i];
 			const hardwareChannelIndex = resolveHardwareChannelIndex(i);
+			const sweepPhase = this.state.channelTimerPwmSweep?.[i];
+			timerPwmSweepPhase.push(
+				typeof sweepPhase === 'number' && sweepPhase >= 0 ? sweepPhase : null
+			);
+			const instrumentIndex = this.state.channelInstruments?.[i];
+			channelInstrumentIndex.push(
+				typeof instrumentIndex === 'number' ? instrumentIndex : -1
+			);
 			const canQueryActivePeriod =
 				typeof getTimerEffectActivePeriod === 'function' &&
 				ayumiPtr &&
@@ -244,7 +254,27 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				syncbuzzerTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
 			}
 		}
-		return { toneHz, sidTimerHz, syncbuzzerTimerHz };
+		return { toneHz, sidTimerHz, syncbuzzerTimerHz, timerPwmSweepPhase, channelInstrumentIndex };
+	}
+
+	_postTimerPwmSweepPhase() {
+		const timerPwmSweepPhase = [];
+		const channelInstrumentIndex = [];
+		for (let i = 0; i < this.registerState.channelCount; i++) {
+			const sweepPhase = this.state.channelTimerPwmSweep?.[i];
+			timerPwmSweepPhase.push(
+				typeof sweepPhase === 'number' && sweepPhase >= 0 ? sweepPhase : null
+			);
+			const instrumentIndex = this.state.channelInstruments?.[i];
+			channelInstrumentIndex.push(
+				typeof instrumentIndex === 'number' ? instrumentIndex : -1
+			);
+		}
+		this._post({
+			type: 'timer_pwm_sweep_phase',
+			timerPwmSweepPhase,
+			channelInstrumentIndex
+		});
 	}
 
 	handleStop() {
@@ -314,6 +344,7 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			return;
 		}
 		this.channelWaveformWriteIndex = (this.channelWaveformWriteIndex + numSamples) % 512;
+		this._postTimerPwmSweepPhase();
 		this.waveformPostCounter++;
 		if (this.waveformPostCounter >= this.waveformPostInterval) {
 			this.waveformPostCounter = 0;
@@ -332,6 +363,8 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				frequencies: playbackHz.toneHz,
 				sidTimerHz: playbackHz.sidTimerHz,
 				syncbuzzerTimerHz: playbackHz.syncbuzzerTimerHz,
+				timerPwmSweepPhase: playbackHz.timerPwmSweepPhase,
+				channelInstrumentIndex: playbackHz.channelInstrumentIndex,
 				registers: this._collectHardwareRegisters()
 			});
 		}

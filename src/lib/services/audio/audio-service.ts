@@ -161,7 +161,13 @@ export class AudioService {
 				frequencies: (number | null)[];
 				sidTimerHz: (number | null)[];
 				syncbuzzerTimerHz: (number | null)[];
+				timerPwmSweepPhase: (number | null)[];
+				channelInstrumentIndex: number[];
 				registers: number[];
+			}) => void) => void;
+			setTimerPwmSweepPhaseCallback?: (cb: (payload: {
+				timerPwmSweepPhase: (number | null)[];
+				channelInstrumentIndex: number[];
 			}) => void) => void;
 		};
 		processorWithWaveform.setWaveformCallback?.((channels: Float32Array[]) => {
@@ -175,8 +181,20 @@ export class AudioService {
 					toneHz: payload.frequencies,
 					sidTimerHz: payload.sidTimerHz,
 					syncbuzzerTimerHz: payload.syncbuzzerTimerHz,
+					timerPwmSweepPhase: payload.timerPwmSweepPhase,
+					channelInstrumentIndex: payload.channelInstrumentIndex,
 					registers: payload.registers
 				});
+			}
+		});
+		processorWithWaveform.setTimerPwmSweepPhaseCallback?.((payload) => {
+			const showToneDebug = this._isPlaying || this._previewChipIndices.has(chipIndex);
+			if (showToneDebug) {
+				playbackToneDebugStore.updateChipTimerPwmSweepPhase(
+					chipIndex,
+					payload.timerPwmSweepPhase,
+					payload.channelInstrumentIndex
+				);
 			}
 		});
 	}

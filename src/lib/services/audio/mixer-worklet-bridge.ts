@@ -26,7 +26,15 @@ export type MixerWorkletIncomingMessage =
 			frequencies: (number | null)[];
 			sidTimerHz: (number | null)[];
 			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase?: (number | null)[];
+			channelInstrumentIndex?: number[];
 			registers: number[];
+	  }
+	| {
+			type: 'timer_pwm_sweep_phase';
+			chipIndex?: number;
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
 	  };
 
 export type PlayFromPositionMixerCommand = {
@@ -82,7 +90,13 @@ export class MixerWorkletBridge {
 		frequencies: (number | null)[];
 		sidTimerHz: (number | null)[];
 		syncbuzzerTimerHz: (number | null)[];
+		timerPwmSweepPhase: (number | null)[];
+		channelInstrumentIndex: number[];
 		registers: number[];
+	}) => void;
+	private timerPwmSweepPhaseCallback?: (payload: {
+		timerPwmSweepPhase: (number | null)[];
+		channelInstrumentIndex: number[];
 	}) => void;
 	private readonly commandQueue: MixerSlotCommand[] = [];
 
@@ -109,10 +123,21 @@ export class MixerWorkletBridge {
 			frequencies: (number | null)[];
 			sidTimerHz: (number | null)[];
 			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
 			registers: number[];
 		}) => void
 	): void {
 		this.channelToneHzCallback = callback;
+	}
+
+	setTimerPwmSweepPhaseCallback(
+		callback: (payload: {
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+		}) => void
+	): void {
+		this.timerPwmSweepPhaseCallback = callback;
 	}
 
 	acceptWorkletPayload(data: unknown): void {
@@ -124,7 +149,8 @@ export class MixerWorkletBridge {
 			msgType !== 'position_update' &&
 			msgType !== 'request_pattern' &&
 			msgType !== 'channel_waveform' &&
-			msgType !== 'channel_tone_hz'
+			msgType !== 'channel_tone_hz' &&
+			msgType !== 'timer_pwm_sweep_phase'
 		) {
 			return;
 		}
@@ -144,7 +170,15 @@ export class MixerWorkletBridge {
 					frequencies: message.frequencies,
 					registers: message.registers ?? [],
 					sidTimerHz: message.sidTimerHz ?? [],
-					syncbuzzerTimerHz: message.syncbuzzerTimerHz ?? []
+					syncbuzzerTimerHz: message.syncbuzzerTimerHz ?? [],
+					timerPwmSweepPhase: message.timerPwmSweepPhase ?? [],
+					channelInstrumentIndex: message.channelInstrumentIndex ?? []
+				});
+				break;
+			case 'timer_pwm_sweep_phase':
+				this.timerPwmSweepPhaseCallback?.({
+					timerPwmSweepPhase: message.timerPwmSweepPhase,
+					channelInstrumentIndex: message.channelInstrumentIndex
 				});
 				break;
 		}
