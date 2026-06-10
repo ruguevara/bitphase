@@ -152,6 +152,36 @@ export function clampFmWaveformValue(value: number, mode: AyFmOffsetMode): numbe
 	return mode === 'period' ? clampFmPeriodOffset(value) : clampFmSemitone(value);
 }
 
+export function computeFmTonePeriod(
+	basePeriod: number,
+	waveformStep: number,
+	mode: AyFmOffsetMode = 'semitone'
+): number {
+	const base = Math.max(1, basePeriod);
+	if (mode === 'period') {
+		const period = (base + clampFmPeriodOffset(waveformStep)) & 0xfff;
+		return period === 0 ? 1 : period;
+	}
+	const factor = Math.pow(2, -clampFmSemitone(waveformStep) / 12);
+	const period = Math.round(base * factor) & 0xfff;
+	return period === 0 ? 1 : period;
+}
+
+export function computeEnvFmEnvelopePeriod(
+	basePeriod: number,
+	waveformStep: number,
+	mode: AyFmOffsetMode = 'semitone'
+): number {
+	const base = Math.max(1, basePeriod);
+	if (mode === 'period') {
+		const period = (base + clampFmPeriodOffset(waveformStep)) & 0xffff;
+		return period === 0 ? 1 : period;
+	}
+	const factor = Math.pow(2, -clampFmSemitone(waveformStep) / 12);
+	const period = Math.round(base * factor) & 0xffff;
+	return period === 0 ? 1 : period;
+}
+
 export function normalizeFmWaveform(
 	waveform: readonly number[],
 	mode: AyFmOffsetMode = 'semitone'

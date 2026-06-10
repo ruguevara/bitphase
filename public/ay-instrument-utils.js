@@ -62,6 +62,28 @@ export function computeSidPeriod(tonePeriod, timerRow) {
 	return computeTimerEffectPeriod(tonePeriod, timerRow);
 }
 
+export function computeFmTonePeriod(basePeriod, waveformStep, mode = 'semitone') {
+	const base = Math.max(1, basePeriod);
+	if (mode === 'period') {
+		const period = (base + clampFmPeriodOffset(waveformStep)) & 0xfff;
+		return period === 0 ? 1 : period;
+	}
+	const factor = Math.pow(2, -clampFmSemitone(waveformStep) / 12);
+	const period = Math.round(base * factor) & 0xfff;
+	return period === 0 ? 1 : period;
+}
+
+export function computeEnvFmEnvelopePeriod(basePeriod, waveformStep, mode = 'semitone') {
+	const base = Math.max(1, basePeriod);
+	if (mode === 'period') {
+		const period = (base + clampFmPeriodOffset(waveformStep)) & 0xffff;
+		return period === 0 ? 1 : period;
+	}
+	const factor = Math.pow(2, -clampFmSemitone(waveformStep) / 12);
+	const period = Math.round(base * factor) & 0xffff;
+	return period === 0 ? 1 : period;
+}
+
 export function clampTimerPwmDuty(duty) {
 	return Math.max(AY_TIMER_PWM_DUTY_MIN, Math.min(AY_TIMER_PWM_DUTY_MAX, duty | 0));
 }

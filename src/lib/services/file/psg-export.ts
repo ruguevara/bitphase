@@ -4,6 +4,8 @@ import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 import JSZip from 'jszip';
 import {
 	convertRegisterStateToAYRegisters,
+	extractHardwareEnvFmStates,
+	extractHardwareFmStates,
 	extractHardwareSidStates,
 	extractHardwareSyncBuzzerStates,
 	TONE_CHANNELS,
@@ -175,7 +177,9 @@ class PsgExportService {
 			captureFrames.push({
 				registers: [...ayRegisters],
 				sid: extractHardwareSidStates(stateToConvert),
-				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert)
+				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert),
+				fm: extractHardwareFmStates(stateToConvert),
+				envFm: extractHardwareEnvFmStates(stateToConvert)
 			});
 			if (mixer.hasVirtualChannels()) {
 				registerState.forceEnvelopeShapeWrite = false;

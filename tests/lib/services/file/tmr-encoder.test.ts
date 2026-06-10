@@ -17,9 +17,12 @@ import {
 	registerApplyMask,
 	registersChangedMask,
 	volumeRegisterIndex,
+	createDisabledTimerCaptureStates,
+	toneRegisterApplyMask,
+	envelopePeriodRegisterApplyMask,
 	type SongCaptureFrame
 } from '@/lib/services/file/ay-export-utils';
-import { computeTimerPwmPeriods } from '@/lib/chips/ay/instrument';
+import { computeFmTonePeriod, computeTimerPwmPeriods } from '@/lib/chips/ay/instrument';
 
 function storedTimerHz(period: number, psgClockHz = 1773400): number {
 	return exportTimerFrequencyStoredFromYmPeriod(period, psgClockHz);
@@ -33,43 +36,14 @@ function readU32LE(buffer: ArrayBuffer, offset: number): number {
 	return new DataView(buffer).getUint32(offset, true);
 }
 
+function readU8(buffer: ArrayBuffer, offset: number): number {
+	return new DataView(buffer).getUint8(offset);
+}
+
 function disabledSidFrame(registers: number[] = new Array(14).fill(0)): SongCaptureFrame {
 	return {
 		registers,
-		sid: [
-			{
-				enabled: false,
-				pwm: false,
-				period: 0,
-				periodLow: 0,
-				baseVolume: 0,
-				waveform: [15, 0],
-				waveformLoop: 0
-			},
-			{
-				enabled: false,
-				pwm: false,
-				period: 0,
-				periodLow: 0,
-				baseVolume: 0,
-				waveform: [15, 0],
-				waveformLoop: 0
-			},
-			{
-				enabled: false,
-				pwm: false,
-				period: 0,
-				periodLow: 0,
-				baseVolume: 0,
-				waveform: [15, 0],
-				waveformLoop: 0
-			}
-		],
-		syncbuzzer: [
-			{ enabled: false, period: 0, shape: 0 },
-			{ enabled: false, period: 0, shape: 0 },
-			{ enabled: false, period: 0, shape: 0 }
-		]
+		...createDisabledTimerCaptureStates()
 	};
 }
 
@@ -388,6 +362,88 @@ describe('tmr encoder', () => {
 		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(highPeriod));
 		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + 16)).toBe(0);
 		expect(readU32LE(encoded.eventList, TEL_HEADER_SIZE + TMR_ITEM_SIZE + 16)).toBe(0);
+	});
+
+	it('starts timer 1 with FM event chain on channel A', () => {
+		const frame = disabledSidFrame();
+		frame.registers[0] = 0x34;
+		frame.registers[1] = 0x01;
+		frame.fm[0] = {
+			enabled: true,
+			pwm: false,
+			period: 1000,
+			periodLow: 1000,
+			baseTonePeriod: 500,
+			fmOffsetMode: 'semitone',
+			waveform: [0, 7],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		const toneMask = toneRegisterApplyMask(0);
+		expect(readU32LE(encoded.tmr, TMR_HEADER_SIZE + 2)).toBe(storedTimerHz(1000));
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + 6)).toBe(0);
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
+		expect(readU16LE(encoded.eventList, TEL_HEADER_SIZE + 14)).toBe(
+			encodeEventPsgApplyMask(toneMask, 0)
+		);
+		const firstTone = computeFmTonePeriod(500, 0, 'semitone');
+		expect(readU8(encoded.eventList, TEL_HEADER_SIZE)).toBe(firstTone & 0xff);
+		expect(readU8(encoded.eventList, TEL_HEADER_SIZE + 1)).toBe((firstTone >> 8) & 0x0f);
+	});
+
+	it('starts timer 2 with Env+FM event chain on channel B', () => {
+		const frame = disabledSidFrame();
+		frame.registers[11] = 0x10;
+		frame.registers[12] = 0x03;
+		frame.envFm[1] = {
+			enabled: true,
+			pwm: false,
+			period: 800,
+			periodLow: 800,
+			baseEnvelopePeriod: 1000,
+			fmOffsetMode: 'period',
+			waveform: [0, 16],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		const envelopeMask = envelopePeriodRegisterApplyMask();
+		const secondTimerOffset = TMR_HEADER_SIZE + 8;
+		expect(readU32LE(encoded.tmr, secondTimerOffset)).toBe(storedTimerHz(800));
+		expect(readU16LE(encoded.tmr, secondTimerOffset + 4)).toBe(0);
+		expect(readU16LE(encoded.eventList, TEL_HEADER_SIZE + 14)).toBe(
+			encodeEventPsgApplyMask(envelopeMask, 1)
+		);
+	});
+
+	it('emits timer stop when FM turns off', () => {
+		const onFrame = disabledSidFrame();
+		onFrame.fm[0] = {
+			enabled: true,
+			pwm: false,
+			period: 500,
+			periodLow: 500,
+			baseTonePeriod: 400,
+			fmOffsetMode: 'semitone',
+			waveform: [0, 7],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([onFrame, disabledSidFrame()], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		expect(readU16LE(encoded.tmr, TMR_HEADER_SIZE + TMR_FRAME_SIZE + 6)).toBe(TMR_TIMER_EVENT_STOP);
 	});
 });
 

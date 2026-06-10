@@ -145,6 +145,24 @@ describe('ay-instrument-utils TS/JS parity', () => {
 		}
 	});
 
+	it('computeFmTonePeriod and computeEnvFmEnvelopePeriod match', () => {
+		const steps = [0, 7, 12, -16, 16];
+		for (const base of [100, 500, 1000]) {
+			for (const step of steps) {
+				for (const mode of ['semitone', 'period'] as const) {
+					const label = `base=${base} step=${step} mode=${mode}`;
+					expect(js.computeFmTonePeriod(base as never, step as never, mode as never), label).toBe(
+						ts.computeFmTonePeriod(base, step, mode)
+					);
+					expect(
+						js.computeEnvFmEnvelopePeriod(base as never, step as never, mode as never),
+						label
+					).toBe(ts.computeEnvFmEnvelopePeriod(base, step, mode));
+				}
+			}
+		}
+	});
+
 	it('clampTimerPwmSweepMin matches', () => {
 		for (const min of DUTY_INPUTS) {
 			for (const max of DUTY_INPUTS) {

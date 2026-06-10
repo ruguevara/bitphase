@@ -5,6 +5,8 @@ import {
 	computeSidPeriod,
 	computeTimerPwmLowPeriod,
 	computeTimerPwmPeriods,
+	computeFmTonePeriod,
+	computeEnvFmEnvelopePeriod,
 	resolveAyTimerRowSidPeriodMode,
 	resolveExclusiveTimerEffects,
 	formatAyTimerWaveform,
@@ -416,6 +418,14 @@ describe('ay instrument timer fields', () => {
 		expect(effectiveInstrumentTimerPwmDuty(normalizeAyInstrumentFields(
 			new Instrument('01', [{ tone: true, volume: 15 }])
 		))).toBe(DEFAULT_AY_TIMER_PWM_DUTY);
+	});
+
+	it('computes fm tone and env-fm periods from waveform offsets', () => {
+		expect(computeFmTonePeriod(1000, 0, 'semitone')).toBe(1000);
+		expect(computeFmTonePeriod(1000, 12, 'semitone')).toBe(500);
+		expect(computeFmTonePeriod(1000, 16, 'period')).toBe(1016);
+		expect(computeEnvFmEnvelopePeriod(2000, -16, 'period')).toBe(1984);
+		expect(computeEnvFmEnvelopePeriod(2000, 12, 'semitone')).toBe(1000);
 	});
 
 	it('formats and parses space-separated timer waveform strings', () => {

@@ -1,15 +1,22 @@
 import {
 	AY_REGISTER_COUNT,
 	envelopeShapeRegisterApplyMask,
-	registersChangedMask,
+	envelopePeriodRegisterApplyMask,
 	registerApplyMask,
+	registersChangedMask,
 	sidVolumeLevel,
 	timerPwmStepPeriod,
+	toneRegisterApplyMask,
 	volumeRegisterIndex,
+	writeEnvelopePeriodToPsgData,
+	writeTonePeriodToPsgData,
+	type HardwareEnvFmState,
+	type HardwareFmState,
 	type HardwareSidState,
 	type HardwareSyncBuzzerState,
 	type SongCaptureFrame
 } from './ay-export-utils';
+import { computeEnvFmEnvelopePeriod, computeFmTonePeriod } from '../../chips/ay/instrument';
 import { encodeEventList } from './tmr-event-list';
 import {
 	encodeEventPsgApplyMask,
@@ -49,27 +56,87 @@ function encodeExportTimerFrequencyHz(ymPeriod: number, options: TmrEncodeOption
 	return exportTimerFrequencyStoredFromYmPeriod(ymPeriod, options.chipFrequency);
 }
 
+type WaveformChainState = {
+	waveform: number[];
+	waveformLoop: number;
+};
+
+type PwmTimerState = WaveformChainState & {
+	pwm: boolean;
+	period: number;
+	periodLow: number;
+};
+
+function normalizePwmPeriods<T extends PwmTimerState>(state: T): T {
+	return {
+		...state,
+		periodLow: state.periodLow > 0 ? state.periodLow : state.period
+	};
+}
+
+function isPwmActive(state: PwmTimerState): boolean {
+	const normalized = normalizePwmPeriods(state);
+	return normalized.pwm || normalized.period !== normalized.periodLow;
+}
+
+function pwmDutyRatioFromPeriods(period: number, periodLow: number): number {
+	const high = Math.max(1, period);
+	const low = Math.max(1, periodLow);
+	return high / (high + low);
+}
+
+function isPwmDutySweep(prev: PwmTimerState, next: PwmTimerState): boolean {
+	if (!isPwmActive(next)) {
+		return false;
+	}
+	const previous = normalizePwmPeriods(prev);
+	const current = normalizePwmPeriods(next);
+	if (previous.period === current.period && previous.periodLow === current.periodLow) {
+		return false;
+	}
+	return pwmDutyRatioFromPeriods(previous.period, previous.periodLow) !==
+		pwmDutyRatioFromPeriods(current.period, current.periodLow);
+}
+
+function pwmEventStepPeriod(state: PwmTimerState, stepIndex: number): number {
+	const normalized = normalizePwmPeriods(state);
+	if (isPwmActive(normalized) && normalized.waveform.length >= 2) {
+		return stepIndex % 2 === 0 ? normalized.period : normalized.periodLow;
+	}
+	return normalized.period;
+}
+
+function previousWaveformStepIndex(stepIndex: number, state: WaveformChainState): number {
+	if (stepIndex > 0) {
+		return stepIndex - 1;
+	}
+	for (let index = state.waveform.length - 1; index >= 0; index--) {
+		if (resolveNextWaveformIndex(index, state) === stepIndex) {
+			return index;
+		}
+	}
+	return state.waveform.length - 1;
+}
+
+function encodePwmEventTimerFrequency(
+	stepIndex: number,
+	state: PwmTimerState,
+	options: TmrEncodeOptions
+): number {
+	const currentPeriod = pwmEventStepPeriod(state, stepIndex);
+	const previousPeriod = pwmEventStepPeriod(state, previousWaveformStepIndex(stepIndex, state));
+	if (currentPeriod === previousPeriod) {
+		return 0;
+	}
+	return encodeExportTimerFrequencyHz(currentPeriod, options);
+}
+
 function sidStartPeriod(sid: HardwareSidState): number {
 	return timerPwmStepPeriod(sid.waveform[0] ?? 0, sid.period, sid.periodLow);
 }
 
 function normalizeSidPeriods(sid: HardwareSidState): HardwareSidState {
-	return {
-		...sid,
-		periodLow: sid.periodLow > 0 ? sid.periodLow : sid.period
-	};
-}
-
-function isSidPwmActive(sid: HardwareSidState): boolean {
-	const normalized = normalizeSidPeriods(sid);
-	return normalized.pwm || normalized.period !== normalized.periodLow;
-}
-
-function pwmDutyRatio(sid: HardwareSidState): number {
-	const normalized = normalizeSidPeriods(sid);
-	const high = Math.max(1, normalized.period);
-	const low = Math.max(1, normalized.periodLow);
-	return high / (high + low);
+	return normalizePwmPeriods(sid);
 }
 
 export function isSidPwmDutySweep(prev: HardwareSidState, next: HardwareSidState): boolean {
@@ -79,31 +146,11 @@ export function isSidPwmDutySweep(prev: HardwareSidState, next: HardwareSidState
 	if (!sidWaveformConfigEqual(prev, next)) {
 		return false;
 	}
-	const previous = normalizeSidPeriods(prev);
-	const current = normalizeSidPeriods(next);
-	if (previous.period === current.period && previous.periodLow === current.periodLow) {
-		return false;
-	}
-	if (!isSidPwmActive(current)) {
-		return false;
-	}
-	return pwmDutyRatio(previous) !== pwmDutyRatio(current);
+	return isPwmDutySweep(prev, next);
 }
 
 function sidEventStepPeriod(sid: HardwareSidState, stepIndex: number): number {
 	return timerPwmStepPeriod(sid.waveform[stepIndex] ?? 0, sid.period, sid.periodLow);
-}
-
-function previousWaveformStepIndex(stepIndex: number, sid: HardwareSidState): number {
-	if (stepIndex > 0) {
-		return stepIndex - 1;
-	}
-	for (let index = sid.waveform.length - 1; index >= 0; index--) {
-		if (resolveNextWaveformIndex(index, sid) === stepIndex) {
-			return index;
-		}
-	}
-	return sid.waveform.length - 1;
 }
 
 export function encodeSidEventTimerFrequency(
@@ -117,6 +164,14 @@ export function encodeSidEventTimerFrequency(
 		return 0;
 	}
 	return encodeExportTimerFrequencyHz(currentPeriod, options);
+}
+
+function fmStartPeriod(fm: HardwareFmState): number {
+	return pwmEventStepPeriod(fm, 0);
+}
+
+function envFmStartPeriod(envFm: HardwareEnvFmState): number {
+	return pwmEventStepPeriod(envFm, 0);
 }
 
 function appendSidEventChain(
@@ -137,6 +192,64 @@ function appendSidEventChain(
 			psgData,
 			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
 			timerFrequency: encodeSidEventTimerFrequency(stepIndex, sid, options),
+			timerEventIndex: startIndex + nextIndex
+		});
+	}
+
+	return startIndex;
+}
+
+function appendFmEventChain(
+	eventItems: EventItem[],
+	channelIndex: number,
+	fm: HardwareFmState,
+	options: TmrEncodeOptions
+): number {
+	const startIndex = eventItems.length;
+	const toneMask = toneRegisterApplyMask(channelIndex);
+
+	for (let stepIndex = 0; stepIndex < fm.waveform.length; stepIndex++) {
+		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+		const tonePeriod = computeFmTonePeriod(
+			fm.baseTonePeriod,
+			fm.waveform[stepIndex]!,
+			fm.fmOffsetMode
+		);
+		writeTonePeriodToPsgData(psgData, channelIndex, tonePeriod);
+		const nextIndex = resolveNextWaveformIndex(stepIndex, fm);
+		eventItems.push({
+			psgData,
+			psgMask: encodeEventPsgApplyMask(toneMask, channelIndex),
+			timerFrequency: encodePwmEventTimerFrequency(stepIndex, fm, options),
+			timerEventIndex: startIndex + nextIndex
+		});
+	}
+
+	return startIndex;
+}
+
+function appendEnvFmEventChain(
+	eventItems: EventItem[],
+	channelIndex: number,
+	envFm: HardwareEnvFmState,
+	options: TmrEncodeOptions
+): number {
+	const startIndex = eventItems.length;
+	const envelopeMask = envelopePeriodRegisterApplyMask();
+
+	for (let stepIndex = 0; stepIndex < envFm.waveform.length; stepIndex++) {
+		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+		const envelopePeriod = computeEnvFmEnvelopePeriod(
+			envFm.baseEnvelopePeriod,
+			envFm.waveform[stepIndex]!,
+			envFm.fmOffsetMode
+		);
+		writeEnvelopePeriodToPsgData(psgData, envelopePeriod);
+		const nextIndex = resolveNextWaveformIndex(stepIndex, envFm);
+		eventItems.push({
+			psgData,
+			psgMask: encodeEventPsgApplyMask(envelopeMask, channelIndex),
+			timerFrequency: encodePwmEventTimerFrequency(stepIndex, envFm, options),
 			timerEventIndex: startIndex + nextIndex
 		});
 	}
@@ -178,6 +291,26 @@ export function encodeTMR(
 		period: 0,
 		shape: 0
 	}));
+	const previousFm: HardwareFmState[] = Array.from({ length: 3 }, () => ({
+		enabled: false,
+		pwm: false,
+		period: 0,
+		periodLow: 0,
+		baseTonePeriod: 1,
+		fmOffsetMode: 'semitone',
+		waveform: [0, 7],
+		waveformLoop: 0
+	}));
+	const previousEnvFm: HardwareEnvFmState[] = Array.from({ length: 3 }, () => ({
+		enabled: false,
+		pwm: false,
+		period: 0,
+		periodLow: 0,
+		baseEnvelopePeriod: 1,
+		fmOffsetMode: 'semitone',
+		waveform: [0, 7],
+		waveformLoop: 0
+	}));
 	let previousRegisters = new Array(AY_REGISTER_COUNT).fill(0);
 
 	for (const frame of frames) {
@@ -199,8 +332,30 @@ export function encodeTMR(
 				period: 0,
 				shape: 0
 			};
+			const fm = frame.fm?.[channelIndex] ?? {
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseTonePeriod: 1,
+				fmOffsetMode: 'semitone',
+				waveform: [0, 7],
+				waveformLoop: 0
+			};
+			const envFm = frame.envFm?.[channelIndex] ?? {
+				enabled: false,
+				pwm: false,
+				period: 0,
+				periodLow: 0,
+				baseEnvelopePeriod: 1,
+				fmOffsetMode: 'semitone',
+				waveform: [0, 7],
+				waveformLoop: 0
+			};
 			const prevSid = previousSid[channelIndex]!;
 			const prevSyncbuzzer = previousSyncbuzzer[channelIndex]!;
+			const prevFm = previousFm[channelIndex]!;
+			const prevEnvFm = previousEnvFm[channelIndex]!;
 
 			if (syncbuzzer.enabled) {
 				if (!prevSyncbuzzer.enabled || prevSyncbuzzer.shape !== syncbuzzer.shape) {
@@ -272,7 +427,104 @@ export function encodeTMR(
 				} else {
 					timers.push({ frequency: 0, eventIndex: 0 });
 				}
-			} else if (prevSid.enabled || prevSyncbuzzer.enabled) {
+			} else if (fm.enabled) {
+				const effectiveFm: HardwareFmState = fm.pwm
+					? normalizePwmPeriods(fm)
+					: fm;
+				const fmWaveformChanged = !prevFm.enabled || !fmWaveformConfigEqual(prevFm, effectiveFm);
+				const fmPeriodChanged =
+					prevFm.period !== effectiveFm.period || prevFm.periodLow !== effectiveFm.periodLow;
+				if (fmWaveformChanged) {
+					const eventIndex = getOrCreateFmEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						effectiveFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(fmStartPeriod(effectiveFm), options),
+						eventIndex
+					});
+				} else if (fmPeriodChanged && isPwmDutySweep(prevFm, effectiveFm)) {
+					const eventIndex = appendFmEventChain(
+						eventItems,
+						channelIndex,
+						effectiveFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(fmStartPeriod(effectiveFm), options),
+						eventIndex
+					});
+				} else if (fmPeriodChanged) {
+					const eventIndex = getOrCreateFmEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						effectiveFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(effectiveFm.period, options),
+						eventIndex
+					});
+				} else {
+					timers.push({ frequency: 0, eventIndex: 0 });
+				}
+			} else if (envFm.enabled) {
+				const effectiveEnvFm: HardwareEnvFmState = envFm.pwm
+					? normalizePwmPeriods(envFm)
+					: envFm;
+				const envFmWaveformChanged =
+					!prevEnvFm.enabled || !envFmWaveformConfigEqual(prevEnvFm, effectiveEnvFm);
+				const envFmPeriodChanged =
+					prevEnvFm.period !== effectiveEnvFm.period ||
+					prevEnvFm.periodLow !== effectiveEnvFm.periodLow;
+				if (envFmWaveformChanged) {
+					const eventIndex = getOrCreateEnvFmEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						effectiveEnvFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(envFmStartPeriod(effectiveEnvFm), options),
+						eventIndex
+					});
+				} else if (envFmPeriodChanged && isPwmDutySweep(prevEnvFm, effectiveEnvFm)) {
+					const eventIndex = appendEnvFmEventChain(
+						eventItems,
+						channelIndex,
+						effectiveEnvFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(envFmStartPeriod(effectiveEnvFm), options),
+						eventIndex
+					});
+				} else if (envFmPeriodChanged) {
+					const eventIndex = getOrCreateEnvFmEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						effectiveEnvFm,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(effectiveEnvFm.period, options),
+						eventIndex
+					});
+				} else {
+					timers.push({ frequency: 0, eventIndex: 0 });
+				}
+			} else if (
+				prevSid.enabled ||
+				prevSyncbuzzer.enabled ||
+				prevFm.enabled ||
+				prevEnvFm.enabled
+			) {
 				timers.push({ frequency: 0, eventIndex: TMR_TIMER_EVENT_STOP });
 			} else {
 				timers.push({ frequency: 0, eventIndex: 0 });
@@ -291,6 +543,26 @@ export function encodeTMR(
 				enabled: syncbuzzer.enabled,
 				period: syncbuzzer.period,
 				shape: syncbuzzer.shape
+			};
+			previousFm[channelIndex] = {
+				enabled: fm.enabled,
+				pwm: fm.pwm,
+				period: fm.period,
+				periodLow: fm.periodLow,
+				baseTonePeriod: fm.baseTonePeriod,
+				fmOffsetMode: fm.fmOffsetMode,
+				waveform: [...fm.waveform],
+				waveformLoop: fm.waveformLoop
+			};
+			previousEnvFm[channelIndex] = {
+				enabled: envFm.enabled,
+				pwm: envFm.pwm,
+				period: envFm.period,
+				periodLow: envFm.periodLow,
+				baseEnvelopePeriod: envFm.baseEnvelopePeriod,
+				fmOffsetMode: envFm.fmOffsetMode,
+				waveform: [...envFm.waveform],
+				waveformLoop: envFm.waveformLoop
 			};
 		}
 
@@ -340,6 +612,34 @@ export function syncBuzzerEventChainKey(
 	syncbuzzer: HardwareSyncBuzzerState
 ): string {
 	return `sync:${channelIndex}:${syncbuzzer.shape}`;
+}
+
+export function fmEventChainKey(channelIndex: number, fm: HardwareFmState): string {
+	return `fm:${channelIndex}:${fm.baseTonePeriod}:${fm.fmOffsetMode}:${fm.waveform.join(',')}:${fm.waveformLoop}`;
+}
+
+export function envFmEventChainKey(channelIndex: number, envFm: HardwareEnvFmState): string {
+	return `envfm:${channelIndex}:${envFm.baseEnvelopePeriod}:${envFm.fmOffsetMode}:${envFm.waveform.join(',')}:${envFm.waveformLoop}`;
+}
+
+function fmWaveformConfigEqual(a: HardwareFmState, b: HardwareFmState): boolean {
+	return (
+		a.baseTonePeriod === b.baseTonePeriod &&
+		a.fmOffsetMode === b.fmOffsetMode &&
+		a.waveformLoop === b.waveformLoop &&
+		a.waveform.length === b.waveform.length &&
+		a.waveform.every((value, index) => value === b.waveform[index])
+	);
+}
+
+function envFmWaveformConfigEqual(a: HardwareEnvFmState, b: HardwareEnvFmState): boolean {
+	return (
+		a.baseEnvelopePeriod === b.baseEnvelopePeriod &&
+		a.fmOffsetMode === b.fmOffsetMode &&
+		a.waveformLoop === b.waveformLoop &&
+		a.waveform.length === b.waveform.length &&
+		a.waveform.every((value, index) => value === b.waveform[index])
+	);
 }
 
 function getOrCreateSyncBuzzerEventChain(
@@ -402,13 +702,49 @@ function getOrCreateSidEventChain(
 	return startIndex;
 }
 
-function resolveNextWaveformIndex(stepIndex: number, sid: HardwareSidState): number {
+function getOrCreateFmEventChain(
+	eventItems: EventItem[],
+	chainStartByKey: Map<string, number>,
+	channelIndex: number,
+	fm: HardwareFmState,
+	options: TmrEncodeOptions
+): number {
+	const key = fmEventChainKey(channelIndex, fm);
+	const existing = chainStartByKey.get(key);
+	if (existing !== undefined) {
+		return existing;
+	}
+
+	const startIndex = appendFmEventChain(eventItems, channelIndex, fm, options);
+	chainStartByKey.set(key, startIndex);
+	return startIndex;
+}
+
+function getOrCreateEnvFmEventChain(
+	eventItems: EventItem[],
+	chainStartByKey: Map<string, number>,
+	channelIndex: number,
+	envFm: HardwareEnvFmState,
+	options: TmrEncodeOptions
+): number {
+	const key = envFmEventChainKey(channelIndex, envFm);
+	const existing = chainStartByKey.get(key);
+	if (existing !== undefined) {
+		return existing;
+	}
+
+	const startIndex = appendEnvFmEventChain(eventItems, channelIndex, envFm, options);
+	chainStartByKey.set(key, startIndex);
+	return startIndex;
+}
+
+function resolveNextWaveformIndex(stepIndex: number, state: WaveformChainState): number {
 	const nextStep = stepIndex + 1;
-	if (nextStep < sid.waveform.length) {
+	if (nextStep < state.waveform.length) {
 		return nextStep;
 	}
-	if (sid.waveformLoop >= 0 && sid.waveformLoop < sid.waveform.length) {
-		return sid.waveformLoop;
+	if (state.waveformLoop >= 0 && state.waveformLoop < state.waveform.length) {
+		return state.waveformLoop;
 	}
 	return 0;
 }
