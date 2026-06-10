@@ -10,7 +10,6 @@ const AY_CHANNEL_ARRAY_SPECS = [
 	['channelEnvelopeAccumulator', 0],
 	['channelAmplitudeSliding', 0],
 	['channelTimerPwmSweep', -1],
-	['channelTimerPwmSweepHold', -1],
 	['channelEnvelopeEnabled', false],
 	['channelMuted', false],
 	['channelSoundEnabled', false],

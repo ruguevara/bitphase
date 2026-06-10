@@ -1,7 +1,7 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
 import EffectAlgorithms from './effect-algorithms.js';
 import { PT3VolumeTable } from './pt3-volume-table.js';
-import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowFmWaveform, resolveAyFmOffsetMode, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY, TIMER_PWM_SWEEP_HOLD_UNINITIALIZED } from './ay-instrument-utils.js';
+import { normalizeAyInstrumentFields, getAySidBaseVolume, computeTimerEffectPeriod, computeTimerPwmPeriods, effectiveRowTimerWaveform, effectiveRowFmWaveform, resolveAyFmOffsetMode, effectiveRowTimerWaveformLoop, effectiveRowTimerPwmDuty, effectiveRowTimerPwmSweep, effectiveRowTimerPwmSweepMin, rowSupportsTimerPwm, rowUsesSyncbuzzerPwmDuty, resolveSyncbuzzerWaveform, isPatternEnvelopeShapeSet, advanceTimerPwmSweep, DEFAULT_AY_TIMER_PWM_DUTY } from './ay-instrument-utils.js';
 import {
 	instrumentHasSample,
 	computeSampleSidPeriod,
@@ -73,13 +73,8 @@ class AYAudioDriver {
 		state.channelNoiseAccumulator[channelIndex] = 0;
 		state.channelEnvelopeAccumulator[channelIndex] = 0;
 		state.channelAmplitudeSliding[channelIndex] = 0;
-		if (
-			!options.preserveTimerPwmSweep &&
-			state.channelTimerPwmSweep &&
-			state.channelTimerPwmSweepHold
-		) {
+		if (!options.preserveTimerPwmSweep && state.channelTimerPwmSweep) {
 			state.channelTimerPwmSweep[channelIndex] = -1;
-			state.channelTimerPwmSweepHold[channelIndex] = TIMER_PWM_SWEEP_HOLD_UNINITIALIZED;
 		}
 		if (state.channelTimerEffectReset) {
 			const hasActiveSlide =
@@ -1016,7 +1011,6 @@ class AYAudioDriver {
 				if (pwmSweepSpeed !== 0) {
 					const advanced = advanceTimerPwmSweep(
 						state.channelTimerPwmSweep[channelIndex],
-						state.channelTimerPwmSweepHold[channelIndex],
 						pwmSweepSpeed,
 						minPwmDuty,
 						maxPwmDuty,
@@ -1024,7 +1018,6 @@ class AYAudioDriver {
 						ayFields.timerPwmSweepShape
 					);
 					state.channelTimerPwmSweep[channelIndex] = advanced.phase;
-					state.channelTimerPwmSweepHold[channelIndex] = advanced.randomHold;
 					effectivePwmDuty = advanced.duty;
 				}
 				const timerPwmPeriods = computeTimerPwmPeriods(timerEffectPeriod, effectivePwmDuty);

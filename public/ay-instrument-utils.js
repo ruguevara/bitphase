@@ -23,11 +23,9 @@ export const AY_TIMER_PWM_SWEEP_SHAPES = [
 	'sine',
 	'sawUp',
 	'sawDown',
-	'square',
-	'random'
+	'square'
 ];
 export const DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE = 'triangle';
-export const TIMER_PWM_SWEEP_HOLD_UNINITIALIZED = -1;
 export const AY_TONE_REGISTER_PRESCALER = 16;
 export const AY_AUTO_TIMER_TONE_MULTIPLIER = 16;
 
@@ -96,13 +94,7 @@ export function resolveTimerPwmSweepShape(shape) {
 	return DEFAULT_AY_TIMER_PWM_SWEEP_SHAPE;
 }
 
-export function pwmSweepDutyAtPhase(
-	phase,
-	shape,
-	minDuty,
-	maxDuty,
-	randomHold = TIMER_PWM_SWEEP_HOLD_UNINITIALIZED
-) {
+export function pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty) {
 	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
 	const max = clampTimerPwmDuty(maxDuty);
 	if (min >= max) {
@@ -124,11 +116,6 @@ export function pwmSweepDutyAtPhase(
 			return Math.round(max - span * t);
 		case 'square':
 			return p < half ? max : min;
-		case 'random':
-			if (randomHold >= min && randomHold <= max) {
-				return randomHold;
-			}
-			return Math.round(min + span / 2);
 		case 'triangle':
 		default:
 			if (p <= half) {
@@ -136,15 +123,6 @@ export function pwmSweepDutyAtPhase(
 			}
 			return Math.round(max - span * ((p - half) / half));
 	}
-}
-
-export function createTimerPwmSweepRandomHold(minDuty, maxDuty) {
-	const min = clampTimerPwmSweepMin(minDuty, maxDuty);
-	const max = clampTimerPwmDuty(maxDuty);
-	if (min >= max) {
-		return max;
-	}
-	return Math.round(min + Math.random() * (max - min));
 }
 
 export function resolveTimerPwmSweepStart(
@@ -302,7 +280,6 @@ export function clampTimerPwmSweepMin(min, maxDuty) {
 
 export function advanceTimerPwmSweep(
 	currentPhase,
-	randomHold,
 	sweepSpeed,
 	minDuty,
 	maxDuty,
@@ -313,33 +290,23 @@ export function advanceTimerPwmSweep(
 	const max = clampTimerPwmDuty(maxDuty);
 
 	if (sweepSpeed <= 0 || min >= max) {
-		return { phase: 0, duty: max, randomHold: TIMER_PWM_SWEEP_HOLD_UNINITIALIZED };
+		return { phase: 0, duty: max };
 	}
 
 	if (currentPhase < 0) {
 		const phase = clampTimerPwmSweepStartPhase(startPhase);
-		let hold = randomHold;
-		if (shape === 'random' && hold < min) {
-			hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
-		}
 		return {
 			phase,
-			duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty, hold),
-			randomHold: hold
+			duty: pwmSweepDutyAtPhase(phase, shape, minDuty, maxDuty)
 		};
 	}
 
 	const modulus = AY_TIMER_PWM_SWEEP_START_PHASE_MAX + 1;
 	const nextPhase = (currentPhase + sweepSpeed) % modulus;
-	let hold = randomHold;
-	if (shape === 'random' && nextPhase <= currentPhase) {
-		hold = createTimerPwmSweepRandomHold(minDuty, maxDuty);
-	}
 
 	return {
 		phase: nextPhase,
-		duty: pwmSweepDutyAtPhase(nextPhase, shape, minDuty, maxDuty, hold),
-		randomHold: hold
+		duty: pwmSweepDutyAtPhase(nextPhase, shape, minDuty, maxDuty)
 	};
 }
 

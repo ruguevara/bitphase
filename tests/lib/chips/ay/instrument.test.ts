@@ -34,13 +34,10 @@ import {
 	AY_TIMER_PWM_SWEEP_START_PHASE_PEAK,
 	DEFAULT_AY_TIMER_PWM_SWEEP_START_PHASE,
 	pwmSweepDutyAtPhase,
-	previewRandomSweepDutyAtPhase,
 	resolveTimerPwmSweepStart,
 	resolveTimerPwmSweepStartPhase,
 	resolveTimerPwmSweepShape,
-	timerPwmSweepPhaseToPoint,
 	TIMER_PWM_SWEEP_UNINITIALIZED,
-	TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
 	AY_AUTO_TIMER_TONE_MULTIPLIER,
 	AY_TONE_REGISTER_PRESCALER,
 	DEFAULT_AY_SID_PERIOD,
@@ -278,54 +275,39 @@ describe('ay instrument timer fields', () => {
 	});
 
 	it('advances triangle pwm sweep by phase', () => {
-		let result = advanceTimerPwmSweep(
-			TIMER_PWM_SWEEP_UNINITIALIZED,
-			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
-			250,
-			0,
-			100,
-			0,
-			'triangle'
-		);
+		let result = advanceTimerPwmSweep(TIMER_PWM_SWEEP_UNINITIALIZED, 250, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(0);
 		expect(result.duty).toBe(0);
 
-		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		result = advanceTimerPwmSweep(result.phase, 250, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(250);
 		expect(result.duty).toBe(50);
 
-		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		result = advanceTimerPwmSweep(result.phase, 250, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(500);
 		expect(result.duty).toBe(100);
 
-		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		result = advanceTimerPwmSweep(result.phase, 250, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(750);
 		expect(result.duty).toBe(50);
 
-		result = advanceTimerPwmSweep(result.phase, result.randomHold, 250, 0, 100, 0, 'triangle');
+		result = advanceTimerPwmSweep(result.phase, 250, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(1000);
 		expect(result.duty).toBe(0);
 
-		result = advanceTimerPwmSweep(result.phase, result.randomHold, 1, 0, 100, 0, 'triangle');
+		result = advanceTimerPwmSweep(result.phase, 1, 0, 100, 0, 'triangle');
 		expect(result.phase).toBe(0);
 		expect(result.duty).toBe(0);
 	});
 
 	it('returns max duty when pwm sweep speed is zero', () => {
-		const result = advanceTimerPwmSweep(
-			TIMER_PWM_SWEEP_UNINITIALIZED,
-			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
-			0,
-			5,
-			25
-		);
+		const result = advanceTimerPwmSweep(TIMER_PWM_SWEEP_UNINITIALIZED, 0, 5, 25);
 		expect(result.duty).toBe(25);
 	});
 
 	it('starts pwm sweep from configured start phase', () => {
 		const result = advanceTimerPwmSweep(
 			TIMER_PWM_SWEEP_UNINITIALIZED,
-			TIMER_PWM_SWEEP_HOLD_UNINITIALIZED,
 			10,
 			0,
 			100,
@@ -345,7 +327,6 @@ describe('ay instrument timer fields', () => {
 		expect(pwmSweepDutyAtPhase(500, 'sawDown', 0, 100)).toBe(50);
 		expect(pwmSweepDutyAtPhase(0, 'square', 0, 100)).toBe(100);
 		expect(pwmSweepDutyAtPhase(500, 'square', 0, 100)).toBe(0);
-		expect(pwmSweepDutyAtPhase(250, 'random', 0, 100, 42)).toBe(42);
 	});
 
 	it('resolves pwm sweep start from phase and shape', () => {
@@ -357,15 +338,8 @@ describe('ay instrument timer fields', () => {
 			AY_TIMER_PWM_SWEEP_START_PHASE_PEAK
 		);
 		expect(resolveTimerPwmSweepShape('sine')).toBe('sine');
+		expect(resolveTimerPwmSweepShape('random')).toBe('triangle');
 		expect(resolveTimerPwmSweepShape('invalid')).toBe('triangle');
-	});
-
-	it('aligns random preview marker duty with step plateaus', () => {
-		for (const phase of [0, 166, 167, 333, 500, 833, 1000]) {
-			const previewDuty = previewRandomSweepDutyAtPhase(phase, 0, 100);
-			const marker = timerPwmSweepPhaseToPoint(phase, 0, 100, 220, 72, 10, 'random');
-			expect(marker.duty, `phase=${phase}`).toBe(previewDuty);
-		}
 	});
 
 	it('sanitizes pwm percent and sweep text inputs', () => {
