@@ -1056,7 +1056,9 @@ export function copyAyInstrumentFields(
 	if (source.timerRows) {
 		target.timerRows = normalized.timerRows.map((row) => ({
 			...row,
-			timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+			timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined,
+			fmWaveform: row.fmWaveform ? [...row.fmWaveform] : undefined,
+			envFmWaveform: row.envFmWaveform ? [...row.envFmWaveform] : undefined
 		}));
 	}
 	target.timerLoop = normalized.timerLoop;

@@ -16,7 +16,8 @@ const AY_CHANNEL_ARRAY_SPECS = [
 	['channelSoundEnabled', false],
 	['channelTimerEffectReset', false],
 	['channelSamplePositions', 0],
-	['channelSamplePhase', 0]
+	['channelSamplePhase', 0],
+	['channelPatternEnvelopeShapes', 0]
 ];
 
 class AyumiState extends TrackerState {

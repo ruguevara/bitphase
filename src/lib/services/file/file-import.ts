@@ -208,6 +208,12 @@ function reconstructInstrument(data: any): Instrument {
 					detune?: number;
 					period?: number;
 					semitone?: number;
+					timerWaveform?: number[];
+					timerWaveformLoop?: number;
+					fmWaveform?: number[];
+					fmWaveformLoop?: number;
+					envFmWaveform?: number[];
+					envFmWaveformLoop?: number;
 				}[];
 			}
 		).timerRows = data.timerRows.map(
@@ -223,6 +229,10 @@ function reconstructInstrument(data: any): Instrument {
 				semitone?: number;
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
@@ -239,6 +249,10 @@ function reconstructInstrument(data: any): Instrument {
 					semitone?: number;
 					timerWaveform?: number[];
 					timerWaveformLoop?: number;
+					fmWaveform?: number[];
+					fmWaveformLoop?: number;
+					envFmWaveform?: number[];
+					envFmWaveformLoop?: number;
 					timerPwmDuty?: number;
 					timerPwmSweepMin?: number;
 					timerPwmSweep?: number;
@@ -259,6 +273,14 @@ function reconstructInstrument(data: any): Instrument {
 				if (row.timerWaveform) timerRow.timerWaveform = [...row.timerWaveform];
 				if (row.timerWaveformLoop !== undefined) {
 					timerRow.timerWaveformLoop = row.timerWaveformLoop;
+				}
+				if (row.fmWaveform) timerRow.fmWaveform = [...row.fmWaveform];
+				if (row.fmWaveformLoop !== undefined) {
+					timerRow.fmWaveformLoop = row.fmWaveformLoop;
+				}
+				if (row.envFmWaveform) timerRow.envFmWaveform = [...row.envFmWaveform];
+				if (row.envFmWaveformLoop !== undefined) {
+					timerRow.envFmWaveformLoop = row.envFmWaveformLoop;
 				}
 				if (row.timerPwmDuty !== undefined) timerRow.timerPwmDuty = row.timerPwmDuty;
 				if (row.timerPwmSweepMin !== undefined) timerRow.timerPwmSweepMin = row.timerPwmSweepMin;

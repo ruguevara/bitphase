@@ -131,6 +131,10 @@ export class HistoryClone {
 				semitone?: number;
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
@@ -157,6 +161,10 @@ export class HistoryClone {
 				semitone?: number;
 				timerWaveform?: number[];
 				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
 				timerPwmDuty?: number;
 				timerPwmSweepMin?: number;
 				timerPwmSweep?: number;
@@ -173,7 +181,9 @@ export class HistoryClone {
 		if (extended.timerRows) {
 			clonedExtended.timerRows = extended.timerRows.map((row) => ({
 				...row,
-				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined
+				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined,
+				fmWaveform: row.fmWaveform ? [...row.fmWaveform] : undefined,
+				envFmWaveform: row.envFmWaveform ? [...row.envFmWaveform] : undefined
 			}));
 		}
 		if (extended.timerLoop !== undefined) clonedExtended.timerLoop = extended.timerLoop;

@@ -63,6 +63,33 @@ class AYAudioDriver {
 		};
 	}
 
+	isSyncbuzzerEnvelopeShapeSource(state, channelIndex) {
+		const instrumentIndex = state.channelInstruments[channelIndex];
+		if (instrumentIndex < 0) {
+			return false;
+		}
+		const instrument = state.instruments[instrumentIndex];
+		if (!instrument) {
+			return false;
+		}
+		const ayFields = normalizeAyInstrumentFields(instrument);
+		const timerPlayback = this.resolveTimerRowPlayback(instrument);
+		const timerRowIndex =
+			state.channelTimerPositions[channelIndex] % timerPlayback.timerRowsLength;
+		const timerRow = ayFields.timerRows[timerRowIndex];
+		if (!timerRow?.syncbuzzer) {
+			return false;
+		}
+		const instrumentRows = instrument.rows;
+		if (!instrumentRows || instrumentRows.length === 0) {
+			return false;
+		}
+		const instrumentRowIndex =
+			state.instrumentPositions[channelIndex] % instrumentRows.length;
+		const instrumentRow = instrumentRows[instrumentRowIndex];
+		return !!instrumentRow?.envelope;
+	}
+
 	advanceChannelInstrumentRows(
 		state,
 		channelIndex,
@@ -354,6 +381,14 @@ class AYAudioDriver {
 		}
 
 		const shapeSet = isPatternEnvelopeShapeSet(row.envelopeShape);
+		if (state.channelPatternEnvelopeShapes) {
+			state.channelPatternEnvelopeShapes[channelIndex] =
+				typeof row.envelopeShape === 'number' ? row.envelopeShape : 0;
+		}
+		const syncbuzzerOwnsEnvelopeShape = this.isSyncbuzzerEnvelopeShapeSource(
+			state,
+			channelIndex
+		);
 		const envelopeValueNum =
 			patternRow.envelopeValue != null && patternRow.envelopeValue >= 0
 				? Number(patternRow.envelopeValue)
@@ -382,8 +417,10 @@ class AYAudioDriver {
 
 		if (shapeSet) {
 			if (envelopeValueNum === null || envelopeValueNum >= 0) {
-				registerState.envelopeShape = row.envelopeShape;
-				registerState.forceEnvelopeShapeWrite = true;
+				if (!syncbuzzerOwnsEnvelopeShape) {
+					registerState.envelopeShape = row.envelopeShape;
+					registerState.forceEnvelopeShapeWrite = true;
+				}
 				state.channelEnvelopeEnabled[channelIndex] = true;
 
 				const envelopeOnOffActive = state.envelopeOnOffCounter > 0;
@@ -1066,7 +1103,7 @@ class AYAudioDriver {
 				const timerPwmPeriods = computeTimerPwmPeriods(timerEffectPeriod, effectivePwmDuty);
 				const syncbuzzerWaveform = resolveSyncbuzzerWaveform(
 					timerRow,
-					registerState.envelopeShape
+					state.channelPatternEnvelopeShapes?.[channelIndex] ?? 0
 				);
 				const syncbuzzerUsesPwm = syncbuzzerPwmSupported && syncbuzzerWaveform.length === 2;
 
@@ -1077,7 +1114,7 @@ class AYAudioDriver {
 				) {
 					registerState.channels[channelIndex].mixer.envelope = true;
 					this.channelMixerState[channelIndex].envelope = true;
-					if (instrumentRow.retriggerEnvelope) {
+					if (instrumentRow.retriggerEnvelope && !syncbuzzerActive) {
 						registerState.forceEnvelopeShapeWrite = true;
 					}
 				} else {
