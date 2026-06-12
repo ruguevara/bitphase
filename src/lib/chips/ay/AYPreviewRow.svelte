@@ -2,6 +2,12 @@
 	import type { Chip } from '../types';
 	import type { Pattern } from '../../models/song';
 	import { Pattern as PatternModel, Note } from '../../models/song';
+	import {
+		resolveEffectiveRowFields,
+		type RowResolutionContext
+	} from '../../services/audio/play-from-position';
+	import { computeAutoEnvelopePeriod } from './auto-envelope';
+	import { EffectType } from '../../models/song';
 	import type { PreviewNoteSupport } from '../base/processor';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { getContext } from 'svelte';
@@ -14,7 +20,8 @@
 	import { editorStateStore } from '../../stores/editor-state.svelte';
 	import { settingsStore } from '../../stores/settings.svelte';
 	import { midiService } from '../../services/midi/midi-service';
-	import { instrumentIdToNumber } from '../../utils/instrument-id';
+	import { instrumentIdToNumber, numberToInstrumentId } from '../../utils/instrument-id';
+	import { formatSymbol } from '../base/field-formatters';
 	import { playbackStore } from '../../stores/playback.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import {
@@ -24,6 +31,7 @@
 	import IconCarbonPlay from '~icons/carbon/play';
 	import IconCarbonPauseFilled from '~icons/carbon/pause-filled';
 	import { IconButton } from '../../components/IconButton';
+	import IconCarbonDownload from '~icons/carbon/download';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import { ACTION_TOGGLE_PLAYBACK } from '../../config/keybindings';
@@ -32,11 +40,13 @@
 	let {
 		chip,
 		instrumentId = '01',
-		tuningTable = []
+		tuningTable = [],
+		getRowResolutionContext
 	}: {
 		chip: Chip;
 		instrumentId?: string;
 		tuningTable?: number[];
+		getRowResolutionContext?: () => RowResolutionContext | null;
 	} = $props();
 
 	const ROW_INDEX = 0;
@@ -235,6 +245,86 @@
 		isPreviewPlaying = !isPreviewPlaying;
 	}
 
+	const canLoadFromCurrentRow = $derived(!isDisabled && getRowResolutionContext !== undefined);
+
+	function toNum(value: unknown): number {
+		return typeof value === 'number' ? value : 0;
+	}
+
+	function toHex(value: unknown, digits: number, max: number): string {
+		const clamped = Math.max(0, Math.min(max, toNum(value)));
+		return clamped === 0 ? '' : clamped.toString(16).toUpperCase().padStart(digits, '0');
+	}
+
+	function noteToTuningIndex(note: { name?: number; octave?: number } | undefined): number {
+		if (!note || note.name === undefined || note.name < 2) return -1;
+		return ((note.octave ?? 0) - 1) * 12 + (note.name - 2);
+	}
+
+	function resolveEnvelopePeriod(
+		globalFields: Record<string, unknown>,
+		channelFields: Record<string, unknown>
+	): number {
+		const explicit = globalFields.envelopeValue;
+		if (typeof explicit === 'number' && explicit > 0) {
+			return Math.min(0xffff, explicit);
+		}
+
+		const effect = globalFields.envelopeEffect as
+			| { effect?: number; parameter?: number }
+			| undefined;
+		if (!effect || effect.effect !== EffectType.AutoEnvelope) return 0;
+
+		const noteIndex = noteToTuningIndex(
+			channelFields.note as { name?: number; octave?: number } | undefined
+		);
+		if (noteIndex < 0 || noteIndex >= tuningTable.length) return 0;
+		const period = computeAutoEnvelopePeriod(
+			tuningTable[noteIndex],
+			toNum(channelFields.envelopeShape),
+			toNum(effect.parameter)
+		);
+		return period === null ? 0 : Math.max(0, Math.min(0xffff, period));
+	}
+
+	function loadFromCurrentRow() {
+		const context = getRowResolutionContext?.();
+		if (!context) return;
+		const { channelFields, globalFields } = resolveEffectiveRowFields(
+			context.patternOrder,
+			context.getPattern,
+			context.orderIndex,
+			context.row,
+			context.channelIndex,
+			context.schema,
+			['envelopeEffect']
+		);
+
+		const note = channelFields.note as { name?: number; octave?: number } | undefined;
+		if (note && note.name !== undefined && note.name !== 0) {
+			lastPlayedNotes = [formatNoteFromEnum(note.name, note.octave ?? 0)];
+			activeNotes = [];
+		}
+
+		const instrumentNum = toNum(channelFields.instrument);
+		if (instrumentNum > 0) {
+			editorStateStore.requestSelectInstrument(numberToInstrumentId(instrumentNum));
+		}
+
+		envelopePeriod = resolveEnvelopePeriod(globalFields, channelFields);
+		envelopeHexInput = (envelopePeriod >>> 0).toString(16).toUpperCase().padStart(4, '0');
+		envelopeShape = toHex(channelFields.envelopeShape, 1, 15);
+		noiseValue = Math.max(0, Math.min(0x1f, toNum(globalFields.noiseValue)))
+			.toString(16)
+			.toUpperCase()
+			.padStart(2, '0');
+
+		const tableChar = formatSymbol(toNum(channelFields.table), 1, true);
+		table = tableChar === '.' ? '' : tableChar;
+
+		volume = toHex(channelFields.volume, 1, 15) || 'F';
+	}
+
 	function parseHex4(s: string): number {
 		const n = parseInt(s.replace(/[^0-9a-fA-F]/g, '').slice(0, 4) || '0', 16);
 		return isNaN(n) ? 0 : Math.max(0, Math.min(0xffff, n));
@@ -414,6 +504,17 @@
 				{/if}
 			{/snippet}
 		</IconButton>
+		{#if getRowResolutionContext}
+			<button
+				type="button"
+				class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] text-[var(--color-app-text)] transition-colors hover:bg-[var(--color-app-surface-secondary)] disabled:pointer-events-none disabled:opacity-50"
+				disabled={!canLoadFromCurrentRow}
+				title="Load effective fields from the current pattern row"
+				aria-label="Load from current row"
+				onclick={loadFromCurrentRow}>
+				<IconCarbonDownload class="h-3.5 w-3.5" />
+			</button>
+		{/if}
 		<span>Preview playground</span>
 	</div>
 	<div class="flex flex-wrap items-end gap-3 font-mono text-xs">

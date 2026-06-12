@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Pattern } from '../../models/song';
+	import type { RowResolutionContext } from '../../services/audio/play-from-position';
 	import type {
 		ChipProcessor,
 		TuningTableSupport,
@@ -130,6 +131,26 @@
 		}
 	});
 
+	function getRowResolutionContext(): RowResolutionContext | null {
+		const activeEditor = patternEditors[activeEditorIndex];
+		if (!activeEditor) return null;
+		const songPatterns = projectStore.patterns[activeEditorIndex];
+		if (!songPatterns) return null;
+		const schema = chipProcessors[activeEditorIndex]?.chip?.schema;
+		if (!schema) return null;
+		const patternId = projectStore.patternOrder[sharedPatternOrderIndex];
+		const pattern = songPatterns.find((p) => p.id === patternId);
+		if (!pattern || sharedSelectedRow < 0 || sharedSelectedRow >= pattern.length) return null;
+		return {
+			patternOrder: projectStore.patternOrder,
+			getPattern: (id) => songPatterns.find((p) => p.id === id),
+			orderIndex: sharedPatternOrderIndex,
+			row: sharedSelectedRow,
+			channelIndex: activeEditor.getSelectedChannelIndex(),
+			schema
+		};
+	}
+
 	let patternLengthValue = $state('');
 
 	const blurredContentClass = $derived(
@@ -212,19 +233,23 @@
 		const el = rightPanelEl;
 		const handler = previewSpaceHandler;
 		if (!el) return;
-		return addScopedShortcutListener(el, previewPlaybackActionIds, (event, _action, container) => {
-			if (event.repeat) return;
-			if (handler) {
-				event.preventDefault();
-				event.stopPropagation();
-				const active = document.activeElement as HTMLElement | null;
-				if (active && active !== container) {
-					active.blur?.();
-					container.focus();
+		return addScopedShortcutListener(
+			el,
+			previewPlaybackActionIds,
+			(event, _action, container) => {
+				if (event.repeat) return;
+				if (handler) {
+					event.preventDefault();
+					event.stopPropagation();
+					const active = document.activeElement as HTMLElement | null;
+					if (active && active !== container) {
+						active.blur?.();
+						container.focus();
+					}
+					handler();
 				}
-				handler();
 			}
-		});
+		);
 	});
 
 	const SPEED_EFFECT_TYPE = 'S'.charCodeAt(0);
@@ -250,7 +275,11 @@
 			},
 			[
 				projectStore.createSetDiff(['patterns'], beforePatterns, projectStore.patterns),
-				projectStore.createSetDiff(['patternOrder'], beforePatternOrder, projectStore.patternOrder)
+				projectStore.createSetDiff(
+					['patternOrder'],
+					beforePatternOrder,
+					projectStore.patternOrder
+				)
 			]
 		);
 		if (index === sharedPatternOrderIndex) {
@@ -331,10 +360,7 @@
 			const withVirtual = chipProcessor as ChipProcessor & Partial<VirtualChannelSupport>;
 			if (withVirtual.sendVirtualChannelConfig) {
 				const hwLabels = chipProcessor.chip?.schema?.channelLabels ?? ['A', 'B', 'C'];
-				withVirtual.sendVirtualChannelConfig(
-					song.virtualChannelMap ?? {},
-					hwLabels.length
-				);
+				withVirtual.sendVirtualChannelConfig(song.virtualChannelMap ?? {}, hwLabels.length);
 			}
 
 			chipProcessor.sendInitPattern(currentPattern, patternOrderIndexForInit);
@@ -359,10 +385,7 @@
 		projectStore.patternOrder;
 		projectStore.loopPointId;
 		if (services.audioService.getPlayPatternId() !== null) return;
-		services.audioService.updateOrder(
-			[...projectStore.patternOrder],
-			projectStore.loopPointId
-		);
+		services.audioService.updateOrder([...projectStore.patternOrder], projectStore.loopPointId);
 	});
 
 	function initAllChipsForPlayback() {
@@ -639,7 +662,9 @@
 											patternEditor = patternEditors[i];
 										}}
 										canFocusOnHover={() =>
-											!patternEditors.some((e) => e?.getCanvas?.() === document.activeElement)}
+											!patternEditors.some(
+												(e) => e?.getCanvas?.() === document.activeElement
+											)}
 										{onaction}
 										initAllChips={initAllChipsForPlayback}
 										{initAllChipsForPlayPattern}
@@ -672,12 +697,14 @@
 			role="region"
 			aria-label="Instruments and tables"
 			tabindex={0}
-			class="relative z-10 flex h-full shrink-0 flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] outline-none transition-all duration-300 focus:outline-none {isRightPanelExpanded
+			class="relative z-10 flex h-full shrink-0 flex-col border-l border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] transition-all duration-300 outline-none focus:outline-none {isRightPanelExpanded
 				? 'w-[1200px]'
 				: 'w-[32rem]'}"
 			onmousedown={(e: MouseEvent) => {
 				const target = e.target as HTMLElement;
-				if (!target.closest('input, textarea, button, select, [contenteditable="true"], a')) {
+				if (
+					!target.closest('input, textarea, button, select, [contenteditable="true"], a')
+				) {
 					rightPanelEl?.focus();
 				}
 			}}>
@@ -710,6 +737,7 @@
 							<PreviewRow
 								chip={activeChipProcessor.chip}
 								instrumentId={editorStateStore.currentInstrument}
+								{getRowResolutionContext}
 								tuningTable={projectStore.songs[activeEditorIndex]?.tuningTable ??
 									[]} />
 						</div>

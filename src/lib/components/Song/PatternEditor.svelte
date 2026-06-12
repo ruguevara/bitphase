@@ -2027,6 +2027,10 @@
 		refreshAfterVirtualChannelChange();
 	}
 
+	export function getSelectedChannelIndex(): number {
+		return getChannelIndexAtCursor();
+	}
+
 	function getChannelIndexAtCursor(): number {
 		const patternId = patternOrder[currentPatternOrderIndex];
 		const pattern = findOrCreatePattern(patternId);
