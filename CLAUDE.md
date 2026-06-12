@@ -4,6 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Bitphase is a chiptune tracker for creating music on retro sound chips. Built with Svelte 5, TypeScript, Vite, and Tailwind 4.
 
+## Toolchain Setup
+
+Required tools (one-time setup):
+
+- **Node + pnpm**: pnpm is pinned via the `packageManager` field. If `pnpm` is not on PATH, install it with `npm install -g pnpm` (or enable corepack). Then run `pnpm install`.
+- **Emscripten**: `emcc` must be on PATH (macOS: `brew install emscripten`) or `EMSDK` must point to an emsdk checkout. Needed to build `public/ayumi.wasm` — the file is gitignored, not committed.
+- **Git submodule**: `external/ayumi/` must be initialized (`git submodule update --init`).
+
+If `emcc` is missing but a previously built `public/ayumi.wasm` exists, `build-wasm.sh`/`.ps1` reuse it with a warning instead of failing. **A stale wasm causes silent audio breakage**: when JS expects exports that the old wasm lacks (e.g. after a rename in `external/ayumi/`), the audio worklet fails and there is no sound. If audio is dead after pulling changes that touch `external/ayumi/` or the export list, rebuild with `pnpm build:wasm` and reload the browser.
+
 ## Commands
 
 Package manager is **pnpm** (do not use npm/yarn).

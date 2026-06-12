@@ -39,7 +39,11 @@ if (-not $env:EMSDK) {
     }
 }
 if (-not $env:EMSDK) {
-    Write-Host "Error: EMSDK not set. Set EMSDK to your Emscripten install path (e.g. $env:USERPROFILE\emsdk)." -ForegroundColor Red
+    if (Test-Path "public/ayumi.wasm") {
+        Write-Host "Warning: EMSDK not set, reusing existing public/ayumi.wasm (may be stale if external/ayumi changed)." -ForegroundColor Yellow
+        exit 0
+    }
+    Write-Host "Error: EMSDK not set and no prebuilt public/ayumi.wasm. Set EMSDK to your Emscripten install path (e.g. $env:USERPROFILE\emsdk)." -ForegroundColor Red
     exit 1
 }
 

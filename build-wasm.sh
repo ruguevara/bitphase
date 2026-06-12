@@ -6,7 +6,11 @@ if [ -n "$EMSDK" ]; then
 fi
 
 if ! command -v emcc &> /dev/null; then
-    echo "Error: emcc not found. Please install Emscripten first."
+    if [ -f public/ayumi.wasm ]; then
+        echo "Warning: emcc not found, reusing existing public/ayumi.wasm (may be stale if external/ayumi changed)."
+        exit 0
+    fi
+    echo "Error: emcc not found and no prebuilt public/ayumi.wasm. Install Emscripten (e.g. 'brew install emscripten') or set EMSDK."
     exit 1
 fi
 
