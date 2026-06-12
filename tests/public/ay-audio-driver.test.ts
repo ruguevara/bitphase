@@ -1010,5 +1010,45 @@ describe('AYAudioDriver', () => {
 			expect(registerState.envelopeShape).toBe(12);
 			expect(registerState.forceEnvelopeShapeWrite).toBe(true);
 		});
+
+		it('uses pattern envelope shape for EA when syncbuzzer owns R13 writes', () => {
+			const driver = new AYAudioDriver();
+			const state = new AyumiState();
+			state.setTuningTable([600, 700, 800]);
+			state.setInstruments([
+				{
+					id: '01',
+					rows: [{ tone: true, volume: 15, noise: false, envelope: true }],
+					loop: 0,
+					timerRows: [{ syncbuzzer: true, timerWaveform: [9, 13] }]
+				}
+			]);
+			state.channelInstruments = [0, -1, -1];
+			state.channelMuted = [false, false, false];
+			state.channelSoundEnabled = [true, false, false];
+			state.channelEnvelopeEnabled = [true, false, false];
+			state.channelBaseNotes = [0, 0, 0];
+			state.channelCurrentNotes = [0, 0, 0];
+			state.autoEnvelopeActive = true;
+			state.autoEnvelopeNumerator = 3;
+			state.autoEnvelopeDenominator = 2;
+			state.channelPatternEnvelopeShapes = [12, 0, 0];
+
+			const registerState = {
+				channels: [
+					{ tone: 600, volume: 15, mixer: { tone: true, noise: false, envelope: true } },
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } },
+					{ tone: 0, volume: 0, mixer: { tone: false, noise: false, envelope: false } }
+				],
+				noise: 0,
+				envelopePeriod: 0,
+				envelopeShape: 0,
+				forceEnvelopeShapeWrite: false
+			};
+
+			driver.processAutoEnvelope(state, registerState);
+
+			expect(state.envelopeBaseValue).toBe(Math.round((600 * 3) / (2 * 16)));
+		});
 	});
 });

@@ -1261,14 +1261,18 @@ class AYAudioDriver {
 	}
 
 	processAutoEnvelope(state, registerState) {
-		const envelopeShape = registerState.envelopeShape;
-		const divisor = this.getAutoEnvelopeDivisor(envelopeShape);
-		if (divisor === null) return;
-
 		for (let ch = state.channelInstruments.length - 1; ch >= 0; ch--) {
 			if (!state.channelEnvelopeEnabled[ch]) continue;
 			if (state.channelMuted[ch]) continue;
 			if (!state.channelSoundEnabled[ch]) continue;
+
+			const envelopeShape = this.resolveChannelEnvelopeShapeForAutoEnvelope(
+				state,
+				ch,
+				registerState
+			);
+			const divisor = this.getAutoEnvelopeDivisor(envelopeShape);
+			if (divisor === null) continue;
 
 			const effectiveBaseTone = this.getEffectiveBaseTone(state, ch);
 			if (effectiveBaseTone <= 0) continue;
@@ -1280,6 +1284,14 @@ class AYAudioDriver {
 			state.envelopeBaseValue = envelopeValue;
 			return;
 		}
+	}
+
+	resolveChannelEnvelopeShapeForAutoEnvelope(state, channelIndex, registerState) {
+		const patternShape = state.channelPatternEnvelopeShapes?.[channelIndex];
+		if (isPatternEnvelopeShapeSet(patternShape)) {
+			return patternShape & 0xf;
+		}
+		return registerState.envelopeShape & 0xf;
 	}
 
 	getAutoEnvelopeDivisor(envelopeShape) {

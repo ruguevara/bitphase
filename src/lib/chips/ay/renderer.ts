@@ -12,15 +12,17 @@ import { AYUMI_AUDIO_SLOT_KIND } from './audio-slot-kind';
 import type { ResourceLoader } from '../base/resource-loader';
 import { BrowserResourceLoader } from '../base/resource-loader';
 import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
+import {
+	AYUMI_STRUCT_SIZE,
+	AYUMI_STRUCT_LEFT_OFFSET,
+	AYUMI_STRUCT_RIGHT_OFFSET,
+	AYUMI_STRUCT_CHANNEL_OUT_OFFSET,
+	DEFAULT_AYM_FREQUENCY
+} from './ayumi-constants';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 23472;
-const AYUMI_STRUCT_LEFT_OFFSET = AYUMI_STRUCT_SIZE - 40;
-const AYUMI_STRUCT_RIGHT_OFFSET = AYUMI_STRUCT_SIZE - 32;
-const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = AYUMI_STRUCT_SIZE - 24;
 const TONE_CHANNELS = 3;
-const DEFAULT_AYM_FREQUENCY = 1773400;
 
 type PanSetting = { channel: number; pan: number; isEqp: number };
 type GetPanSettingsForLayout = (layout: string) => PanSetting[];
