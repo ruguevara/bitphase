@@ -173,14 +173,28 @@ export function computeTimerPwmLowPeriod(basePeriod, dutyPercent) {
 }
 
 export function effectiveRowTimerWaveform(row) {
+	return effectiveRowMixTimerWaveform(row);
+}
+
+export function effectiveRowMixTimerWaveform(row) {
 	const waveform = row?.timerWaveform;
 	if (waveform && waveform.length > 0) {
-		return waveform;
+		return waveform.map((value) => value & 0xf).slice(0, 32);
+	}
+	if (row?.syncbuzzer) {
+		return [...DEFAULT_AY_SYNCBUZZER_WAVEFORM];
 	}
 	return [...DEFAULT_AY_TIMER_WAVEFORM];
 }
 
 export function effectiveRowTimerWaveformLoop(row) {
+	return row?.timerWaveformLoop ?? 0;
+}
+
+export function effectiveRowFmWaveformLoop(row) {
+	if (row?.fmWaveformLoop !== undefined) {
+		return row.fmWaveformLoop;
+	}
 	return row?.timerWaveformLoop ?? 0;
 }
 
@@ -209,7 +223,15 @@ export function normalizeFmWaveform(waveform, mode = 'semitone') {
 }
 
 export function rowUsesFmWaveform(row) {
-	return !!(row?.fm || row?.envFm);
+	return !!row?.fm;
+}
+
+export function rowUsesEnvFmWaveform(row) {
+	return !!row?.envFm;
+}
+
+export function rowUsesOffsetWaveform(row) {
+	return rowUsesFmWaveform(row) || rowUsesEnvFmWaveform(row);
 }
 
 export function effectiveRowFmWaveform(row) {
@@ -217,11 +239,38 @@ export function effectiveRowFmWaveform(row) {
 		return [...DEFAULT_AY_FM_WAVEFORM];
 	}
 	const mode = resolveAyFmOffsetMode(row);
-	const waveform = row?.timerWaveform;
+	const waveform = row?.fmWaveform?.length
+		? row.fmWaveform
+		: !row?.sid && !row?.syncbuzzer && row?.timerWaveform?.length
+			? row.timerWaveform
+			: undefined;
 	if (waveform && waveform.length > 0) {
 		return normalizeFmWaveform(waveform, mode);
 	}
 	return defaultAyFmWaveform(mode);
+}
+
+export function effectiveRowEnvFmWaveform(row) {
+	if (!rowUsesEnvFmWaveform(row)) {
+		return [...DEFAULT_AY_FM_WAVEFORM];
+	}
+	const mode = resolveAyFmOffsetMode(row);
+	const waveform = row?.envFmWaveform?.length
+		? row.envFmWaveform
+		: !row?.sid && !row?.syncbuzzer && row?.timerWaveform?.length
+			? row.timerWaveform
+			: undefined;
+	if (waveform && waveform.length > 0) {
+		return normalizeFmWaveform(waveform, mode);
+	}
+	return defaultAyFmWaveform(mode);
+}
+
+export function effectiveRowEnvFmWaveformLoop(row) {
+	if (row?.envFmWaveformLoop !== undefined) {
+		return row.envFmWaveformLoop;
+	}
+	return row?.timerWaveformLoop ?? 0;
 }
 
 export function isDefaultFmTimerWaveform(waveform) {
@@ -257,18 +306,33 @@ export function resolveSyncbuzzerWaveform(timerRow, patternEnvelopeShape) {
 	return steps.map((step) => (step === 0 ? patternShape : step));
 }
 
+export function rowSupportsSidTimerPwm(row) {
+	return !!row?.sid && effectiveRowMixTimerWaveform(row).length === 2;
+}
+
+export function rowSupportsSyncbuzzerTimerPwm(row) {
+	return !!row?.syncbuzzer && effectiveRowMixTimerWaveform(row).length === 2;
+}
+
+export function rowSupportsFmTimerPwm(row) {
+	return !!row?.fm && effectiveRowFmWaveform(row).length === 2;
+}
+
+export function rowSupportsEnvFmTimerPwm(row) {
+	return !!row?.envFm && effectiveRowEnvFmWaveform(row).length === 2;
+}
+
 export function rowSupportsTimerPwm(row) {
-	if (!row || (!row.sid && !row.syncbuzzer && !rowUsesFmWaveform(row))) {
-		return false;
-	}
-	const waveform = rowUsesFmWaveform(row)
-		? effectiveRowFmWaveform(row)
-		: effectiveRowTimerWaveform(row);
-	return waveform.length === 2;
+	return (
+		rowSupportsSidTimerPwm(row) ||
+		rowSupportsSyncbuzzerTimerPwm(row) ||
+		rowSupportsFmTimerPwm(row) ||
+		rowSupportsEnvFmTimerPwm(row)
+	);
 }
 
 export function rowUsesSyncbuzzerPwmDuty(row) {
-	return !!row?.syncbuzzer && rowSupportsTimerPwm(row);
+	return rowSupportsSyncbuzzerTimerPwm(row);
 }
 
 export function effectiveRowTimerPwmDuty(fields, row) {
@@ -363,19 +427,59 @@ function createDefaultAyTimerRow() {
 		fm: false,
 		envFm: false,
 		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
-		timerWaveformLoop: 0
+		timerWaveformLoop: 0,
+		fmWaveform: [...DEFAULT_AY_FM_WAVEFORM],
+		fmWaveformLoop: 0,
+		envFmWaveform: [...DEFAULT_AY_FM_WAVEFORM],
+		envFmWaveformLoop: 0
 	};
+}
+
+function resolveSidSyncbuzzerExclusive(row) {
+	if (row.sid && row.syncbuzzer) {
+		return { ...row, syncbuzzer: false };
+	}
+	if (row.sid) {
+		return { ...row, syncbuzzer: false };
+	}
+	if (row.syncbuzzer) {
+		return { ...row, sid: false };
+	}
+	return row;
 }
 
 function normalizeTimerRow(row) {
 	const defaults = createDefaultAyTimerRow();
 	const fm = row?.fm ?? defaults.fm;
 	const envFm = row?.envFm ?? defaults.envFm;
-	const usesFmWaveform = fm || envFm;
 	const fmOffsetMode = resolveAyFmOffsetMode(row);
+	const sid = row?.sid ?? defaults.sid;
+	const syncbuzzer = row?.syncbuzzer ?? defaults.syncbuzzer;
+	const legacySharedWaveform = row?.timerWaveform?.length ? [...row.timerWaveform] : undefined;
+	const hasDedicatedFmWaveform = !!(row?.fmWaveform && row.fmWaveform.length > 0);
+	const hasDedicatedEnvFmWaveform = !!(row?.envFmWaveform && row.envFmWaveform.length > 0);
+	const legacyForOffsetEffects =
+		legacySharedWaveform && !sid && !syncbuzzer ? legacySharedWaveform : undefined;
+	const fmWaveform = hasDedicatedFmWaveform
+		? normalizeFmWaveform(row.fmWaveform, fmOffsetMode)
+		: fm && legacyForOffsetEffects
+			? normalizeFmWaveform(legacyForOffsetEffects, fmOffsetMode)
+			: defaultAyFmWaveform(fmOffsetMode);
+	const envFmWaveform = hasDedicatedEnvFmWaveform
+		? normalizeFmWaveform(row.envFmWaveform, fmOffsetMode)
+		: envFm && legacyForOffsetEffects
+			? normalizeFmWaveform(legacyForOffsetEffects, fmOffsetMode)
+			: defaultAyFmWaveform(fmOffsetMode);
+	const timerWaveform =
+		legacySharedWaveform && (sid || syncbuzzer || (!fm && !envFm))
+			? legacySharedWaveform.map((value) => value & 0xf).slice(0, 32)
+			: sid || syncbuzzer
+				? legacySharedWaveform?.map((value) => value & 0xf).slice(0, 32) ??
+					(syncbuzzer ? [...DEFAULT_AY_SYNCBUZZER_WAVEFORM] : [...DEFAULT_AY_TIMER_WAVEFORM])
+				: [...DEFAULT_AY_TIMER_WAVEFORM];
 	const normalized = {
-		sid: row?.sid ?? defaults.sid,
-		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
+		sid,
+		syncbuzzer,
 		fm,
 		envFm,
 		fmOffsetMode,
@@ -383,14 +487,13 @@ function normalizeTimerRow(row) {
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
-		timerWaveform: row?.timerWaveform?.length
-			? usesFmWaveform
-				? normalizeFmWaveform(row.timerWaveform, fmOffsetMode)
-				: row.timerWaveform.map((value) => value & 0xf).slice(0, 32)
-			: usesFmWaveform
-				? defaultAyFmWaveform(fmOffsetMode)
-				: [...defaults.timerWaveform],
-		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop
+		timerWaveform,
+		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop,
+		fmWaveform,
+		fmWaveformLoop: row?.fmWaveformLoop ?? row?.timerWaveformLoop ?? defaults.fmWaveformLoop,
+		envFmWaveform,
+		envFmWaveformLoop:
+			row?.envFmWaveformLoop ?? row?.fmWaveformLoop ?? row?.timerWaveformLoop ?? defaults.envFmWaveformLoop
 	};
 	if (row?.detune !== undefined) {
 		normalized.detune = row.detune;
@@ -404,23 +507,11 @@ function normalizeTimerRow(row) {
 	if (fmOffsetMode === 'period') {
 		normalized.fmOffsetMode = 'period';
 	}
-	return applyExclusiveTimerEffects(normalized);
+	return resolveSidSyncbuzzerExclusive(normalized);
 }
 
 function applyExclusiveTimerEffects(row) {
-	if (row.sid) {
-		return { ...row, syncbuzzer: false, fm: false, envFm: false };
-	}
-	if (row.syncbuzzer) {
-		return { ...row, sid: false, fm: false, envFm: false };
-	}
-	if (row.fm) {
-		return { ...row, sid: false, syncbuzzer: false, envFm: false };
-	}
-	if (row.envFm) {
-		return { ...row, sid: false, syncbuzzer: false, fm: false };
-	}
-	return row;
+	return resolveSidSyncbuzzerExclusive(row);
 }
 
 function resolveInstrumentTimerPwmFields(instrument, sourceRows) {

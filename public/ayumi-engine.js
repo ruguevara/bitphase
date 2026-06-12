@@ -3,6 +3,9 @@ import {
 	TIMER_EFFECT_KIND_NONE,
 	TIMER_EFFECT_KIND_TONE,
 	TIMER_EFFECT_KIND_ENVELOPE_PERIOD,
+	TIMER_EFFECT_SLOT_SID,
+	TIMER_EFFECT_SLOT_COUNT,
+	TIMER_EFFECT_SLOT_KEYS,
 	TIMER_FM_OFFSET_PERIOD,
 	resolveTimerFmOffsetMode
 } from './ay-timer-effect-constants.js';
@@ -18,30 +21,34 @@ class AyumiEngine {
 		this.wasmModule = wasmModule;
 		this.ayumiPtr = ayumiPtr;
 		this.lastState = new AYChipRegisterState();
-		this.timerEffectWaveformPtrs = [0, 0, 0];
-		this.timerEffectWaveformLengths = [0, 0, 0];
+		this.timerEffectWaveformPtrs = Array.from({ length: 3 }, () =>
+			Array.from({ length: TIMER_EFFECT_SLOT_COUNT }, () => 0)
+		);
+		this.timerEffectWaveformLengths = Array.from({ length: 3 }, () =>
+			Array.from({ length: TIMER_EFFECT_SLOT_COUNT }, () => 0)
+		);
 		this.forceFullApply = false;
 		this.lastSampleSidVolumes = [-1, -1, -1];
 	}
 
-	_ensureTimerEffectWaveformBuffer(channelIndex, length) {
+	_ensureTimerEffectWaveformBuffer(channelIndex, slot, length) {
 		const needed = Math.max(length, 1) * 4;
 		if (
-			this.timerEffectWaveformPtrs[channelIndex] &&
-			this.timerEffectWaveformLengths[channelIndex] >= length
+			this.timerEffectWaveformPtrs[channelIndex][slot] &&
+			this.timerEffectWaveformLengths[channelIndex][slot] >= length
 		) {
-			return this.timerEffectWaveformPtrs[channelIndex];
+			return this.timerEffectWaveformPtrs[channelIndex][slot];
 		}
-		if (this.timerEffectWaveformPtrs[channelIndex]) {
-			this.wasmModule.free(this.timerEffectWaveformPtrs[channelIndex]);
+		if (this.timerEffectWaveformPtrs[channelIndex][slot]) {
+			this.wasmModule.free(this.timerEffectWaveformPtrs[channelIndex][slot]);
 		}
 		const ptr = this.wasmModule.malloc(needed);
-		this.timerEffectWaveformPtrs[channelIndex] = ptr;
-		this.timerEffectWaveformLengths[channelIndex] = length;
+		this.timerEffectWaveformPtrs[channelIndex][slot] = ptr;
+		this.timerEffectWaveformLengths[channelIndex][slot] = length;
 		return ptr;
 	}
 
-	_applyTimerEffect(channelIndex, timerEffect, lastTimerEffect, forceApply = false) {
+	_applyTimerEffectSlot(channelIndex, slot, timerEffect, lastTimerEffect, forceApply = false) {
 		const enabled = timerEffect.enabled ? 1 : 0;
 		const kind = timerEffect.kind ?? TIMER_EFFECT_KIND_NONE;
 		const pwmMode = timerEffect.pwmMode ?? 0;
@@ -69,18 +76,33 @@ class AyumiEngine {
 			baseTonePeriod !== lastBaseTonePeriod ||
 			fmOffsetMode !== lastFmOffsetMode
 		) {
-			this.wasmModule.ayumi_set_timer_effect(
-				this.ayumiPtr,
-				channelIndex,
-				enabled,
-				kind,
-				pwmMode,
-				period,
-				periodLow,
-				baseVolume,
-				baseTonePeriod,
-				fmOffsetMode
-			);
+			if (this.wasmModule.ayumi_set_timer_effect_slot) {
+				this.wasmModule.ayumi_set_timer_effect_slot(
+					this.ayumiPtr,
+					channelIndex,
+					slot,
+					enabled,
+					pwmMode,
+					period,
+					periodLow,
+					baseVolume,
+					baseTonePeriod,
+					fmOffsetMode
+				);
+			} else {
+				this.wasmModule.ayumi_set_timer_effect(
+					this.ayumiPtr,
+					channelIndex,
+					enabled,
+					kind,
+					pwmMode,
+					period,
+					periodLow,
+					baseVolume,
+					baseTonePeriod,
+					fmOffsetMode
+				);
+			}
 			lastTimerEffect.enabled = timerEffect.enabled;
 			lastTimerEffect.kind = kind;
 			lastTimerEffect.pwmMode = pwmMode;
@@ -109,7 +131,7 @@ class AyumiEngine {
 				pwmModeChanged ||
 				fmOffsetMode !== lastFmOffsetMode)
 		) {
-			const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, waveform.length);
+			const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, slot, waveform.length);
 			const memory = new Int32Array(this.wasmModule.memory.buffer);
 			const offset = ptr >> 2;
 			for (let i = 0; i < waveform.length; i++) {
@@ -126,6 +148,7 @@ class AyumiEngine {
 			this.wasmModule.ayumi_set_timer_effect_waveform(
 				this.ayumiPtr,
 				channelIndex,
+				slot,
 				ptr,
 				waveform.length,
 				waveformLoop
@@ -135,7 +158,7 @@ class AyumiEngine {
 		}
 
 		if (timerEffect.resetPhase) {
-			this.wasmModule.ayumi_timer_effect_reset(this.ayumiPtr, channelIndex);
+			this.wasmModule.ayumi_timer_effect_reset(this.ayumiPtr, channelIndex, slot);
 			timerEffect.resetPhase = false;
 		}
 	}
@@ -183,13 +206,17 @@ class AyumiEngine {
 				lastMixer.envelope = mixer.envelope;
 			}
 
-			if (channel.timerEffect) {
-				this._applyTimerEffect(
-					channelIndex,
-					channel.timerEffect,
-					lastChannel.timerEffect,
-					forceApply
-				);
+			if (channel.timerEffects) {
+				for (let slotIndex = 0; slotIndex < TIMER_EFFECT_SLOT_COUNT; slotIndex++) {
+					const slotKey = TIMER_EFFECT_SLOT_KEYS[slotIndex];
+					this._applyTimerEffectSlot(
+						channelIndex,
+						slotIndex,
+						channel.timerEffects[slotKey],
+						lastChannel.timerEffects[slotKey],
+						forceApply
+					);
+				}
 			}
 		}
 
@@ -233,11 +260,18 @@ class AyumiEngine {
 			return;
 		}
 		this.lastSampleSidVolumes[channelIndex] = volume;
-		const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, 1);
+		const ptr = this._ensureTimerEffectWaveformBuffer(channelIndex, TIMER_EFFECT_SLOT_SID, 1);
 		const memory = new Int32Array(this.wasmModule.memory.buffer);
 		const offset = ptr >> 2;
 		memory[offset] = volume;
-		this.wasmModule.ayumi_set_timer_effect_waveform(this.ayumiPtr, channelIndex, ptr, 1, 0);
+		this.wasmModule.ayumi_set_timer_effect_waveform(
+			this.ayumiPtr,
+			channelIndex,
+			TIMER_EFFECT_SLOT_SID,
+			ptr,
+			1,
+			0
+		);
 	}
 
 	reset() {
@@ -247,11 +281,13 @@ class AyumiEngine {
 	}
 
 	dispose() {
-		for (let i = 0; i < this.timerEffectWaveformPtrs.length; i++) {
-			if (this.timerEffectWaveformPtrs[i]) {
-				this.wasmModule.free(this.timerEffectWaveformPtrs[i]);
-				this.timerEffectWaveformPtrs[i] = 0;
-				this.timerEffectWaveformLengths[i] = 0;
+		for (let channelIndex = 0; channelIndex < this.timerEffectWaveformPtrs.length; channelIndex++) {
+			for (let slot = 0; slot < TIMER_EFFECT_SLOT_COUNT; slot++) {
+				if (this.timerEffectWaveformPtrs[channelIndex][slot]) {
+					this.wasmModule.free(this.timerEffectWaveformPtrs[channelIndex][slot]);
+					this.timerEffectWaveformPtrs[channelIndex][slot] = 0;
+					this.timerEffectWaveformLengths[channelIndex][slot] = 0;
+				}
 			}
 		}
 	}

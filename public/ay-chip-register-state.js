@@ -1,5 +1,6 @@
 import {
-	createDefaultTimerEffect,
+	createDefaultChannelTimerEffects,
+	copyChannelTimerEffects,
 	TIMER_EFFECT_KIND_NONE
 } from './ay-timer-effect-constants.js';
 
@@ -15,7 +16,7 @@ class AYChipRegisterState {
 				tone: 0,
 				volume: 0,
 				mixer: { tone: false, noise: false, envelope: false },
-				timerEffect: createDefaultTimerEffect()
+				timerEffects: createDefaultChannelTimerEffects()
 			});
 		}
 		this.noise = 0;
@@ -29,7 +30,7 @@ class AYChipRegisterState {
 			this.channels[i].tone = 0;
 			this.channels[i].volume = 0;
 			this.channels[i].mixer = { tone: false, noise: false, envelope: false };
-			this.channels[i].timerEffect = createDefaultTimerEffect();
+			this.channels[i].timerEffects = createDefaultChannelTimerEffects();
 		}
 		this.noise = 0;
 		this.envelopePeriod = 0;
@@ -43,7 +44,7 @@ class AYChipRegisterState {
 				tone: 0,
 				volume: 0,
 				mixer: { tone: false, noise: false, envelope: false },
-				timerEffect: createDefaultTimerEffect()
+				timerEffects: createDefaultChannelTimerEffects()
 			});
 		}
 		if (this.channels.length > newChannelCount) {
@@ -62,20 +63,7 @@ class AYChipRegisterState {
 				noise: this.channels[i].mixer.noise,
 				envelope: this.channels[i].mixer.envelope
 			};
-			const timerEffect = this.channels[i].timerEffect;
-			copy.channels[i].timerEffect = {
-				enabled: timerEffect.enabled,
-				kind: timerEffect.kind ?? TIMER_EFFECT_KIND_NONE,
-				pwmMode: timerEffect.pwmMode ?? 0,
-				period: timerEffect.period,
-				periodLow: timerEffect.periodLow ?? timerEffect.period,
-				baseVolume: timerEffect.baseVolume ?? 0,
-				baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
-				fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
-				waveform: [...(timerEffect.waveform ?? [15, 0])],
-				waveformLoop: timerEffect.waveformLoop ?? 0,
-				resetPhase: timerEffect.resetPhase ?? false
-			};
+			copy.channels[i].timerEffects = copyChannelTimerEffects(this.channels[i].timerEffects);
 		}
 		copy.noise = this.noise;
 		copy.envelopePeriod = this.envelopePeriod;

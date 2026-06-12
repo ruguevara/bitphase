@@ -11,6 +11,7 @@
 	import IconCarbonActivity from '~icons/carbon/activity';
 	import IconCarbonRepeat from '~icons/carbon/repeat';
 	import Input from '../../components/Input/Input.svelte';
+	import PillTabs, { type PillTab } from '../../components/PillTabs/PillTabs.svelte';
 	import SelectableRowNumberCell from '../../components/RowEditorTable/SelectableRowNumberCell.svelte';
 	import {
 		ROW_SELECTION_STYLES,
@@ -33,7 +34,7 @@
 	import AYTimerPwmControls from './AYTimerPwmControls.svelte';
 	import AYInstrumentSamplePanel from './AYInstrumentSamplePanel.svelte';
 	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
-	import type { TimerEffectDragField } from './ay-timer-effects-controller.svelte';
+	import type { TimerEditPanel, TimerEffectDragField } from './ay-timer-effects-controller.svelte';
 	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
 	import { type AyInstrumentFields } from './instrument';
 	import { instrumentHasSample } from './sample-region';
@@ -59,6 +60,18 @@
 
 	const extendedInstrument = $derived(instrument as Instrument & Partial<AyInstrumentFields>);
 	const hasSample = $derived(instrumentHasSample(extendedInstrument));
+
+	const instrumentTabs = $derived.by((): PillTab[] => [
+		{ id: 'mixer', label: 'Mixer', icon: IconCarbonVolumeUp, disabled: hasSample },
+		{ id: 'timer', label: 'Timer Effects', icon: IconCarbonActivity, disabled: hasSample },
+		{ id: 'sample', label: 'Sample', icon: IconCarbonWaveform }
+	]);
+
+	const timerEditTabs = $derived.by((): PillTab[] => [
+		{ id: 'mix', label: 'Mix (SID / Sync)' },
+		{ id: 'fm', label: 'FM' },
+		{ id: 'envFm', label: 'Env+FM' }
+	]);
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
 	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
@@ -713,49 +726,24 @@
 		<Input class="w-48 text-xs" bind:value={name} />
 	</div>
 
-	<div class="mt-3 ml-2 flex gap-1">
-		<button
-			type="button"
-			disabled={hasSample}
-			class="flex items-center gap-1.5 rounded px-3 py-1 text-xs {activeTab === 'mixer'
-				? 'bg-[var(--color-app-primary)] text-white'
-				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)]'} {hasSample
-				? 'cursor-not-allowed opacity-40'
-				: 'cursor-pointer hover:bg-[var(--color-app-surface-hover)]'}"
-			onclick={() => {
-				if (!hasSample) activeTab = 'mixer';
-			}}>
-			<IconCarbonVolumeUp class="h-3.5 w-3.5 shrink-0" />
-			Mixer
-		</button>
-		<button
-			type="button"
-			disabled={hasSample}
-			class="flex items-center gap-1.5 rounded px-3 py-1 text-xs {activeTab === 'timer'
-				? 'bg-[var(--color-app-primary)] text-white'
-				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)]'} {hasSample
-				? 'cursor-not-allowed opacity-40'
-				: 'cursor-pointer hover:bg-[var(--color-app-surface-hover)]'}"
-			onclick={() => {
-				if (!hasSample) activeTab = 'timer';
-			}}>
-			<IconCarbonActivity class="h-3.5 w-3.5 shrink-0" />
-			Timer Effects
-		</button>
-		<button
-			type="button"
-			class="flex cursor-pointer items-center gap-1.5 rounded px-3 py-1 text-xs {activeTab ===
-			'sample'
-				? 'bg-[var(--color-app-primary)] text-white'
-				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)]'}"
-			onclick={() => {
-				activeTab = 'sample';
+	<PillTabs
+		bind:activeTabId={activeTab}
+		tabs={instrumentTabs}
+		class="mt-3 ml-2"
+		onSelect={(tabId) => {
+			if (tabId === 'sample') {
 				timerEffects.closeWaveformEditor();
-			}}>
-			<IconCarbonWaveform class="h-3.5 w-3.5 shrink-0" />
-			Sample
-		</button>
-	</div>
+			}
+		}} />
+
+	{#if activeTab === 'timer'}
+		<PillTabs
+			activeTabId={timerEffects.timerEditPanel}
+			tabs={timerEditTabs}
+			size="sm"
+			class="mt-2 ml-2"
+			onSelect={(tabId) => timerEffects.setTimerEditPanel(tabId as TimerEditPanel)} />
+	{/if}
 
 	{#if activeTab === 'timer' && timerEffects.waveformEditorRowIndex !== null}
 		<AYTimerWaveformEditor

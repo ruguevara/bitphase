@@ -18,11 +18,12 @@
 
 	const controller = getAyTimerEffectsContext();
 	const iconSizeClass = $derived(controller.iconSizeClass(isExpanded));
+	const panel = $derived(controller.timerEditPanel);
 	const sidEnabled = $derived(controller.rowSidEnabled(index));
 	const syncbuzzerEnabled = $derived(controller.rowSyncbuzzerEnabled(index));
 	const fmEnabled = $derived(controller.rowFmEnabled(index));
 	const envFmEnabled = $derived(controller.rowEnvFmEnabled(index));
-	const usesFmWaveform = $derived(controller.rowUsesFmWaveform(index));
+	const usesOffsetWaveform = $derived(controller.rowUsesOffsetWaveform(index));
 	const usesEnvelopeShapes = $derived(controller.rowTimerWaveformUsesEnvelopeShapes(index));
 	const usesFmSemitones = $derived(controller.rowTimerWaveformUsesFmSemitones(index));
 	const usesFmPeriodOffsets = $derived(controller.rowTimerWaveformUsesFmPeriodOffsets(index));
@@ -36,13 +37,13 @@
 					: '15 0'
 	);
 	const waveformTitle = $derived(
-		usesFmPeriodOffsets
-			? envFmEnabled
+		panel === 'envFm'
+			? usesFmPeriodOffsets
 				? 'Space-separated raw period offsets added to the pattern envelope value (signed)'
-				: 'Space-separated raw tone period offsets added to base period (signed)'
-			: usesFmSemitones
-				? envFmEnabled
-					? 'Space-separated semitone offsets from the pattern envelope value (signed, 0 = unchanged)'
+				: 'Space-separated semitone offsets from the pattern envelope value (signed, 0 = unchanged)'
+			: panel === 'fm'
+				? usesFmPeriodOffsets
+					? 'Space-separated raw tone period offsets added to base period (signed)'
 					: 'Space-separated semitone offsets (signed)'
 				: usesEnvelopeShapes
 					? 'Space-separated envelope shapes (0–15 hex). Pattern envelope digit overrides when set.'
@@ -69,6 +70,7 @@
 	let detuneFocused = $state(false);
 
 	$effect(() => {
+		controller.timerEditPanel;
 		controller.rowTimerWaveform(index);
 		if (!waveformInputFocused) {
 			waveformText = controller.formatRowTimerWaveform(index);
@@ -165,6 +167,7 @@
 	}
 </script>
 
+{#if panel === 'mix'}
 <td
 	data-timer-effect-cell
 	data-row-index={index}
@@ -195,6 +198,7 @@
 	onpointerdown={(event) => handleEffectPointerDown(event, 'syncbuzzer')}>
 	{syncbuzzerEnabled ? '✓' : ''}
 </td>
+{:else if panel === 'fm'}
 <td
 	data-timer-effect-cell
 	data-row-index={index}
@@ -210,6 +214,7 @@
 	onpointerdown={(event) => handleEffectPointerDown(event, 'fm')}>
 	{fmEnabled ? '✓' : ''}
 </td>
+{:else}
 <td
 	data-timer-effect-cell
 	data-row-index={index}
@@ -225,6 +230,7 @@
 	onpointerdown={(event) => handleEffectPointerDown(event, 'envFm')}>
 	{envFmEnabled ? '✓' : ''}
 </td>
+{/if}
 <td class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 px-0.5'}>
 	<input
 		type="text"
@@ -245,7 +251,7 @@
 </td>
 <td class="timer-steps-column {isExpanded ? 'min-w-32 px-1.5' : 'min-w-24 px-0.5'}">
 	<div class="flex w-full min-w-0 items-center gap-1">
-		{#if usesFmWaveform}
+		{#if usesOffsetWaveform}
 			<button
 				type="button"
 				class="flex shrink-0 cursor-pointer items-center justify-center rounded border border-[var(--color-app-border)] p-0.5 transition-colors {selected

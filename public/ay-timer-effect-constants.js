@@ -11,6 +11,55 @@ export const TIMER_PWM_MODE_BY_DUTY_INDEX = 2;
 export const TIMER_FM_OFFSET_SEMITONE = 0;
 export const TIMER_FM_OFFSET_PERIOD = 1;
 
+export const TIMER_EFFECT_SLOT_SID = 0;
+export const TIMER_EFFECT_SLOT_SYNCBUZZER = 1;
+export const TIMER_EFFECT_SLOT_FM = 2;
+export const TIMER_EFFECT_SLOT_ENV_FM = 3;
+export const TIMER_EFFECT_SLOT_COUNT = 4;
+
+export const TIMER_EFFECT_SLOT_KEYS = ['sid', 'syncbuzzer', 'fm', 'envFm'];
+
+export function timerEffectSlotIndex(key) {
+	switch (key) {
+		case 'sid':
+			return TIMER_EFFECT_SLOT_SID;
+		case 'syncbuzzer':
+			return TIMER_EFFECT_SLOT_SYNCBUZZER;
+		case 'fm':
+			return TIMER_EFFECT_SLOT_FM;
+		case 'envFm':
+			return TIMER_EFFECT_SLOT_ENV_FM;
+		default:
+			return TIMER_EFFECT_SLOT_SID;
+	}
+}
+
+export function createDefaultChannelTimerEffects() {
+	return {
+		sid: createDefaultTimerEffect(),
+		syncbuzzer: createDefaultTimerEffect(),
+		fm: createDefaultTimerEffect(),
+		envFm: createDefaultTimerEffect()
+	};
+}
+
+export function ensureChannelTimerEffects(channel) {
+	if (!channel.timerEffects) {
+		channel.timerEffects = createDefaultChannelTimerEffects();
+	}
+	return channel.timerEffects;
+}
+
+export function disableAllChannelTimerEffects(channelTimerEffects) {
+	if (!channelTimerEffects) {
+		return;
+	}
+	disableTimerEffect(channelTimerEffects.sid);
+	disableTimerEffect(channelTimerEffects.syncbuzzer);
+	disableTimerEffect(channelTimerEffects.fm);
+	disableTimerEffect(channelTimerEffects.envFm);
+}
+
 export function resolveTimerFmOffsetMode(mode) {
 	return mode === TIMER_FM_OFFSET_PERIOD || mode === 'period'
 		? TIMER_FM_OFFSET_PERIOD
@@ -144,4 +193,29 @@ export function disableTimerEffect(timerEffect) {
 	timerEffect.kind = TIMER_EFFECT_KIND_NONE;
 	timerEffect.pwmMode = TIMER_PWM_MODE_OFF;
 	timerEffect.resetPhase = false;
+}
+
+export function copyTimerEffect(timerEffect) {
+	return {
+		enabled: timerEffect.enabled,
+		kind: timerEffect.kind ?? TIMER_EFFECT_KIND_NONE,
+		pwmMode: timerEffect.pwmMode ?? 0,
+		period: timerEffect.period,
+		periodLow: timerEffect.periodLow ?? timerEffect.period,
+		baseVolume: timerEffect.baseVolume ?? 0,
+		baseTonePeriod: timerEffect.baseTonePeriod ?? 1,
+		fmOffsetMode: timerEffect.fmOffsetMode ?? 0,
+		waveform: [...(timerEffect.waveform ?? [15, 0])],
+		waveformLoop: timerEffect.waveformLoop ?? 0,
+		resetPhase: timerEffect.resetPhase ?? false
+	};
+}
+
+export function copyChannelTimerEffects(timerEffects) {
+	return {
+		sid: copyTimerEffect(timerEffects.sid),
+		syncbuzzer: copyTimerEffect(timerEffects.syncbuzzer),
+		fm: copyTimerEffect(timerEffects.fm),
+		envFm: copyTimerEffect(timerEffects.envFm)
+	};
 }

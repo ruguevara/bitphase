@@ -17,6 +17,10 @@ export type AyTimerRow = {
 	semitone?: number;
 	timerWaveform?: number[];
 	timerWaveformLoop?: number;
+	fmWaveform?: number[];
+	fmWaveformLoop?: number;
+	envFmWaveform?: number[];
+	envFmWaveformLoop?: number;
 };
 
 export type AyInstrumentFields = {
@@ -124,12 +128,24 @@ export function createDefaultAyTimerRow(): AyTimerRow {
 		fm: false,
 		envFm: false,
 		timerWaveform: [...DEFAULT_AY_TIMER_WAVEFORM],
-		timerWaveformLoop: 0
+		timerWaveformLoop: 0,
+		fmWaveform: [...DEFAULT_AY_FM_WAVEFORM],
+		fmWaveformLoop: 0,
+		envFmWaveform: [...DEFAULT_AY_FM_WAVEFORM],
+		envFmWaveformLoop: 0
 	};
 }
 
 export function rowUsesFmWaveform(row: AyTimerRow | undefined): boolean {
-	return !!(row?.fm || row?.envFm);
+	return !!row?.fm;
+}
+
+export function rowUsesEnvFmWaveform(row: AyTimerRow | undefined): boolean {
+	return !!row?.envFm;
+}
+
+export function rowUsesOffsetWaveform(row: AyTimerRow | undefined): boolean {
+	return rowUsesFmWaveform(row) || rowUsesEnvFmWaveform(row);
 }
 
 export function resolveAyFmOffsetMode(row: AyTimerRow | undefined): AyFmOffsetMode {
@@ -196,11 +212,56 @@ export function effectiveRowFmWaveform(row: AyTimerRow | undefined): number[] {
 		return [...DEFAULT_AY_FM_WAVEFORM];
 	}
 	const mode = resolveAyFmOffsetMode(row);
-	const waveform = row?.timerWaveform;
+	const waveform = row?.fmWaveform?.length
+		? row.fmWaveform
+		: !row?.sid && !row?.syncbuzzer && row?.timerWaveform?.length
+			? row.timerWaveform
+			: undefined;
 	if (waveform && waveform.length > 0) {
 		return normalizeFmWaveform(waveform, mode);
 	}
 	return defaultAyFmWaveform(mode);
+}
+
+export function effectiveRowEnvFmWaveform(row: AyTimerRow | undefined): number[] {
+	if (!rowUsesEnvFmWaveform(row)) {
+		return [...DEFAULT_AY_FM_WAVEFORM];
+	}
+	const mode = resolveAyFmOffsetMode(row);
+	const waveform = row?.envFmWaveform?.length
+		? row.envFmWaveform
+		: !row?.sid && !row?.syncbuzzer && row?.timerWaveform?.length
+			? row.timerWaveform
+			: undefined;
+	if (waveform && waveform.length > 0) {
+		return normalizeFmWaveform(waveform, mode);
+	}
+	return defaultAyFmWaveform(mode);
+}
+
+export function effectiveRowFmWaveformLoop(row: AyTimerRow | undefined): number {
+	if (row?.fmWaveformLoop !== undefined) {
+		return row.fmWaveformLoop;
+	}
+	return row?.timerWaveformLoop ?? 0;
+}
+
+export function effectiveRowEnvFmWaveformLoop(row: AyTimerRow | undefined): number {
+	if (row?.envFmWaveformLoop !== undefined) {
+		return row.envFmWaveformLoop;
+	}
+	return row?.timerWaveformLoop ?? 0;
+}
+
+export function effectiveRowMixTimerWaveform(row: AyTimerRow | undefined): number[] {
+	const waveform = row?.timerWaveform;
+	if (waveform && waveform.length > 0) {
+		return waveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH);
+	}
+	if (row?.syncbuzzer) {
+		return [...DEFAULT_AY_SYNCBUZZER_WAVEFORM];
+	}
+	return [...DEFAULT_AY_TIMER_WAVEFORM];
 }
 
 export function isDefaultFmTimerWaveform(waveform: readonly number[]): boolean {
@@ -213,11 +274,7 @@ export function isDefaultFmTimerWaveform(waveform: readonly number[]): boolean {
 }
 
 export function effectiveRowTimerWaveform(row: AyTimerRow | undefined): number[] {
-	const waveform = row?.timerWaveform;
-	if (waveform && waveform.length > 0) {
-		return waveform;
-	}
-	return [...DEFAULT_AY_TIMER_WAVEFORM];
+	return effectiveRowMixTimerWaveform(row);
 }
 
 export function effectiveRowTimerWaveformLoop(row: AyTimerRow | undefined): number {
@@ -251,23 +308,39 @@ export function resolveSyncbuzzerWaveform(
 	return steps.map((step) => (step === 0 ? patternShape : step));
 }
 
+export function rowSupportsSidTimerPwm(row: AyTimerRow | undefined): boolean {
+	return !!row?.sid && effectiveRowMixTimerWaveform(row).length === 2;
+}
+
+export function rowSupportsSyncbuzzerTimerPwm(row: AyTimerRow | undefined): boolean {
+	return !!row?.syncbuzzer && effectiveRowMixTimerWaveform(row).length === 2;
+}
+
+export function rowSupportsFmTimerPwm(row: AyTimerRow | undefined): boolean {
+	return !!row?.fm && effectiveRowFmWaveform(row).length === 2;
+}
+
+export function rowSupportsEnvFmTimerPwm(row: AyTimerRow | undefined): boolean {
+	return !!row?.envFm && effectiveRowEnvFmWaveform(row).length === 2;
+}
+
 export function rowSupportsTimerPwm(row: AyTimerRow | undefined): boolean {
-	if (!row || (!row.sid && !row.syncbuzzer && !rowUsesFmWaveform(row))) {
-		return false;
-	}
-	const waveform = rowUsesFmWaveform(row)
-		? effectiveRowFmWaveform(row)
-		: effectiveRowTimerWaveform(row);
-	return waveform.length === 2;
+	return (
+		rowSupportsSidTimerPwm(row) ||
+		rowSupportsSyncbuzzerTimerPwm(row) ||
+		rowSupportsFmTimerPwm(row) ||
+		rowSupportsEnvFmTimerPwm(row)
+	);
 }
 
 export function rowUsesSyncbuzzerPwmDuty(row: AyTimerRow | undefined): boolean {
-	return !!row?.syncbuzzer && rowSupportsTimerPwm(row);
+	return rowSupportsSyncbuzzerTimerPwm(row);
 }
 
 export function instrumentSupportsTimerPwm(fields: AyInstrumentFields): boolean {
 	return fields.timerRows.some(
-		(row) => (row.sid || row.syncbuzzer || rowUsesFmWaveform(row)) && rowSupportsTimerPwm(row)
+		(row) =>
+			(row.sid || row.syncbuzzer || rowUsesOffsetWaveform(row)) && rowSupportsTimerPwm(row)
 	);
 }
 
@@ -658,31 +731,55 @@ export function timerPwmStepPeriod(
 	return isTimerWaveformLowPhase(stepValue) ? lowPeriod : highPeriod;
 }
 
-export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
+export function resolveSidSyncbuzzerExclusive(row: AyTimerRow): AyTimerRow {
+	if (row.sid && row.syncbuzzer) {
+		return { ...row, syncbuzzer: false };
+	}
 	if (row.sid) {
-		return { ...row, syncbuzzer: false, fm: false, envFm: false };
+		return { ...row, syncbuzzer: false };
 	}
 	if (row.syncbuzzer) {
-		return { ...row, sid: false, fm: false, envFm: false };
-	}
-	if (row.fm) {
-		return { ...row, sid: false, syncbuzzer: false, envFm: false };
-	}
-	if (row.envFm) {
-		return { ...row, sid: false, syncbuzzer: false, fm: false };
+		return { ...row, sid: false };
 	}
 	return row;
+}
+
+export function resolveExclusiveTimerEffects(row: AyTimerRow): AyTimerRow {
+	return resolveSidSyncbuzzerExclusive(row);
 }
 
 function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
 	const defaults = createDefaultAyTimerRow();
 	const fm = row?.fm ?? defaults.fm ?? false;
 	const envFm = row?.envFm ?? defaults.envFm ?? false;
-	const usesFmWaveform = fm || envFm;
 	const fmOffsetMode = resolveAyFmOffsetMode(row);
+	const sid = row?.sid ?? defaults.sid;
+	const syncbuzzer = row?.syncbuzzer ?? defaults.syncbuzzer;
+	const legacySharedWaveform = row?.timerWaveform?.length ? [...row.timerWaveform] : undefined;
+	const hasDedicatedFmWaveform = !!(row?.fmWaveform && row.fmWaveform.length > 0);
+	const hasDedicatedEnvFmWaveform = !!(row?.envFmWaveform && row.envFmWaveform.length > 0);
+	const legacyForOffsetEffects =
+		legacySharedWaveform && !sid && !syncbuzzer ? legacySharedWaveform : undefined;
+	const fmWaveform = hasDedicatedFmWaveform
+		? normalizeFmWaveform(row!.fmWaveform!, fmOffsetMode)
+		: fm && legacyForOffsetEffects
+			? normalizeFmWaveform(legacyForOffsetEffects, fmOffsetMode)
+			: defaultAyFmWaveform(fmOffsetMode);
+	const envFmWaveform = hasDedicatedEnvFmWaveform
+		? normalizeFmWaveform(row!.envFmWaveform!, fmOffsetMode)
+		: envFm && legacyForOffsetEffects
+			? normalizeFmWaveform(legacyForOffsetEffects, fmOffsetMode)
+			: defaultAyFmWaveform(fmOffsetMode);
+	const timerWaveform =
+		legacySharedWaveform && (sid || syncbuzzer || (!fm && !envFm))
+			? legacySharedWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
+			: sid || syncbuzzer
+				? legacySharedWaveform?.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH) ??
+					(syncbuzzer ? [...DEFAULT_AY_SYNCBUZZER_WAVEFORM] : [...DEFAULT_AY_TIMER_WAVEFORM])
+				: [...DEFAULT_AY_TIMER_WAVEFORM];
 	const normalized: AyTimerRow = {
-		sid: row?.sid ?? defaults.sid,
-		syncbuzzer: row?.syncbuzzer ?? defaults.syncbuzzer,
+		sid,
+		syncbuzzer,
 		fm,
 		envFm,
 		fmOffsetMode,
@@ -690,14 +787,13 @@ function normalizeTimerRow(row: LegacyTimerRow | undefined): AyTimerRow {
 			row?.sidPeriodMode === 'auto' || row?.sidPeriodMode === 'manual'
 				? row.sidPeriodMode
 				: 'auto',
-		timerWaveform: row?.timerWaveform?.length
-			? usesFmWaveform
-				? normalizeFmWaveform(row.timerWaveform, fmOffsetMode)
-				: row.timerWaveform.map((value) => value & 0xf).slice(0, AY_TIMER_WAVEFORM_MAX_LENGTH)
-			: usesFmWaveform
-				? defaultAyFmWaveform(fmOffsetMode)
-				: [...defaults.timerWaveform!],
-		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop!
+		timerWaveform,
+		timerWaveformLoop: row?.timerWaveformLoop ?? defaults.timerWaveformLoop!,
+		fmWaveform,
+		fmWaveformLoop: row?.fmWaveformLoop ?? row?.timerWaveformLoop ?? defaults.fmWaveformLoop!,
+		envFmWaveform,
+		envFmWaveformLoop:
+			row?.envFmWaveformLoop ?? row?.fmWaveformLoop ?? row?.timerWaveformLoop ?? defaults.envFmWaveformLoop!
 	};
 	if (row?.detune !== undefined) {
 		normalized.detune = row.detune;

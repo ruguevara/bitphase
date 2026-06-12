@@ -9,7 +9,10 @@ import {
 import {
 	TIMER_EFFECT_KIND_VOLUME,
 	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
-	TIMER_EFFECT_KIND_TONE
+	TIMER_EFFECT_KIND_TONE,
+	TIMER_EFFECT_SLOT_SID,
+	TIMER_EFFECT_SLOT_SYNCBUZZER,
+	disableAllChannelTimerEffects
 } from './ay-timer-effect-constants.js';
 import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
@@ -226,31 +229,40 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				toneHz.push(tonePeriod > 0 ? clock / (16 * tonePeriod) : null);
 			}
 
-			const timerEffect = channel?.timerEffect;
+			const sidEffect = channel?.timerEffects?.sid;
+			const fmEffect = channel?.timerEffects?.fm;
+			const syncbuzzerEffect = channel?.timerEffects?.syncbuzzer;
 			const volumeEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
-			const toneEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_TONE;
+				sidEffect?.enabled && sidEffect.kind === TIMER_EFFECT_KIND_VOLUME;
+			const toneEffectActive = fmEffect?.enabled && fmEffect.kind === TIMER_EFFECT_KIND_TONE;
 			const envelopeShapeEffectActive =
-				timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
+				syncbuzzerEffect?.enabled &&
+				syncbuzzerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
 
 			if (!volumeEffectActive && !toneEffectActive) {
 				sidTimerHz.push(null);
 			} else if (canQueryActivePeriod) {
-				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex) & 0xffff;
+				const activePeriod =
+					getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex, TIMER_EFFECT_SLOT_SID) &
+					0xffff;
 				sidTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
-				const timerPeriod = timerEffect.period & 0xffff;
+				const timerPeriod = (volumeEffectActive ? sidEffect : fmEffect).period & 0xffff;
 				sidTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
 			}
 
 			if (!envelopeShapeEffectActive) {
 				syncbuzzerTimerHz.push(null);
 			} else if (canQueryActivePeriod) {
-				const activePeriod = getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex) & 0xffff;
+				const activePeriod =
+					getTimerEffectActivePeriod(
+						ayumiPtr,
+						hardwareChannelIndex,
+						TIMER_EFFECT_SLOT_SYNCBUZZER
+					) & 0xffff;
 				syncbuzzerTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
 			} else {
-				const timerPeriod = timerEffect.period & 0xffff;
+				const timerPeriod = syncbuzzerEffect.period & 0xffff;
 				syncbuzzerTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
 			}
 		}

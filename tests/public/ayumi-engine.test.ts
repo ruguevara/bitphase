@@ -8,6 +8,10 @@ import {
 	TIMER_PWM_MODE_OFF,
 	TIMER_PWM_MODE_BY_DUTY_INDEX,
 	TIMER_FM_OFFSET_PERIOD,
+	TIMER_EFFECT_SLOT_SID,
+	TIMER_EFFECT_SLOT_SYNCBUZZER,
+	TIMER_EFFECT_SLOT_FM,
+	TIMER_EFFECT_SLOT_ENV_FM,
 	createVolumeTimerEffect,
 	createEnvelopeShapeTimerEffect,
 	createEnvelopePeriodTimerEffect
@@ -22,6 +26,7 @@ describe('AyumiEngine', () => {
 		ayumi_set_envelope: ReturnType<typeof vi.fn>;
 		ayumi_set_envelope_shape: ReturnType<typeof vi.fn>;
 		ayumi_set_timer_effect: ReturnType<typeof vi.fn>;
+		ayumi_set_timer_effect_slot: ReturnType<typeof vi.fn>;
 		ayumi_set_timer_effect_waveform: ReturnType<typeof vi.fn>;
 		ayumi_timer_effect_reset: ReturnType<typeof vi.fn>;
 		ayumi_process: ReturnType<typeof vi.fn>;
@@ -41,6 +46,7 @@ describe('AyumiEngine', () => {
 			ayumi_set_envelope: vi.fn(),
 			ayumi_set_envelope_shape: vi.fn(),
 			ayumi_set_timer_effect: vi.fn(),
+			ayumi_set_timer_effect_slot: vi.fn(),
 			ayumi_set_timer_effect_waveform: vi.fn(),
 			ayumi_timer_effect_reset: vi.fn(),
 			ayumi_process: vi.fn(),
@@ -141,7 +147,7 @@ describe('AyumiEngine', () => {
 			state.channels[0].mixer.tone = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].timerEffect = createVolumeTimerEffect({
+			state.channels[0].timerEffects.sid = createVolumeTimerEffect({
 				enabled: true,
 				pwm: false,
 				period: 503,
@@ -151,11 +157,11 @@ describe('AyumiEngine', () => {
 				resetPhase: false
 			});
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+			expect(mockWasm.ayumi_set_timer_effect_slot).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_SID,
 				1,
-				TIMER_EFFECT_KIND_VOLUME,
 				TIMER_PWM_MODE_OFF,
 				503,
 				503,
@@ -166,6 +172,7 @@ describe('AyumiEngine', () => {
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_SID,
 				256,
 				2,
 				0
@@ -179,7 +186,7 @@ describe('AyumiEngine', () => {
 			state.channels[0].mixer.envelope = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].timerEffect = createEnvelopeShapeTimerEffect({
+			state.channels[0].timerEffects.syncbuzzer = createEnvelopeShapeTimerEffect({
 				enabled: true,
 				pwm: true,
 				period: 40,
@@ -189,11 +196,11 @@ describe('AyumiEngine', () => {
 				resetPhase: false
 			});
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+			expect(mockWasm.ayumi_set_timer_effect_slot).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_SYNCBUZZER,
 				1,
-				TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
 				TIMER_PWM_MODE_BY_DUTY_INDEX,
 				40,
 				60,
@@ -204,6 +211,7 @@ describe('AyumiEngine', () => {
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_SYNCBUZZER,
 				256,
 				2,
 				0
@@ -217,7 +225,7 @@ describe('AyumiEngine', () => {
 			state.channels[0].mixer.envelope = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].timerEffect = createEnvelopePeriodTimerEffect({
+			state.channels[0].timerEffects.envFm = createEnvelopePeriodTimerEffect({
 				enabled: true,
 				pwm: false,
 				period: 80,
@@ -228,11 +236,11 @@ describe('AyumiEngine', () => {
 				resetPhase: false
 			});
 			engine.applyRegisterState(state);
-			expect(mockWasm.ayumi_set_timer_effect).toHaveBeenCalledWith(
+			expect(mockWasm.ayumi_set_timer_effect_slot).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_ENV_FM,
 				1,
-				TIMER_EFFECT_KIND_ENVELOPE_PERIOD,
 				TIMER_PWM_MODE_OFF,
 				80,
 				80,
@@ -243,6 +251,7 @@ describe('AyumiEngine', () => {
 			expect(mockWasm.ayumi_set_timer_effect_waveform).toHaveBeenCalledWith(
 				mockPtr,
 				0,
+				TIMER_EFFECT_SLOT_ENV_FM,
 				256,
 				4,
 				0
@@ -257,7 +266,7 @@ describe('AyumiEngine', () => {
 			state.channels[0].mixer.tone = true;
 			state.channels[0].tone = 500;
 			state.channels[0].volume = 15;
-			state.channels[0].timerEffect = createVolumeTimerEffect({
+			state.channels[0].timerEffects.sid = createVolumeTimerEffect({
 				enabled: true,
 				pwm: true,
 				period: 503,

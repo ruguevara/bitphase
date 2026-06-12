@@ -352,7 +352,7 @@ describe('AyTimerEffectsController', () => {
 	});
 
 	it('switches fm offset mode and keeps custom waveform values', () => {
-		let current = createInstrument([{ fm: true, timerWaveform: [0, 8, -4] }]);
+		let current = createInstrument([{ fm: true, fmWaveform: [0, 8, -4] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
 			(instrument) => {
@@ -360,6 +360,7 @@ describe('AyTimerEffectsController', () => {
 			},
 			() => false
 		);
+		controller.setTimerEditPanel('fm');
 
 		expect(controller.rowFmOffsetMode(0)).toBe('semitone');
 		expect(controller.formatRowTimerWaveform(0)).toBe('0 8 -4');
@@ -369,8 +370,8 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.formatRowTimerWaveform(0)).toBe('0 8 -4');
 	});
 
-	it('resets waveform to syncbuzzer default when switching from fm', () => {
-		let current = createInstrument([{ fm: true, timerWaveform: [15, 7] }]);
+	it('keeps fm enabled when enabling syncbuzzer on the mix panel', () => {
+		let current = createInstrument([{ fm: true, fmWaveform: [0, 7], timerWaveform: [15, 0] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
 			(instrument) => {
@@ -379,14 +380,14 @@ describe('AyTimerEffectsController', () => {
 			() => false
 		);
 
-		expect(controller.formatRowTimerWaveform(0)).toBe('15 7');
+		controller.setTimerEditPanel('mix');
 		controller.updateSyncbuzzerRow(0, true);
-		expect(controller.rowFmEnabled(0)).toBe(false);
+		expect(controller.rowFmEnabled(0)).toBe(true);
 		expect(controller.rowSyncbuzzerEnabled(0)).toBe(true);
 		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 	});
 
-	it('enables env fm exclusively and uses fm waveform semantics', () => {
+	it('allows sid and env fm together on separate panels', () => {
 		let current = createInstrument([{ sid: true, timerWaveform: [15, 0] }]);
 		const controller = new AyTimerEffectsController(
 			() => current,
@@ -398,21 +399,26 @@ describe('AyTimerEffectsController', () => {
 
 		controller.updateEnvFmRow(0, true);
 		expect(controller.rowEnvFmEnabled(0)).toBe(true);
-		expect(controller.rowSidEnabled(0)).toBe(false);
+		expect(controller.rowSidEnabled(0)).toBe(true);
 		expect(controller.rowFmEnabled(0)).toBe(false);
-		expect(controller.rowSyncbuzzerEnabled(0)).toBe(false);
-		expect(controller.rowUsesFmWaveform(0)).toBe(true);
+
+		controller.setTimerEditPanel('envFm');
+		expect(controller.rowUsesOffsetWaveform(0)).toBe(true);
 		expect(controller.rowTimerWaveformUsesFmSemitones(0)).toBe(true);
 		expect(controller.formatRowTimerWaveform(0)).toBe('0 7');
+		controller.setRowTimerWaveform(0, [0, -3, 4]);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 -3 4');
 
-		controller.toggleFmOffsetMode(0);
-		expect(controller.rowFmOffsetMode(0)).toBe('period');
-		expect(controller.rowTimerWaveformUsesFmPeriodOffsets(0)).toBe(true);
-		expect(controller.formatRowTimerWaveform(0)).toBe('0 16 0 -16');
-
+		controller.setTimerEditPanel('fm');
 		controller.updateFmRow(0, true);
 		expect(controller.rowFmEnabled(0)).toBe(true);
-		expect(controller.rowEnvFmEnabled(0)).toBe(false);
+		expect(controller.rowEnvFmEnabled(0)).toBe(true);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 7');
+		controller.setRowTimerWaveform(0, [0, 12]);
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 12');
+
+		controller.setTimerEditPanel('envFm');
+		expect(controller.formatRowTimerWaveform(0)).toBe('0 -3 4');
 	});
 
 	it('keeps waveform editing available for syncbuzzer rows', () => {
@@ -424,6 +430,7 @@ describe('AyTimerEffectsController', () => {
 			},
 			() => false
 		);
+		controller.setTimerEditPanel('mix');
 
 		expect(controller.rowTimerWaveformUsesEnvelopeShapes(0)).toBe(false);
 		controller.openWaveformEditor(0);

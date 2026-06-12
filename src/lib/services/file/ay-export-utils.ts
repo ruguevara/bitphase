@@ -255,11 +255,15 @@ export function createDisabledTimerCaptureStates(): {
 }
 
 export function extractHardwareSidStates(registerState: {
-	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
+	channels: Array<{
+		timerEffects?: {
+			sid?: TimerEffectRegisterState;
+		};
+	}>;
 }): HardwareSidState[] {
 	const result: HardwareSidState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffects?.sid;
 		const enabled =
 			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_VOLUME;
 		result.push({
@@ -276,11 +280,15 @@ export function extractHardwareSidStates(registerState: {
 }
 
 export function extractHardwareSyncBuzzerStates(registerState: {
-	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
+	channels: Array<{
+		timerEffects?: {
+			syncbuzzer?: TimerEffectRegisterState;
+		};
+	}>;
 }): HardwareSyncBuzzerState[] {
 	const result: HardwareSyncBuzzerState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffects?.syncbuzzer;
 		const enabled =
 			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
 		const waveform = timerEffect?.waveform ?? [0];
@@ -294,11 +302,15 @@ export function extractHardwareSyncBuzzerStates(registerState: {
 }
 
 export function extractHardwareFmStates(registerState: {
-	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
+	channels: Array<{
+		timerEffects?: {
+			fm?: TimerEffectRegisterState;
+		};
+	}>;
 }): HardwareFmState[] {
 	const result: HardwareFmState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffects?.fm;
 		const enabled = !!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_TONE;
 		const fmOffsetMode = resolveCapturedFmOffsetMode(timerEffect?.fmOffsetMode);
 		result.push({
@@ -316,11 +328,15 @@ export function extractHardwareFmStates(registerState: {
 }
 
 export function extractHardwareEnvFmStates(registerState: {
-	channels: Array<{ timerEffect?: TimerEffectRegisterState }>;
+	channels: Array<{
+		timerEffects?: {
+			envFm?: TimerEffectRegisterState;
+		};
+	}>;
 }): HardwareEnvFmState[] {
 	const result: HardwareEnvFmState[] = [];
 	for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
-		const timerEffect = registerState.channels[channelIndex]?.timerEffect;
+		const timerEffect = registerState.channels[channelIndex]?.timerEffects?.envFm;
 		const enabled =
 			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_PERIOD;
 		const fmOffsetMode = resolveCapturedFmOffsetMode(timerEffect?.fmOffsetMode);

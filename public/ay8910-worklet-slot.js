@@ -4,6 +4,7 @@ import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
 import AYChipRegisterState from './ay-chip-register-state.js';
 import VirtualChannelMixer from './virtual-channel-mixer.js';
+import { disableAllChannelTimerEffects, ensureChannelTimerEffects } from './ay-timer-effect-constants.js';
 import { WorkletSlotBase } from './worklet-slot-base.js';
 
 export class Ay8910WorkletSlot extends WorkletSlotBase {
@@ -176,10 +177,7 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 			noise: false,
 			envelope: false
 		};
-		const timerEffect = registerState.channels[channelIndex].timerEffect;
-		if (timerEffect) {
-			timerEffect.enabled = false;
-		}
+		disableAllChannelTimerEffects(ensureChannelTimerEffects(registerState.channels[channelIndex]));
 	}
 
 	handleSetVirtualChannelConfig({ virtualChannelMap, hwChannelCount }) {
