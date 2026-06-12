@@ -16,9 +16,16 @@
 	import {
 		AY_TIMER_WAVEFORM_MAX_LENGTH,
 		AY_TIMER_WAVEFORM_MIN_LENGTH,
+		AY_FM_SEMITONE_MAX,
+		AY_FM_SEMITONE_MIN,
 		AY_FM_PERIOD_OFFSET_MAX,
+		AY_FM_PERIOD_OFFSET_MIN,
 		clampFmPeriodOffset,
-		clampFmSemitone
+		clampFmSemitone,
+		fmPeriodOffsetToNormalized,
+		fmSemitoneToNormalized,
+		normalizedToFmPeriodOffset,
+		normalizedToFmSemitone
 	} from './instrument';
 
 	let {
@@ -117,7 +124,7 @@
 			const centerX = PLOT_PADDING + stepWidth * index + stepWidth / 2;
 			if (usesFmPeriodOffsets) {
 				const offset = clampFmPeriodOffset(value);
-				const normalized = (offset + AY_FM_PERIOD_OFFSET_MAX) / (AY_FM_PERIOD_OFFSET_MAX * 2);
+				const normalized = fmPeriodOffsetToNormalized(offset);
 				return {
 					index,
 					value: offset,
@@ -127,7 +134,7 @@
 			}
 			if (usesFmSemitones) {
 				const semitone = clampFmSemitone(value);
-				const normalized = (semitone + 12) / 24;
+				const normalized = fmSemitoneToNormalized(semitone);
 				return {
 					index,
 					value: semitone,
@@ -281,12 +288,10 @@
 		const innerHeight = VIEW_HEIGHT - PLOT_PADDING * 2;
 		const y = point.y - PLOT_PADDING;
 		const normalized = Math.max(0, Math.min(1, 1 - y / innerHeight));
-		const step = usesFmPeriodOffsets
-			? clampFmPeriodOffset(
-					Math.round(normalized * AY_FM_PERIOD_OFFSET_MAX * 2 - AY_FM_PERIOD_OFFSET_MAX)
-				)
-			: usesFmSemitones
-				? clampFmSemitone(Math.round(normalized * 24 - 12))
+		const step = controller.rowTimerWaveformUsesFmPeriodOffsets(rowIndex)
+			? normalizedToFmPeriodOffset(normalized)
+			: controller.rowTimerWaveformUsesFmSemitones(rowIndex)
+				? normalizedToFmSemitone(normalized)
 				: amplitudeToNearestSidStep(
 						normalized,
 						SID_WAVEFORM_PREVIEW_BASE_VOLUME,
@@ -348,25 +353,24 @@
 	title={editorTitle}
 	subtitle={editorSubtitle}
 	titleTooltip={usesFmPeriodOffsets
-		? 'FM period offsets added to base tone period. Y axis spans -4095 to +4095.'
+		? `FM period offsets added to base tone period. Y axis spans ${AY_FM_PERIOD_OFFSET_MIN} to +${AY_FM_PERIOD_OFFSET_MAX}.`
 		: usesFmSemitones
-			? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
+			? `FM semitone offsets (signed). Y axis spans ${AY_FM_SEMITONE_MIN} to +${AY_FM_SEMITONE_MAX} semitones.`
 			: usesEnvelopeShapes
 				? 'Envelope shapes (0–15 hex R13 values)'
 				: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}
 	{canvasHeight}
-	canvasClass="flex"
 	onclose={() => onclose?.()}
 	closeLabel="Close waveform editor">
 	{#snippet badges()}
-		<span>{stepCountLabel}</span>
+		<span class="whitespace-nowrap">{stepCountLabel}</span>
 		{#if activeStepValue !== null && highlightedStepIndex !== null}
-			<StatusPill>#{highlightedStepIndex + 1} = {activeStepValue}</StatusPill>
+			<StatusPill class="whitespace-nowrap">#{highlightedStepIndex + 1} = {activeStepValue}</StatusPill>
 		{/if}
 	{/snippet}
 
 	{#snippet children()}
-		<div class="flex h-full min-w-0">
+		<div class="flex h-full w-full min-w-0">
 		<div class="min-w-0 flex-1 overflow-hidden" use:observePlotSize>
 		<svg
 			bind:this={svgEl}

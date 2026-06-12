@@ -17,6 +17,10 @@ function createInstrument(
 		sidPeriodMode?: 'auto' | 'manual';
 		timerWaveform?: number[];
 		timerWaveformLoop?: number;
+		fmWaveform?: number[];
+		fmWaveformLoop?: number;
+		envFmWaveform?: number[];
+		envFmWaveformLoop?: number;
 	}[],
 	pwm?: {
 		timerPwmDuty?: number;
@@ -440,5 +444,39 @@ describe('AyTimerEffectsController', () => {
 		expect(controller.formatRowTimerWaveform(0)).toBe('8');
 		controller.openWaveformEditor(0);
 		expect(controller.waveformEditorRowIndex).toBeNull();
+	});
+
+	it('setRowWaveformStep updates fm waveform when fm is enabled', () => {
+		let current = createInstrument([
+			{ fm: true, fmWaveform: [0, 16, 0, -16], fmOffsetMode: 'period' }
+		]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+		controller.setTimerEditPanel('fm');
+		controller.setRowWaveformStep(0, 0, 500);
+		expect(controller.rowTimerWaveform(0)[0]).toBe(500);
+	});
+
+	it('rowTimerWaveform reads dedicated fmWaveform on fm panel even when fm is disabled', () => {
+		let current = createInstrument([{ fm: false }]);
+		const controller = new AyTimerEffectsController(
+			() => current,
+			(instrument) => {
+				current = instrument;
+			},
+			() => false
+		);
+		controller.setTimerEditPanel('fm');
+		controller.setRowWaveformStep(0, 0, 8);
+		expect(
+			(current as Instrument & { timerRows?: { fmWaveform?: number[] }[] }).timerRows?.[0]
+				?.fmWaveform?.[0]
+		).toBe(8);
+		expect(controller.rowTimerWaveform(0)[0]).toBe(8);
 	});
 });

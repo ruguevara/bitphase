@@ -11,10 +11,10 @@ import {
 	clampFmSemitone,
 	isIncompleteSignedNumericToken,
 	effectiveRowDetune,
-	effectiveRowFmWaveform,
 	effectiveRowFmWaveformLoop,
-	effectiveRowEnvFmWaveform,
 	effectiveRowEnvFmWaveformLoop,
+	panelRowFmWaveform,
+	panelRowEnvFmWaveform,
 	effectiveRowMixTimerWaveform,
 	resolveAyFmOffsetMode,
 	effectiveRowPeriod,
@@ -155,8 +155,8 @@ export class AyTimerEffectsController {
 
 	private effectiveActiveOffsetWaveform(row: AyTimerRow | undefined): number[] {
 		return this.timerEditPanel === 'envFm'
-			? effectiveRowEnvFmWaveform(row)
-			: effectiveRowFmWaveform(row);
+			? panelRowEnvFmWaveform(row)
+			: panelRowFmWaveform(row);
 	}
 
 	private commitActiveOffsetWaveform(rowIndex: number, nextWaveform: number[]): void {
@@ -532,10 +532,10 @@ export class AyTimerEffectsController {
 	rowTimerWaveform(rowIndex: number): number[] {
 		const row = this.fields.timerRows[rowIndex];
 		if (this.timerEditPanel === 'envFm') {
-			return effectiveRowEnvFmWaveform(row);
+			return panelRowEnvFmWaveform(row);
 		}
 		if (this.timerEditPanel === 'fm') {
-			return effectiveRowFmWaveform(row);
+			return panelRowFmWaveform(row);
 		}
 		return effectiveRowTimerWaveform(row);
 	}

@@ -40,24 +40,27 @@
 	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3 {disabled
 		? 'opacity-60'
 		: ''}">
-	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+	<div class="mb-2 flex flex-nowrap items-start justify-between gap-2">
 		<div
-			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
+			class="flex min-w-0 items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
 			title={titleTooltip}>
 			<span
-				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
+				class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
 				<Icon class={iconSizeClass} />
 			</span>
-			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">{title}</div>
+			<div class="min-w-0 leading-tight">
+				<div class="truncate text-[var(--color-app-text-secondary)]">{title}</div>
 				{#if subtitle}
-					<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{subtitle}</div>
+					<div class="truncate text-[10px] text-[var(--color-app-text-tertiary)]">{subtitle}</div>
 				{/if}
 			</div>
 		</div>
-		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
+		<div
+			class="flex shrink-0 flex-nowrap items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
 			{#if badges}
-				{@render badges()}
+				<div class="flex flex-nowrap items-center gap-2 whitespace-nowrap">
+					{@render badges()}
+				</div>
 			{/if}
 			{#if onclose}
 				<button

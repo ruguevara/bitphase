@@ -11,6 +11,10 @@ import {
 	resolveExclusiveTimerEffects,
 	formatAyTimerWaveform,
 	formatAyFmWaveform,
+	fmPeriodOffsetToNormalized,
+	fmSemitoneToNormalized,
+	normalizedToFmPeriodOffset,
+	normalizedToFmSemitone,
 	clampFmPeriodOffset,
 	parseAyTimerWaveform,
 	parseAyFmWaveform,
@@ -426,6 +430,20 @@ describe('ay instrument timer fields', () => {
 		expect(effectiveInstrumentTimerPwmDuty(normalizeAyInstrumentFields(
 			new Instrument('01', [{ tone: true, volume: 15 }])
 		))).toBe(DEFAULT_AY_TIMER_PWM_DUTY);
+	});
+
+	it('maps fm waveform editor coordinates to the same limits as text input', () => {
+		expect(fmSemitoneToNormalized(-127)).toBe(0);
+		expect(fmSemitoneToNormalized(128)).toBe(1);
+		expect(normalizedToFmSemitone(0)).toBe(-127);
+		expect(normalizedToFmSemitone(1)).toBe(128);
+		expect(normalizedToFmSemitone(fmSemitoneToNormalized(42))).toBe(42);
+
+		expect(fmPeriodOffsetToNormalized(-4095)).toBe(0);
+		expect(fmPeriodOffsetToNormalized(4095)).toBe(1);
+		expect(normalizedToFmPeriodOffset(0)).toBe(-4095);
+		expect(normalizedToFmPeriodOffset(1)).toBe(4095);
+		expect(normalizedToFmPeriodOffset(fmPeriodOffsetToNormalized(-128))).toBe(-128);
 	});
 
 	it('computes fm tone and env-fm periods from waveform offsets', () => {
