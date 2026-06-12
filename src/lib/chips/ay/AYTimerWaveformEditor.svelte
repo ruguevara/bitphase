@@ -1,8 +1,9 @@
 <script lang="ts">
 	import IconCarbonAdd from '~icons/carbon/add';
 	import IconCarbonSubtract from '~icons/carbon/subtract';
-	import IconCarbonClose from '~icons/carbon/close';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
+	import AyTimerEditorPanel from './AyTimerEditorPanel.svelte';
+	import { StatusPill } from '../../components/StatusPill';
 	import { getContext } from 'svelte';
 	import type { AudioService } from '../../services/audio/audio-service';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
@@ -341,49 +342,31 @@
 	}
 </script>
 
-<div
-	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3">
-	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-		<div
-			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title={usesFmPeriodOffsets
-				? 'FM period offsets added to base tone period. Y axis spans -4095 to +4095.'
-				: usesFmSemitones
-				? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
-				: usesEnvelopeShapes
-					? 'Envelope shapes (0–15 hex R13 values)'
-					: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}>
-			<span
-				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
-				<IconCarbonWaveform class={iconSizeClass} />
-			</span>
-			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">{editorTitle}</div>
-				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">{editorSubtitle}</div>
-			</div>
-		</div>
-		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
-			<span>{stepCountLabel}</span>
-			{#if activeStepValue !== null && highlightedStepIndex !== null}
-				<span
-					class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
-					#{highlightedStepIndex + 1} = {activeStepValue}
-				</span>
-			{/if}
-			<button
-				type="button"
-				class="inline-flex cursor-pointer items-center justify-center rounded p-1 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)]"
-				title="Close waveform editor"
-				aria-label="Close waveform editor"
-				onclick={() => onclose?.()}>
-				<IconCarbonClose class={iconSizeClass} />
-			</button>
-		</div>
-	</div>
+<AyTimerEditorPanel
+	icon={IconCarbonWaveform}
+	{iconSizeClass}
+	title={editorTitle}
+	subtitle={editorSubtitle}
+	titleTooltip={usesFmPeriodOffsets
+		? 'FM period offsets added to base tone period. Y axis spans -4095 to +4095.'
+		: usesFmSemitones
+			? 'FM semitone offsets (signed). Y axis spans -12 to +12 semitones.'
+			: usesEnvelopeShapes
+				? 'Envelope shapes (0–15 hex R13 values)'
+				: `SID steps (0–15). Y axis uses ${chipVariant} DAC curve.`}
+	{canvasHeight}
+	canvasClass="flex"
+	onclose={() => onclose?.()}
+	closeLabel="Close waveform editor">
+	{#snippet badges()}
+		<span>{stepCountLabel}</span>
+		{#if activeStepValue !== null && highlightedStepIndex !== null}
+			<StatusPill>#{highlightedStepIndex + 1} = {activeStepValue}</StatusPill>
+		{/if}
+	{/snippet}
 
-	<div
-		class="flex overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] ring-1 ring-inset ring-[var(--color-app-border)]/60"
-		style:height="{canvasHeight}px">
+	{#snippet children()}
+		<div class="flex h-full min-w-0">
 		<div class="min-w-0 flex-1 overflow-hidden" use:observePlotSize>
 		<svg
 			bind:this={svgEl}
@@ -512,5 +495,6 @@
 				<IconCarbonAdd class={stepButtonIconClass} />
 			</button>
 		</div>
-	</div>
-</div>
+		</div>
+	{/snippet}
+</AyTimerEditorPanel>

@@ -6,6 +6,7 @@
 		sanitizeTimerPwmPercentInput,
 		sanitizeTimerPwmSweepInput
 	} from './instrument';
+	import { compactTableInputClass } from '../../utils/compact-table-input';
 
 	let { isExpanded = false }: { isExpanded?: boolean } = $props();
 
@@ -54,14 +55,7 @@
 	});
 
 	function inputClass(inactive = false, width: 'full' | 'compact' = 'full'): string {
-		const widthClass = width === 'compact' ? 'w-9 max-w-9 shrink-0' : 'w-full min-w-0';
-		return `${widthClass} rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] ${
-			isExpanded ? 'px-2 py-1 text-xs' : 'px-1 py-0.5 text-[0.65rem]'
-		} ${
-			inactive
-				? 'text-[var(--color-app-text-tertiary)] opacity-60'
-				: 'text-[var(--color-app-text-secondary)]'
-		} placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none`;
+		return compactTableInputClass({ isExpanded, width, inactive });
 	}
 
 	function applySanitizedInput(

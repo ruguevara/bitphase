@@ -1068,7 +1068,7 @@ export function copyAyInstrumentFields(
 	target.timerPwmPreserveOnNewNote = normalized.timerPwmPreserveOnNewNote;
 	target.timerPwmSweepStartPhase = normalized.timerPwmSweepStartPhase;
 	target.timerPwmSweepShape = normalized.timerPwmSweepShape;
-	delete target.timerPwmReverseSweep;
+	delete (target as unknown as Record<string, unknown>).timerPwmReverseSweep;
 	if (
 		source.sampleData?.length &&
 		isValidInstrumentSampleByteLength(source.sampleData.length)

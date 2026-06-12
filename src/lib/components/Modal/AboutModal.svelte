@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import ContributorsModal from './ContributorsModal.svelte';
 	import TmrCheckerModal from './TmrCheckerModal.svelte';
 	import { open } from '../../services/modal/modal-service';
@@ -25,13 +26,8 @@
 	}
 </script>
 
-<div class="flex w-[400px] flex-col">
-	<div
-		class="flex items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2">
-		<h2 class="font-bold text-[var(--color-app-text-primary)]">About</h2>
-	</div>
-
-	<div class="flex flex-col items-center gap-3 p-4">
+<ModalPanel title="About" width="w-[400px]" maxHeightClass="" compact bodyClass="flex flex-col items-center gap-3 p-4">
+	{#snippet children()}
 		<img src="logo.svg" alt="Bitphase Logo" class="h-16 w-16" />
 
 		<div class="text-center">
@@ -76,5 +72,5 @@
 			</a>
 		</div>
 		<Button variant="primary" onclick={handleClose}>Close</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

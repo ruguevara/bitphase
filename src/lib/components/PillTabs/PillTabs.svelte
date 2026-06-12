@@ -17,15 +17,23 @@
 	}: {
 		tabs: PillTab[];
 		activeTabId?: string;
-		size?: 'md' | 'sm';
+		size?: 'md' | 'sm' | 'xs';
 		class?: string;
 		onSelect?: (tabId: string) => void;
 	} = $props();
 
 	const buttonClass = $derived(
-		size === 'sm'
-			? 'rounded px-2.5 py-0.5 text-xs'
-			: 'flex items-center gap-1.5 rounded px-3 py-1 text-xs'
+		size === 'xs'
+			? 'rounded px-2 py-0.5 text-[10px]'
+			: size === 'sm'
+				? 'rounded px-2.5 py-0.5 text-xs'
+				: 'flex items-center gap-1.5 rounded px-3 py-1 text-xs'
+	);
+
+	const inactiveClass = $derived(
+		size === 'xs'
+			? 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'
+			: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)]'
 	);
 
 	function selectTab(tab: PillTab) {
@@ -44,7 +52,7 @@
 			disabled={tab.disabled}
 			class="{buttonClass} {activeTabId === tab.id
 				? 'bg-[var(--color-app-primary)] text-white'
-				: 'bg-[var(--color-app-surface-secondary)] text-[var(--color-app-text-muted)]'} {tab.disabled
+				: inactiveClass} {tab.disabled
 				? 'cursor-not-allowed opacity-40'
 				: activeTabId === tab.id
 					? 'cursor-pointer'

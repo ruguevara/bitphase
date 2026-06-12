@@ -3,6 +3,7 @@
 	import IconCarbonEdit from '~icons/carbon/edit';
 	import IconCarbonSettingsAdjust from '~icons/carbon/settings-adjust';
 	import { ROW_SELECTION_STYLES } from '../../utils/row-selection';
+	import { compactTableInputClass } from '../../utils/compact-table-input';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
 	import type { TimerEffectDragField } from './ay-timer-effects-controller.svelte';
 
@@ -92,9 +93,7 @@
 	});
 
 	function numericInputClass(): string {
-		return `w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] ${
-			selected ? ROW_SELECTION_STYLES.input : 'bg-[var(--color-app-surface)]'
-		} ${isExpanded ? 'px-2 py-1 text-xs' : 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none`;
+		return compactTableInputClass({ selected, isExpanded });
 	}
 
 	function handleWaveformFocus(event: FocusEvent): void {
@@ -163,7 +162,8 @@
 	function handleEffectPointerDown(event: PointerEvent, field: TimerEffectDragField): void {
 		event.preventDefault();
 		controller.beginDragTimerEffect(index, field);
-		event.currentTarget.closest('table')?.setPointerCapture(event.pointerId);
+		const targetEl = event.currentTarget as HTMLElement | null;
+		targetEl?.closest('table')?.setPointerCapture(event.pointerId);
 	}
 </script>
 

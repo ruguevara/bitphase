@@ -9,6 +9,7 @@
 	import type { Settings, SettingsTabState } from './types';
 	import Button from '../Button/Button.svelte';
 	import ConfirmModal from '../Modal/ConfirmModal.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import { open } from '../../services/modal/modal-service';
 	import { midiService, type MidiInputInfo } from '../../services/midi/midi-service';
 	import { TabView } from '../TabView';
@@ -16,6 +17,7 @@
 	import KeyboardSettings from './KeyboardSettings.svelte';
 	import SettingField from './SettingField.svelte';
 	import { FormField } from '../FormField';
+	import { NativeSelect } from '../NativeSelect';
 
 	let { resolve, dismiss, onCloseRef, initialTabId } = $props<{
 		resolve?: (value?: any) => void;
@@ -120,13 +122,12 @@
 	});
 </script>
 
-<div class="flex h-[600px] max-h-[90vh] w-[600px] flex-col overflow-hidden">
-	<div
-		class="shrink-0 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<h2 class="text-sm font-bold text-[var(--color-app-text-primary)]">Settings</h2>
-	</div>
-
-	<div class="flex min-h-0 flex-1 flex-col overflow-hidden">
+<ModalPanel
+	title="Settings"
+	width="w-[600px]"
+	height="h-[600px]"
+	bodyClass="flex min-h-0 flex-1 flex-col overflow-hidden">
+	{#snippet children()}
 		<TabView {tabs} bind:activeTabId>
 			{#snippet children(tabId)}
 				<div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-4">
@@ -145,20 +146,25 @@
 								label="MIDI device"
 								description="Select the MIDI keyboard to use. Connect and choose a device, then save.">
 								<div class="flex flex-col gap-1">
-									<select
+									<NativeSelect
 										id="setting-midiInputDeviceId"
 										bind:value={tempSettings.midiInputDeviceId}
-										class="w-full max-w-xs cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1.5 text-xs text-[var(--color-app-text-secondary)] focus:border-[var(--color-app-primary)] focus:outline-none">
-										<option value="">No device selected</option>
-										{#if midiSelectedIdNotInList}
-											<option value={tempSettings.midiInputDeviceId}>
-												Selected device (load list to confirm)
-											</option>
-										{/if}
-										{#each midiDevices as device (device.id)}
-											<option value={device.id}>{device.name}</option>
-										{/each}
-									</select>
+										class="w-full max-w-xs"
+										placeholder="No device selected"
+										options={[
+											...(midiSelectedIdNotInList
+												? [
+														{
+															label: 'Selected device (load list to confirm)',
+															value: tempSettings.midiInputDeviceId
+														}
+													]
+												: []),
+											...midiDevices.map((device) => ({
+												label: device.name,
+												value: device.id
+											}))
+										]} />
 									<button
 										type="button"
 										class="w-fit cursor-pointer text-xs text-[var(--color-app-primary)] hover:underline disabled:opacity-50"
@@ -179,11 +185,10 @@
 				</div>
 			{/snippet}
 		</TabView>
-	</div>
+	{/snippet}
 
-	<div
-		class="flex shrink-0 justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+	{#snippet footer()}
 		<Button variant="secondary" onclick={handleDismiss}>Dismiss</Button>
 		<Button variant="primary" onclick={handleSave} disabled={hasTabConflicts}>Save</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import IconCarbonDownload from '~icons/carbon/download';
 	import { onMount, onDestroy } from 'svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import { exportToWAV } from '../../services/file/wav-export';
 	import { exportToPSG } from '../../services/file/psg-export';
 	import { exportToTMR } from '../../services/file/tmr-export';
@@ -99,29 +100,33 @@
 	});
 </script>
 
-<div class="flex items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1">
-	<h2 id="progress-modal-title" class="text-xs font-bold text-[var(--color-app-text-primary)]">
-		Exporting {exportLabel}
-	</h2>
-	<IconCarbonDownload class="h-3 w-3 text-[var(--color-app-primary)]" />
-</div>
+<ModalPanel
+	title="Exporting {exportLabel}"
+	width="w-auto"
+	maxHeightClass=""
+	compact
+	bodyClass="p-3">
+	{#snippet headerActions()}
+		<IconCarbonDownload class="h-3 w-3 text-[var(--color-app-primary)]" />
+	{/snippet}
 
-<div class="p-3">
-	{#if message}
-		<p class="mb-3 text-xs text-[var(--color-app-text-muted)]">{message}</p>
-	{/if}
+	{#snippet children()}
+		{#if message}
+			<p class="mb-3 text-xs text-[var(--color-app-text-muted)]">{message}</p>
+		{/if}
 
-	<div class="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface-secondary)]">
-		<div
-			class="h-full bg-[var(--color-app-primary)] transition-all duration-300 ease-out"
-			style="width: {progressPercent}%">
+		<div class="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--color-app-surface-secondary)]">
 			<div
-				class="absolute inset-0 bg-[var(--color-app-primary)] opacity-30"
-				style="width: 100%; animation: shimmer 1.5s ease-in-out infinite;">
+				class="h-full bg-[var(--color-app-primary)] transition-all duration-300 ease-out"
+				style="width: {progressPercent}%">
+				<div
+					class="absolute inset-0 bg-[var(--color-app-primary)] opacity-30"
+					style="width: 100%; animation: shimmer 1.5s ease-in-out infinite;">
+				</div>
 			</div>
 		</div>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>
 
 <style>
 	@keyframes shimmer {

@@ -9,6 +9,8 @@
 	import IconCarbonTrashCan from '~icons/carbon/trash-can';
 	import IconCarbonWaveform from '~icons/carbon/waveform';
 	import Button from '../../components/Button/Button.svelte';
+	import { LabeledMonoInput } from '../../components/LabeledMonoInput';
+	import { EmptyState } from '../../components/EmptyState';
 	import AudioSampleRegionEditor from '../../components/Audio/AudioSampleRegionEditor.svelte';
 	import type { Instrument } from '../../models/song';
 	import type { AudioService } from '../../services/audio/audio-service';
@@ -343,21 +345,16 @@
 		{/key}
 
 		<div class="px-0.5">
-			<label class="flex min-w-0 flex-col gap-1">
-				<span class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
-					<IconCarbonSettingsAdjust class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
-					Sample rate
-				</span>
-				<div class="flex flex-wrap items-center gap-2">
-					<input
-						type="number"
-						class="w-[6.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
-						min={MIN_INSTRUMENT_SAMPLE_RATE}
-						max={MAX_INSTRUMENT_SAMPLE_RATE}
-						step={1}
-						value={instrumentSampleRate}
-						onchange={handleSampleRateCommit}
-						onkeydown={handleSampleRateKeydown} />
+			<LabeledMonoInput
+				icon={IconCarbonSettingsAdjust}
+				label="Sample rate"
+				width="w-[6.5rem]"
+				value={instrumentSampleRate}
+				min={MIN_INSTRUMENT_SAMPLE_RATE}
+				max={MAX_INSTRUMENT_SAMPLE_RATE}
+				onchange={handleSampleRateCommit}
+				onkeydown={handleSampleRateKeydown}>
+				{#snippet suffix()}
 					<span class="text-xs text-[var(--color-app-text-tertiary)]">Hz</span>
 					{#if isSampleRateTuned}
 						<button
@@ -367,18 +364,15 @@
 							Reset ({loadedSampleRate?.toLocaleString()} Hz)
 						</button>
 					{/if}
-				</div>
-			</label>
+				{/snippet}
+			</LabeledMonoInput>
 		</div>
 	{:else if !isLoading && !loadError}
-		<div
-			class="flex min-w-0 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)]/40 px-4 text-center"
-			style="height: {previewHeight + 48}px">
-			<IconCarbonWaveform class="h-8 w-8 text-[var(--color-app-text-tertiary)]/70" />
-			<p class="text-xs text-[var(--color-app-text-muted)]">Load an audio file to trim and loop</p>
-			<p class="text-[10px] text-[var(--color-app-text-tertiary)]">
-				8-bit mono PCM WAV keeps native sample rate; rejected if over 16 KB
-			</p>
-		</div>
+		<EmptyState
+			icon={IconCarbonWaveform}
+			message="Load an audio file to trim and loop"
+			hint="8-bit mono PCM WAV keeps native sample rate; rejected if over 16 KB"
+			class="min-w-0"
+			style="height: {previewHeight + 48}px" />
 	{/if}
 </div>

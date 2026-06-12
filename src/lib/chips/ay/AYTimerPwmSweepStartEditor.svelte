@@ -1,5 +1,8 @@
 <script lang="ts">
 	import IconCarbonWaveform from '~icons/carbon/waveform';
+	import AyTimerEditorPanel from './AyTimerEditorPanel.svelte';
+	import PillTabs from '../../components/PillTabs/PillTabs.svelte';
+	import { StatusPill } from '../../components/StatusPill';
 	import { getAyTimerEffectsContext } from './ay-timer-effects-context';
 	import { playbackToneDebugStore } from '../../stores/playback-tone-debug.svelte';
 	import { projectStore } from '../../stores/project.svelte';
@@ -231,66 +234,40 @@
 		svgEl?.releasePointerCapture(event.pointerId);
 	}
 
-	function shapeButtonClass(shape: AyTimerPwmSweepShape): string {
-		const active = shape === sweepShape;
-		return `rounded px-2 py-0.5 text-[10px] ${enabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${
-			active
-				? 'bg-[var(--color-app-primary)] text-white'
-				: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)] hover:bg-[var(--color-app-surface-hover)]'
-		}`;
-	}
+	const shapeTabs = $derived(
+		AY_TIMER_PWM_SWEEP_SHAPES.map((shape) => ({
+			id: shape,
+			label: AY_TIMER_PWM_SWEEP_SHAPE_LABELS[shape],
+			disabled: !enabled
+		}))
+	);
 </script>
 
-<div
-	class="mx-2 mt-3 rounded-lg border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-3 {enabled
-		? ''
-		: 'opacity-60'}">
-	<div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-		<div
-			class="flex items-center gap-2 text-xs text-[var(--color-app-text-muted)]"
-			title="PWM automation between min and max. Drag the marker to choose where playback starts.">
-			<span
-				class="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[var(--color-pattern-note)]/10 text-[var(--color-pattern-note)]">
-				<IconCarbonWaveform class={iconSizeClass} />
-			</span>
-			<div class="leading-tight">
-				<div class="text-[var(--color-app-text-secondary)]">PWM sweep start</div>
-				<div class="text-[10px] text-[var(--color-app-text-tertiary)]">
-					{shapeLabel} duty automation ({minDuty}%–{maxDuty}%)
-				</div>
-			</div>
-		</div>
-		<div class="flex items-center gap-2 text-[10px] text-[var(--color-app-text-tertiary)]">
-			{#if liveMarkerGraphic}
-				<span
-					class="rounded-full border border-[var(--color-pattern-envelope)]/30 bg-[var(--color-pattern-envelope)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-envelope)]">
-					live = {liveMarkerGraphic.duty}%
-				</span>
-			{/if}
-			<span
-				class="rounded-full border border-[var(--color-pattern-note)]/25 bg-[var(--color-pattern-note)]/10 px-2 py-0.5 font-mono text-[var(--color-pattern-note)]">
-				start = {sweepStaticGraphic.marker.duty}%
-			</span>
-		</div>
-	</div>
+<AyTimerEditorPanel
+	icon={IconCarbonWaveform}
+	{iconSizeClass}
+	title="PWM sweep start"
+	subtitle={`${shapeLabel} duty automation (${minDuty}%–${maxDuty}%)`}
+	titleTooltip="PWM automation between min and max. Drag the marker to choose where playback starts."
+	{canvasHeight}
+	disabled={!enabled}
+	canvasClass={enabled ? '' : 'pointer-events-none'}>
+	{#snippet badges()}
+		{#if liveMarkerGraphic}
+			<StatusPill tone="envelope">live = {liveMarkerGraphic.duty}%</StatusPill>
+		{/if}
+		<StatusPill>start = {sweepStaticGraphic.marker.duty}%</StatusPill>
+	{/snippet}
 
-	<div class="mb-2 flex flex-wrap gap-1">
-		{#each AY_TIMER_PWM_SWEEP_SHAPES as shape (shape)}
-			<button
-				type="button"
-				class={shapeButtonClass(shape)}
-				disabled={!enabled}
-				onclick={() => controller.setTimerPwmSweepShape(shape)}>
-				{AY_TIMER_PWM_SWEEP_SHAPE_LABELS[shape]}
-			</button>
-		{/each}
-	</div>
+	{#snippet toolbar()}
+		<PillTabs
+			tabs={shapeTabs}
+			activeTabId={sweepShape}
+			size="xs"
+			onSelect={(id) => controller.setTimerPwmSweepShape(id as AyTimerPwmSweepShape)} />
+	{/snippet}
 
-	<div
-		class="overflow-hidden rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface)] ring-1 ring-inset ring-[var(--color-app-border)]/60 {enabled
-			? ''
-			: 'pointer-events-none'}"
-		style:height="{canvasHeight}px">
+	{#snippet children()}
 		<div class="h-full min-w-0 overflow-hidden" use:observePlotSize>
 			<svg
 				bind:this={svgEl}
@@ -421,5 +398,5 @@
 				{/if}
 			</svg>
 		</div>
-	</div>
-</div>
+	{/snippet}
+</AyTimerEditorPanel>

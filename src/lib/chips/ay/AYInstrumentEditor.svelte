@@ -19,6 +19,7 @@
 		filterValidSelection,
 		isRowSelected as checkRowSelected
 	} from '../../utils/row-selection';
+	import { compactTableInputClass } from '../../utils/compact-table-input';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import {
@@ -1084,11 +1085,7 @@
 												: 'w-12 px-0.5'}>
 											<input
 												type="text"
-												class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-													? ROW_SELECTION_STYLES.input
-													: 'bg-[var(--color-app-surface)]'} {isExpanded
-													? 'px-2 py-1 text-xs'
-													: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+												class={compactTableInputClass({ selected, isExpanded })}
 												value={formatNum(row.toneAdd)}
 												onkeydown={(e) => handleNumericKeyDown(index, e)}
 												onfocus={(e) =>
@@ -1123,11 +1120,7 @@
 												: 'w-12 px-0.5'}>
 											<input
 												type="text"
-												class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-													? ROW_SELECTION_STYLES.input
-													: 'bg-[var(--color-app-surface)]'} {isExpanded
-													? 'px-2 py-1 text-xs'
-													: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+												class={compactTableInputClass({ selected, isExpanded })}
 												value={formatNum(row.noiseAdd)}
 												onkeydown={(e) => handleNumericKeyDown(index, e)}
 												onfocus={(e) =>
@@ -1162,11 +1155,7 @@
 												: 'w-12 px-0.5'}>
 											<input
 												type="text"
-												class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-													? ROW_SELECTION_STYLES.input
-													: 'bg-[var(--color-app-surface)]'} {isExpanded
-													? 'px-2 py-1 text-xs'
-													: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+												class={compactTableInputClass({ selected, isExpanded })}
 												value={formatNum(row.envelopeAdd ?? 0)}
 												onkeydown={(e) => handleNumericKeyDown(index, e)}
 												onfocus={(e) =>
@@ -1201,11 +1190,7 @@
 												: 'w-12 px-0.5'}>
 											<input
 												type="text"
-												class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-													? ROW_SELECTION_STYLES.input
-													: 'bg-[var(--color-app-surface)]'} {isExpanded
-													? 'px-2 py-1 text-xs'
-													: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+												class={compactTableInputClass({ selected, isExpanded })}
 												value={formatNum(row.volume)}
 												onkeydown={(e) => handleNumericKeyDown(index, e)}
 												onfocus={(e) =>

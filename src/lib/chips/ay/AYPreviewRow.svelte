@@ -23,6 +23,7 @@
 	} from '../../utils/envelope-note-conversion';
 	import IconCarbonPlay from '~icons/carbon/play';
 	import IconCarbonPauseFilled from '~icons/carbon/pause-filled';
+	import { IconButton } from '../../components/IconButton';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import { ACTION_TOGGLE_PLAYBACK } from '../../config/keybindings';
@@ -397,21 +398,22 @@
 		class="flex items-center gap-1.5 text-xs text-[var(--color-app-text-muted)]"
 		role="group"
 		aria-label="Preview playground">
-		<button
-			type="button"
-			class="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded border border-[var(--color-app-border)] bg-[var(--color-app-primary)] text-[var(--color-app-on-primary)] transition-colors hover:bg-[var(--color-app-primary-hover)] disabled:pointer-events-none disabled:opacity-50"
-			disabled={isDisabled || lastPlayedNotes.length === 0}
+		<IconButton
+			variant="primary"
+			size="sm"
 			title={isPreviewPlaying
 				? `Stop preview (${ShortcutString.toDisplay(keybindingsStore.getShortcut(ACTION_TOGGLE_PLAYBACK))})`
 				: `Play preview (${ShortcutString.toDisplay(keybindingsStore.getShortcut(ACTION_TOGGLE_PLAYBACK))})`}
-			aria-label={isPreviewPlaying ? 'Stop preview' : 'Play preview'}
+			disabled={isDisabled || lastPlayedNotes.length === 0}
 			onclick={togglePreviewPlaying}>
-			{#if isPreviewPlaying}
-				<IconCarbonPauseFilled class="h-3.5 w-3.5" />
-			{:else}
-				<IconCarbonPlay class="h-3.5 w-3.5" />
-			{/if}
-		</button>
+			{#snippet children()}
+				{#if isPreviewPlaying}
+					<IconCarbonPauseFilled class="h-3.5 w-3.5" />
+				{:else}
+					<IconCarbonPlay class="h-3.5 w-3.5" />
+				{/if}
+			{/snippet}
+		</IconButton>
 		<span>Preview playground</span>
 	</div>
 	<div class="flex flex-wrap items-end gap-3 font-mono text-xs">

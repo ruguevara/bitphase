@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import { alphaNoticeStore } from '../../stores/alpha-notice.svelte';
 
 	let { resolve, onCloseRef } = $props<{
@@ -27,13 +28,8 @@
 	});
 </script>
 
-<div class="flex w-[400px] flex-col">
-	<div
-		class="flex items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2">
-		<h2 class="font-bold text-[var(--color-app-text-primary)]">Heads up</h2>
-	</div>
-
-	<div class="flex flex-col gap-3 p-4">
+<ModalPanel title="Heads up" width="w-[400px]" maxHeightClass="" compact bodyClass="flex flex-col gap-3 p-4">
+	{#snippet children()}
 		<p class="text-[var(--color-app-text-primary)]">
 			Bitphase is still in early alpha development. We might change the app and there may be
 			breaking changes, so we recommend keeping backups of your projects. If something breaks
@@ -50,5 +46,5 @@
 			Thanks for trying it out. We won't show this message again. Have fun!
 		</p>
 		<Button variant="primary" onclick={handleAcknowledge}>Got it</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

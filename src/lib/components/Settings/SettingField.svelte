@@ -5,6 +5,7 @@
 	import { Checkbox } from '../Checkbox';
 	import { FormField } from '../FormField';
 	import Input from '../Input/Input.svelte';
+	import { NativeSelect } from '../NativeSelect';
 
 	let { item, tempSettings = $bindable() }: {
 		item: SettingsItem;
@@ -42,16 +43,14 @@
 				}
 			}} />
 	{:else if item.type === 'select'}
-		<select
+		<NativeSelect
 			id={settingId}
-			bind:value={tempSettings[item.setting]}
-			class="w-40 cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1 text-xs text-[var(--color-app-text-secondary)] focus:border-[var(--color-app-primary)] focus:outline-none">
-			{#if item.options}
-				{#each item.options as option}
-					<option value={option.value}>{option.label}</option>
-				{/each}
-			{/if}
-		</select>
+			bind:value={tempSettings[item.setting] as string}
+			class="w-40"
+			options={(item.options ?? []).map((option) => ({
+				label: option.label,
+				value: String(option.value)
+			}))} />
 	{:else if item.type === 'toggle'}
 		<Checkbox
 			id={settingId}

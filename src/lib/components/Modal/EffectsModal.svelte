@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
 
 	let { resolve } = $props<{
 		resolve?: (value?: any) => void;
@@ -161,13 +162,12 @@
 	];
 </script>
 
-<div class="flex h-[90vh] w-[700px] max-w-[90vw] flex-col overflow-hidden">
-	<div
-		class="flex shrink-0 items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<h2 class="font-bold text-[var(--color-app-text-primary)]">Effects Reference</h2>
-	</div>
-
-	<div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-6">
+<ModalPanel
+	title="Effects Reference"
+	width="w-[700px] max-w-[90vw]"
+	height="h-[90vh]"
+	bodyClass="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-6">
+	{#snippet children()}
 		<div class="mb-4 text-[var(--color-app-text-secondary)]">
 			<p class="mb-2">
 				Effects are entered in the effect column using the format:
@@ -329,12 +329,9 @@
 				</div>
 			</div>
 		</div>
-	</div>
+	{/snippet}
 
-	<div
-		class="shrink-0 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<div class="flex justify-end">
-			<Button variant="primary" onclick={handleClose}>Close</Button>
-		</div>
-	</div>
-</div>
+	{#snippet footer()}
+		<Button variant="primary" onclick={handleClose}>Close</Button>
+	{/snippet}
+</ModalPanel>

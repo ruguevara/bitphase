@@ -1,5 +1,9 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
+	import { AlertBanner } from '../AlertBanner';
+	import { EmptyState } from '../EmptyState';
+	import { FilePickerButton } from '../FilePickerButton';
 	import {
 		attachEventListToTmrFile,
 		buildTmrSchedule,
@@ -168,31 +172,20 @@
 	}
 </script>
 
-<div class="flex max-h-[85vh] w-[min(960px,92vw)] flex-col">
-	<div
-		class="flex items-center justify-between gap-3 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-2">
-		<div>
-			<h2 class="font-bold text-[var(--color-app-text-primary)]">TMR Checker</h2>
-			<p class="text-xs text-[var(--color-app-text-muted)]">
-				Inspect timer companion files paired with PSG exports
-			</p>
-		</div>
-		<label
-			class="cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-3 py-1.5 text-xs text-[var(--color-app-text-secondary)] hover:bg-[var(--color-app-surface-hover)]">
-			Open .tmr
-			<input type="file" accept=".tmr" class="hidden" onchange={handleTmrSelect} />
-		</label>
-		<label
-			class="cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-3 py-1.5 text-xs text-[var(--color-app-text-secondary)] hover:bg-[var(--color-app-surface-hover)]">
-			Open .tel
-			<input type="file" accept=".tel" class="hidden" onchange={handleEventListSelect} />
-		</label>
-	</div>
+<ModalPanel
+	title="TMR Checker"
+	subtitle="Inspect timer companion files paired with PSG exports"
+	width="w-[min(960px,92vw)]"
+	maxHeightClass="max-h-[85vh]"
+	bodyClass="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+	{#snippet headerActions()}
+		<FilePickerButton label="Open .tmr" accept=".tmr" onchange={handleTmrSelect} />
+		<FilePickerButton label="Open .tel" accept=".tel" onchange={handleEventListSelect} />
+	{/snippet}
 
-	<div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
+	{#snippet children()}
 		{#if fileName}
-			<div
-				class="rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-3 py-2 text-xs">
+			<AlertBanner variant="info">
 				<span class="text-[var(--color-app-text-muted)]">TMR:</span>
 				<span class="ml-2 font-mono text-[var(--color-app-text-primary)]">{fileName}</span>
 				{#if eventListFileName}
@@ -201,12 +194,11 @@
 				{:else if tmrWithoutEvents && tmrWithoutEvents.eventItems.length === 0}
 					<span class="ml-4 text-[var(--color-pattern-note-off)]">Event list not loaded (.tel)</span>
 				{/if}
-			</div>
+			</AlertBanner>
 		{/if}
 
 		{#if parseErrors.length > 0}
-			<div
-				class="rounded border border-[var(--color-pattern-note-off)]/40 bg-[var(--color-pattern-note-off)]/10 p-3">
+			<AlertBanner variant="warning">
 				<h3 class="mb-2 text-sm font-semibold text-[var(--color-pattern-note-off)]">
 					Invalid TMR file
 				</h3>
@@ -215,7 +207,7 @@
 						<li>{error}</li>
 					{/each}
 				</ul>
-			</div>
+			</AlertBanner>
 		{/if}
 
 		{#if parsedFile}
@@ -530,19 +522,14 @@
 				</div>
 			</section>
 		{:else if !fileName}
-			<div
-				class="flex flex-1 flex-col items-center justify-center gap-2 rounded border border-dashed border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] p-8 text-center">
-				<p class="text-sm text-[var(--color-app-text-secondary)]">No file loaded</p>
-				<p class="max-w-md text-xs text-[var(--color-app-text-muted)]">
-					Open a `.tmr` file and its paired `.tel` event list to inspect player frames, event
-					chains, and timer scheduling.
-				</p>
-			</div>
+			<EmptyState
+				class="flex-1 border p-8"
+				message="No file loaded"
+				hint="Open a `.tmr` file and its paired `.tel` event list to inspect player frames, event chains, and timer scheduling." />
 		{/if}
-	</div>
+	{/snippet}
 
-	<div
-		class="flex justify-end border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+	{#snippet footer()}
 		<Button variant="primary" onclick={handleClose}>Close</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

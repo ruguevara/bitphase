@@ -12,6 +12,7 @@
 		filterValidSelection,
 		isRowSelected as checkRowSelected
 	} from '../../utils/row-selection';
+	import { compactTableInputClass } from '../../utils/compact-table-input';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import {
@@ -543,9 +544,7 @@
 								<input
 									type="text"
 									bind:this={offsetInputRefs[index]}
-									class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-										? ROW_SELECTION_STYLES.input
-										: 'bg-[var(--color-app-surface)]'} px-2 py-1 text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
+									class={compactTableInputClass({ selected })}
 									value={formatOffset(offset)}
 									onkeydown={(e) => handleOffsetKeyDown(index, e)}
 									onfocus={(e) => (e.target as HTMLInputElement).select()}

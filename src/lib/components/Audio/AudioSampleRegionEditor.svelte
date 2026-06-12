@@ -3,6 +3,7 @@
 	import IconCarbonAlignHorizontalLeft from '~icons/carbon/align-horizontal-left';
 	import IconCarbonAlignHorizontalRight from '~icons/carbon/align-horizontal-right';
 	import IconCarbonRepeat from '~icons/carbon/repeat';
+	import { LabeledMonoInput } from '../LabeledMonoInput';
 	import type { AyChipVariant } from '../../chips/ay/ay-sample-lut';
 	import { sampleByteToDisplayFloat } from '../../chips/ay/ay-sample-lut';
 	import type { WaveformPeak } from '../../utils/audio-sample-decode';
@@ -580,60 +581,34 @@
 	<div class="flex flex-wrap items-end justify-between gap-3 px-0.5">
 		{#if totalSamples > 0}
 			<div class="flex flex-wrap items-end gap-2">
-				<label class="flex flex-col gap-1">
-					<span
-						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
-						<IconCarbonAlignHorizontalLeft
-							class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
-						Start
-					</span>
-					<input
-						type="number"
-						data-field="start"
-						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
-						min={0}
-						max={maxSampleIndex}
-						step={1}
-						value={regionStart}
-						onchange={handleManualFieldCommit}
-						onkeydown={handleManualFieldKeydown} />
-				</label>
-				<label class="flex flex-col gap-1">
-					<span
-						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
-						<IconCarbonAlignHorizontalRight
-							class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
-						End
-					</span>
-					<input
-						type="number"
-						data-field="end"
-						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none"
-						min={0}
-						max={maxSampleIndex}
-						step={1}
-						value={regionEnd}
-						onchange={handleManualFieldCommit}
-						onkeydown={handleManualFieldKeydown} />
-				</label>
-				<label class="flex flex-col gap-1 {loopEnabled ? '' : 'opacity-50'}">
-					<span
-						class="inline-flex items-center gap-1 text-xs text-[var(--color-app-text-secondary)]">
-						<IconCarbonRepeat class="h-3 w-3 shrink-0 text-[var(--color-app-text-tertiary)]" />
-						Loop
-					</span>
-					<input
-						type="number"
-						data-field="loop"
-						class="w-[5.5rem] rounded-md border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1 font-mono text-xs text-[var(--color-app-text-primary)] tabular-nums focus:border-[var(--color-app-primary)] focus:outline-none disabled:cursor-not-allowed"
-						min={0}
-						max={maxSampleIndex}
-						step={1}
-						value={loopStart}
-						disabled={!loopEnabled}
-						onchange={handleManualFieldCommit}
-						onkeydown={handleManualFieldKeydown} />
-				</label>
+				<LabeledMonoInput
+					icon={IconCarbonAlignHorizontalLeft}
+					label="Start"
+					field="start"
+					value={regionStart}
+					min={0}
+					max={maxSampleIndex}
+					onchange={handleManualFieldCommit}
+					onkeydown={handleManualFieldKeydown} />
+				<LabeledMonoInput
+					icon={IconCarbonAlignHorizontalRight}
+					label="End"
+					field="end"
+					value={regionEnd}
+					min={0}
+					max={maxSampleIndex}
+					onchange={handleManualFieldCommit}
+					onkeydown={handleManualFieldKeydown} />
+				<LabeledMonoInput
+					icon={IconCarbonRepeat}
+					label="Loop"
+					field="loop"
+					value={loopStart}
+					min={0}
+					max={maxSampleIndex}
+					disabled={!loopEnabled}
+					onchange={handleManualFieldCommit}
+					onkeydown={handleManualFieldKeydown} />
 			</div>
 		{/if}
 		<label

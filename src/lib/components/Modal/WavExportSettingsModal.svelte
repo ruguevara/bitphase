@@ -2,8 +2,10 @@
 	import Button from '../Button/Button.svelte';
 	import FormField from '../FormField/FormField.svelte';
 	import Select from '../AppLayout/Select.svelte';
+	import { NativeSelect } from '../NativeSelect';
 	import RangeInput from '../RangeInput/RangeInput.svelte';
 	import Input from '../Input/Input.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import {
 		defaultWavExportSettings,
 		sampleRateOptions,
@@ -40,13 +42,8 @@
 	}
 </script>
 
-<div class="flex max-h-[90vh] w-[500px] flex-col overflow-hidden">
-	<div
-		class="flex shrink-0 items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<h2 class="text-sm font-bold text-[var(--color-app-text-primary)]">WAV Export Settings</h2>
-	</div>
-
-	<div class="min-h-0 flex-1 overflow-y-auto p-4">
+<ModalPanel title="WAV Export Settings" width="w-[500px]">
+	{#snippet children()}
 		<FormField id="sample-rate" label="Sample Rate">
 			<Select bind:value={settings.sampleRate} options={sampleRateOptions} />
 		</FormField>
@@ -66,15 +63,11 @@
 			id="channel-mode"
 			label="Channels"
 			description="Mixed: one stereo WAV. Separate: one WAV file per chip channel (e.g. AY A/B/C). Supports multiple chips (1xAY, 2xAY, etc.).">
-			<select
+			<NativeSelect
 				id="channel-mode"
 				bind:value={settings.channelMode}
-				class="w-full cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] focus:border-[var(--color-app-primary)] focus:outline-none"
-			>
-				{#each channelModeOptions as opt (opt.value)}
-					<option value={opt.value}>{opt.label}</option>
-				{/each}
-			</select>
+				class="w-full"
+				options={channelModeOptions.map((opt) => ({ label: opt.label, value: opt.value }))} />
 		</FormField>
 
 		<div class="mb-4 border-t border-[var(--color-app-border)] pt-4">
@@ -125,14 +118,13 @@
 					bind:value={settings.comment}
 					placeholder="Additional comments"
 					rows="3"
-					class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1 text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none resize-none"></textarea>
+					class="w-full resize-none rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-2 py-1 text-xs text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"></textarea>
 			</FormField>
 		</div>
-	</div>
+	{/snippet}
 
-	<div
-		class="flex shrink-0 justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+	{#snippet footer()}
 		<Button variant="secondary" onclick={handleCancel}>Cancel</Button>
 		<Button variant="primary" onclick={handleExport}>Export</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>
