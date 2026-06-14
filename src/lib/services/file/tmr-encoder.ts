@@ -289,7 +289,8 @@ export function encodeTMR(
 	const previousSyncbuzzer: HardwareSyncBuzzerState[] = Array.from({ length: 3 }, () => ({
 		enabled: false,
 		period: 0,
-		shape: 0
+		waveform: [0],
+		waveformLoop: 0
 	}));
 	const previousFm: HardwareFmState[] = Array.from({ length: 3 }, () => ({
 		enabled: false,
@@ -358,7 +359,10 @@ export function encodeTMR(
 			const prevEnvFm = previousEnvFm[channelIndex]!;
 
 			if (syncbuzzer.enabled) {
-				if (!prevSyncbuzzer.enabled || prevSyncbuzzer.shape !== syncbuzzer.shape) {
+				const syncbuzzerWaveformChanged =
+					!prevSyncbuzzer.enabled ||
+					!syncBuzzerWaveformConfigEqual(prevSyncbuzzer, syncbuzzer);
+				if (syncbuzzerWaveformChanged) {
 					const eventIndex = getOrCreateSyncBuzzerEventChain(
 						eventItems,
 						chainStartByKey,
@@ -542,7 +546,8 @@ export function encodeTMR(
 			previousSyncbuzzer[channelIndex] = {
 				enabled: syncbuzzer.enabled,
 				period: syncbuzzer.period,
-				shape: syncbuzzer.shape
+				waveform: [...syncbuzzer.waveform],
+				waveformLoop: syncbuzzer.waveformLoop
 			};
 			previousFm[channelIndex] = {
 				enabled: fm.enabled,
@@ -603,6 +608,17 @@ function sidWaveformConfigEqual(a: HardwareSidState, b: HardwareSidState): boole
 	);
 }
 
+function syncBuzzerWaveformConfigEqual(
+	a: HardwareSyncBuzzerState,
+	b: HardwareSyncBuzzerState
+): boolean {
+	return (
+		a.waveformLoop === b.waveformLoop &&
+		a.waveform.length === b.waveform.length &&
+		a.waveform.every((value, index) => value === b.waveform[index])
+	);
+}
+
 export function sidEventChainKey(channelIndex: number, sid: HardwareSidState): string {
 	return `${channelIndex}:${sid.baseVolume}:${sid.waveform.join(',')}:${sid.waveformLoop}`;
 }
@@ -611,7 +627,7 @@ export function syncBuzzerEventChainKey(
 	channelIndex: number,
 	syncbuzzer: HardwareSyncBuzzerState
 ): string {
-	return `sync:${channelIndex}:${syncbuzzer.shape}`;
+	return `sync:${channelIndex}:${syncbuzzer.waveformLoop}:${syncbuzzer.waveform.join(',')}`;
 }
 
 export function fmEventChainKey(channelIndex: number, fm: HardwareFmState): string {
@@ -657,14 +673,18 @@ function getOrCreateSyncBuzzerEventChain(
 	const startIndex = eventItems.length;
 	chainStartByKey.set(key, startIndex);
 	const shapeMask = envelopeShapeRegisterApplyMask();
-	const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-	psgData[13] = syncbuzzer.shape & 0xf;
-	eventItems.push({
-		psgData,
-		psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
-		timerFrequency: 0,
-		timerEventIndex: startIndex
-	});
+
+	for (let stepIndex = 0; stepIndex < syncbuzzer.waveform.length; stepIndex++) {
+		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+		psgData[13] = (syncbuzzer.waveform[stepIndex] ?? 0) & 0xf;
+		const nextIndex = resolveNextWaveformIndex(stepIndex, syncbuzzer);
+		eventItems.push({
+			psgData,
+			psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
+			timerFrequency: 0,
+			timerEventIndex: startIndex + nextIndex
+		});
+	}
 
 	return startIndex;
 }
