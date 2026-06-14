@@ -12,7 +12,6 @@ export interface PatternOrderRenderOptions extends Omit<BaseRenderOptions, 'colo
 	cellWidth: number;
 	cellHeight: number;
 	padding: number;
-	fadeHeight: number;
 }
 
 export interface PatternCell {
@@ -51,7 +50,6 @@ export class PatternOrderRenderer extends BaseCanvasRenderer {
 	private cellWidth: number;
 	private cellHeight: number;
 	private padding: number;
-	private fadeHeight: number;
 	private orderColors: ReturnType<typeof getPatternOrderColors>;
 
 	constructor(options: PatternOrderRenderOptions) {
@@ -63,7 +61,6 @@ export class PatternOrderRenderer extends BaseCanvasRenderer {
 		this.cellWidth = options.cellWidth;
 		this.cellHeight = options.cellHeight;
 		this.padding = options.padding;
-		this.fadeHeight = options.fadeHeight;
 		this.orderColors = options.colors;
 	}
 
@@ -233,60 +230,6 @@ export class PatternOrderRenderer extends BaseCanvasRenderer {
 			? getContrastingTextColor(cell.orderIndexColor)
 			: this.orderColors.orderText;
 		this.fillRect(this.padding + 1, cellY + 1, 3, this.cellHeight - 2, markerColor);
-	}
-
-	drawScrollIndicators(hasMoreAbove: boolean, hasMoreBelow: boolean): void {
-		if (hasMoreAbove) {
-			this.drawTopFade();
-			this.drawTopArrow();
-		}
-
-		if (hasMoreBelow) {
-			this.drawBottomFade();
-			this.drawBottomArrow();
-		}
-	}
-
-	private drawTopFade(): void {
-		const topGradient = this.createLinearGradient(0, 0, 0, this.fadeHeight);
-		topGradient.addColorStop(0, this.orderColors.orderBg);
-		topGradient.addColorStop(1, 'rgba(0,0,0,0)');
-		this.ctx.fillStyle = topGradient;
-		this.fillRect(0, 0, this.canvasWidth, this.fadeHeight);
-	}
-
-	private drawBottomFade(): void {
-		const offset = 10;
-		const fadeStart = this.canvasHeight - this.fadeHeight - offset;
-		const fadeEnd = this.canvasHeight - offset;
-		const bottomGradient = this.createLinearGradient(
-			0,
-			fadeStart,
-			0,
-			fadeEnd
-		);
-		bottomGradient.addColorStop(0, 'rgba(0,0,0,0)');
-		bottomGradient.addColorStop(1, this.orderColors.orderBg);
-		this.ctx.fillStyle = bottomGradient;
-		this.fillRect(0, fadeStart, this.canvasWidth, this.fadeHeight);
-	}
-
-	private drawTopArrow(): void {
-		this.save();
-		this.setFont(`${this.fontSize}px ${this.fonts.mono}`);
-		this.setTextAlign('center');
-		this.setTextBaseline('top');
-		this.fillText('▲', this.canvasWidth / 2, 2, this.orderColors.orderText);
-		this.restore();
-	}
-
-	private drawBottomArrow(): void {
-		this.save();
-		this.setFont(`${this.fontSize}px ${this.fonts.mono}`);
-		this.setTextAlign('center');
-		this.setTextBaseline('top');
-		this.fillText('▼', this.canvasWidth / 2, this.canvasHeight - this.fadeHeight + 2, this.orderColors.orderText);
-		this.restore();
 	}
 
 	drawDropIndicator(y: number): void {

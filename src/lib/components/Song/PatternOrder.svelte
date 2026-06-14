@@ -18,11 +18,11 @@
 	import ColorPickerModal from '../Modal/ColorPickerModal.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import type { ProjectDiff } from '../../models/history';
+	import { PATTERN_EDITOR_CONSTANTS } from './types';
 
 	interface Props {
 		currentPatternOrderIndex: number;
 		selectedRow: number;
-		canvasHeight?: number;
 		lineHeight?: number;
 		onPatternSelect?: (index: number) => void;
 		onMakeUnique?: (index: number) => void;
@@ -32,7 +32,6 @@
 	let {
 		currentPatternOrderIndex = $bindable(),
 		selectedRow = $bindable(),
-		canvasHeight = 600,
 		onPatternSelect,
 		onMakeUnique,
 		onPatternOrderEdited
@@ -61,9 +60,11 @@
 	const BUTTON_SPACING = 2;
 	const BUTTON_COLUMN_WIDTH = BUTTON_SIZE;
 
+	let containerDiv: HTMLDivElement;
 	let canvas: HTMLCanvasElement;
 	let ctx: CanvasRenderingContext2D;
 	const canvasWidth = CELL_WIDTH + PADDING * 2 + BUTTON_COLUMN_WIDTH + BUTTON_SPACING;
+	let canvasHeight = $state(PATTERN_EDITOR_CONSTANTS.DEFAULT_CANVAS_HEIGHT);
 
 	let COLORS = $state(getPatternOrderColors());
 	let FONTS = getFonts();
@@ -141,10 +142,34 @@
 			fontSize: FONT_SIZE,
 			cellWidth: CELL_WIDTH,
 			cellHeight: CELL_HEIGHT,
-			padding: PADDING,
-			fadeHeight: FADE_HEIGHT
+			padding: PADDING
 		});
 	}
+
+	function updateSize(): void {
+		if (!containerDiv || containerDiv.clientHeight <= 0) return;
+
+		canvasHeight = Math.max(
+			PATTERN_EDITOR_CONSTANTS.MIN_CANVAS_HEIGHT,
+			containerDiv.clientHeight
+		);
+	}
+
+	$effect(() => {
+		if (!containerDiv) return;
+
+		updateSize();
+
+		const resizeObserver = new ResizeObserver(() => {
+			updateSize();
+		});
+
+		resizeObserver.observe(containerDiv);
+
+		return () => {
+			resizeObserver.disconnect();
+		};
+	});
 
 	$effect(() => {
 		const unsubscribe = themeService.onColorChange(() => {
@@ -278,6 +303,14 @@
 		return { startIndex, endIndex };
 	}
 
+	const scrollIndicators = $derived.by(() => {
+		const { startIndex, endIndex } = getVisibleRange();
+		return {
+			hasMoreAbove: startIndex > 0,
+			hasMoreBelow: endIndex < patternOrder.length - 1
+		};
+	});
+
 	function draw(): void {
 		if (!ctx || !renderer) return;
 
@@ -325,11 +358,6 @@
 					: dropY - CELL_HEIGHT / 2;
 			renderer.drawDropIndicator(indicatorY);
 		}
-
-		const hasMoreAbove = startIndex > 0;
-		const hasMoreBelow = endIndex < patternOrder.length - 1;
-
-		renderer.drawScrollIndicators(hasMoreAbove, hasMoreBelow);
 	}
 
 	let editingPatternIndex: number | null = $state(null);
@@ -924,7 +952,10 @@
 	});
 </script>
 
-<div style="width: {canvasWidth}px; height: {canvasHeight}px;" class="relative overflow-hidden">
+<div
+	bind:this={containerDiv}
+	style="width: {canvasWidth}px;"
+	class="relative h-full overflow-hidden border border-pattern-empty transition-colors duration-150 focus-within:border-pattern-text focus-within:border-opacity-50">
 	<canvas
 		bind:this={canvas}
 		tabindex="0"
@@ -937,8 +968,27 @@
 		onmouseleave={handleMouseLeave}
 		onmouseenter={handleMouseEnter}
 		oncontextmenu={handleContextMenu}
-		class="focus:border-opacity-50 border-pattern-empty bg-pattern-bg focus:border-pattern-text block border transition-colors duration-150 focus:outline-none"
+		class="bg-pattern-bg block focus:outline-none"
 		style="width: {canvasWidth}px; height: {canvasHeight}px;"></canvas>
+
+	{#if scrollIndicators.hasMoreAbove}
+		<div
+			class="pointer-events-none absolute inset-x-0 top-0 z-[1] flex justify-center"
+			style="height: {FADE_HEIGHT}px; background: linear-gradient(to bottom, var(--color-order-bg), transparent);">
+			<span
+				class="font-mono leading-none text-[var(--color-order-text)]"
+				style="font-size: {FONT_SIZE}px; padding-top: 1px;">▲</span>
+		</div>
+	{/if}
+	{#if scrollIndicators.hasMoreBelow}
+		<div
+			class="pointer-events-none absolute inset-x-0 bottom-0 z-[1] flex items-end justify-center"
+			style="height: {FADE_HEIGHT}px; background: linear-gradient(to top, var(--color-order-bg), transparent);">
+			<span
+				class="font-mono leading-none text-[var(--color-order-text)]"
+				style="font-size: {FONT_SIZE}px; padding-bottom: 1px;">▼</span>
+		</div>
+	{/if}
 
 	<div
 		class="pointer-events-none absolute"
