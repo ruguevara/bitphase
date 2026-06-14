@@ -38,7 +38,8 @@ export type HardwareSidState = {
 export type HardwareSyncBuzzerState = {
 	enabled: boolean;
 	period: number;
-	shape: number;
+	waveform: number[];
+	waveformLoop: number;
 };
 
 export type HardwareFmState = {
@@ -211,7 +212,7 @@ function createDisabledSidState(): HardwareSidState {
 }
 
 function createDisabledSyncBuzzerState(): HardwareSyncBuzzerState {
-	return { enabled: false, period: 0, shape: 0 };
+	return { enabled: false, period: 0, waveform: [0], waveformLoop: 0 };
 }
 
 function createDisabledFmState(): HardwareFmState {
@@ -291,11 +292,11 @@ export function extractHardwareSyncBuzzerStates(registerState: {
 		const timerEffect = registerState.channels[channelIndex]?.timerEffects?.syncbuzzer;
 		const enabled =
 			!!timerEffect?.enabled && timerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
-		const waveform = timerEffect?.waveform ?? [0];
 		result.push({
 			enabled,
 			period: timerEffect?.period ?? 0,
-			shape: waveform[0] ?? 0
+			waveform: [...(timerEffect?.waveform ?? [0])],
+			waveformLoop: timerEffect?.waveformLoop ?? 0
 		});
 	}
 	return result;
@@ -377,7 +378,13 @@ export function syncBuzzerStatesEqual(
 	a: HardwareSyncBuzzerState,
 	b: HardwareSyncBuzzerState
 ): boolean {
-	return a.enabled === b.enabled && a.period === b.period && a.shape === b.shape;
+	return (
+		a.enabled === b.enabled &&
+		a.period === b.period &&
+		a.waveformLoop === b.waveformLoop &&
+		a.waveform.length === b.waveform.length &&
+		a.waveform.every((value, index) => value === b.waveform[index])
+	);
 }
 
 export function fmStatesEqual(a: HardwareFmState, b: HardwareFmState): boolean {
