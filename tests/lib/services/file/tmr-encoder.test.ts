@@ -20,6 +20,7 @@ import {
 	createDisabledTimerCaptureStates,
 	toneRegisterApplyMask,
 	envelopePeriodRegisterApplyMask,
+	envelopeShapeRegisterApplyMask,
 	type SongCaptureFrame
 } from '@/lib/services/file/ay-export-utils';
 import { computeFmTonePeriod, computeTimerPwmPeriods } from '@/lib/chips/ay/instrument';
@@ -423,6 +424,86 @@ describe('tmr encoder', () => {
 		expect(readU16LE(encoded.eventList, TEL_HEADER_SIZE + 14)).toBe(
 			encodeEventPsgApplyMask(envelopeMask, 1)
 		);
+	});
+
+	it('starts timer 2 with a single-shape sync-buzzer event (self-looping)', () => {
+		const frame = disabledSidFrame();
+		frame.syncbuzzer[1] = {
+			enabled: true,
+			period: 1000,
+			waveform: [0x0d],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		const shapeMask = envelopeShapeRegisterApplyMask();
+		const secondTimerOffset = TMR_HEADER_SIZE + 8;
+		expect(readU32LE(encoded.tmr, secondTimerOffset)).toBe(storedTimerHz(1000));
+		expect(readU16LE(encoded.tmr, secondTimerOffset + 4)).toBe(0);
+		// one event item, R13 = shape, mask = envelope shape on slot 1, next = self (0)
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + TMR_ITEM_SIZE);
+		expect(readU8(encoded.eventList, TEL_HEADER_SIZE + 13)).toBe(0x0d);
+		expect(readU16LE(encoded.eventList, TEL_HEADER_SIZE + 14)).toBe(
+			encodeEventPsgApplyMask(shapeMask, 1)
+		);
+		expect(readU16LE(encoded.eventList, TEL_HEADER_SIZE + 20)).toBe(0);
+	});
+
+	it('emits an A/B two-shape sync-buzzer as a linked alternating chain', () => {
+		// Regression: the exporter used to keep only waveform[0], dropping shape B
+		// and self-looping a single event. An A/B sync-buzzer must export both
+		// shapes as a 2-event chain that alternates (A -> B -> A).
+		const frame = disabledSidFrame();
+		frame.syncbuzzer[1] = {
+			enabled: true,
+			period: 6960,
+			waveform: [0x0d, 0x09],
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		const shapeMask = envelopeShapeRegisterApplyMask();
+		const secondTimerOffset = TMR_HEADER_SIZE + 8;
+		expect(readU32LE(encoded.tmr, secondTimerOffset)).toBe(storedTimerHz(6960));
+		expect(readU16LE(encoded.tmr, secondTimerOffset + 4)).toBe(0); // chain head = event 0
+
+		// two event items
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
+		const ev0 = TEL_HEADER_SIZE;
+		const ev1 = TEL_HEADER_SIZE + TMR_ITEM_SIZE;
+		// event 0: shape A, next -> event 1
+		expect(readU8(encoded.eventList, ev0 + 13)).toBe(0x0d);
+		expect(readU16LE(encoded.eventList, ev0 + 14)).toBe(encodeEventPsgApplyMask(shapeMask, 1));
+		expect(readU16LE(encoded.eventList, ev0 + 20)).toBe(1);
+		// event 1: shape B, next -> event 0 (loop)
+		expect(readU8(encoded.eventList, ev1 + 13)).toBe(0x09);
+		expect(readU16LE(encoded.eventList, ev1 + 14)).toBe(encodeEventPsgApplyMask(shapeMask, 1));
+		expect(readU16LE(encoded.eventList, ev1 + 20)).toBe(0);
+	});
+
+	it('round-trips a two-shape sync-buzzer chain through parse', () => {
+		const frame = disabledSidFrame();
+		frame.syncbuzzer[1] = {
+			enabled: true,
+			period: 6960,
+			waveform: [0x07, 0x0a],
+			waveformLoop: 0
+		};
+
+		const merged = parseEncoded([frame]);
+		expect(merged.eventItems).toHaveLength(2);
+		expect(merged.eventItems[0]!.psgData[13]).toBe(0x07);
+		expect(merged.eventItems[0]!.timerEventIndex).toBe(1);
+		expect(merged.eventItems[1]!.psgData[13]).toBe(0x0a);
+		expect(merged.eventItems[1]!.timerEventIndex).toBe(0);
 	});
 
 	it('emits timer stop when FM turns off', () => {
