@@ -1,4 +1,4 @@
 [submodule "external/ayumi"]
 	path = external/ayumi
 	url = https://github.com/paator/ayumi.git
-	branch = bitphase
+	branch = master
