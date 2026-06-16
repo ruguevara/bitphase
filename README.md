@@ -1,8 +1,10 @@
 # Bitphase
 
 <div align="center">
-  <img src="public/logo.svg" alt="Logo" width="300" />
+  <img src="public/logo.svg" alt="Logo" width="200"/>
 </div>
+
+<img width="3020" height="1972" alt="bitphase app_" src="https://github.com/user-attachments/assets/e64270d0-891a-46e3-829f-c264b8e74d36" />
 
 [Bitphase](https://bitphase.app/)
 
