@@ -13,11 +13,26 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
+              with:
+                  submodules: true
+
+            - name: Update submodules (HTTPS for CI)
+              run: |
+                  git config submodule.external/ayumi.url https://github.com/paator/ayumi.git
+                  git submodule update --init --recursive external/ayumi
+
+            - name: Verify submodule
+              run: test -f external/ayumi/ayumi.c || (echo "Submodule external/ayumi not present" && exit 1)
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
                   node-version: '20'
+
+            - name: Setup Emscripten
+              uses: mymindstorm/setup-emsdk@v12
+              with:
+                  version: '3.1.45'
 
             - name: Setup pnpm
               uses: pnpm/action-setup@v4
@@ -42,6 +57,13 @@ jobs:
 
             - name: Run type checking
               run: pnpm check
+
+            - name: Build ayumi WASM
+              run: |
+                  source $EMSDK/emsdk_env.sh
+                  export PATH=$EMSDK/upstream/emscripten:$PATH
+                  chmod +x build-wasm.sh
+                  pnpm build:wasm
 
             - name: Run tests
               run: pnpm test:run
