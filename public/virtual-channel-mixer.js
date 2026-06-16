@@ -1,4 +1,5 @@
 import AYChipRegisterState from './ay-chip-register-state.js';
+import { copyChannelTimerEffects, createDefaultChannelTimerEffects } from './ay-timer-effect-constants.js';
 
 class VirtualChannelMixer {
 	constructor() {
@@ -35,6 +36,18 @@ class VirtualChannelMixer {
 			total += this.virtualChannelMap[i] ?? 1;
 		}
 		return total;
+	}
+
+	getHardwareChannelIndex(virtualChannelIndex) {
+		let offset = 0;
+		for (let hw = 0; hw < this.hwChannelCount; hw++) {
+			const count = this.virtualChannelMap[hw] ?? 1;
+			if (virtualChannelIndex < offset + count) {
+				return hw;
+			}
+			offset += count;
+		}
+		return Math.max(0, this.hwChannelCount - 1);
 	}
 
 	hasVirtualChannels() {
@@ -91,6 +104,11 @@ class VirtualChannelMixer {
 		dst.mixer.tone = src.mixer.tone;
 		dst.mixer.noise = src.mixer.noise;
 		dst.mixer.envelope = src.mixer.envelope;
+		if (src.timerEffects) {
+			dst.timerEffects = copyChannelTimerEffects(src.timerEffects);
+		} else if (!dst.timerEffects) {
+			dst.timerEffects = createDefaultChannelTimerEffects();
+		}
 	}
 }
 

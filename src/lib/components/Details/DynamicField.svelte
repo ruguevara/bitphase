@@ -41,6 +41,17 @@
 		!setting.showWhen || context[setting.showWhen.key] == setting.showWhen.value
 	);
 
+	const disabled = $derived(
+		setting.disabledWhen != null &&
+			context[setting.disabledWhen.key] == setting.disabledWhen.value
+	);
+
+	const toggleLabel = $derived(
+		setting.type === 'toggle' && setting.options
+			? (setting.options.find((opt) => opt.value === value)?.label ?? String(value))
+			: String(value)
+	);
+
 	const hint = $derived(
 		hintOverride !== undefined
 			? hintOverride
@@ -136,19 +147,26 @@
 	{:else if setting.type === 'toggle' && setting.options}
 		<button
 			type="button"
-			class="w-full cursor-pointer rounded border border-[var(--color-app-border)] bg-[var(--color-pattern-bg)] px-2 py-1 text-xs transition-colors hover:bg-[var(--color-pattern-selected)] focus:border-transparent focus:ring-1 focus:ring-blue-500 focus:outline-none"
+			class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-pattern-bg)] px-2 py-1 text-xs transition-colors focus:border-transparent focus:ring-1 focus:ring-blue-500 focus:outline-none"
+			class:cursor-pointer={!disabled}
+			class:hover:bg-[var(--color-pattern-selected)]={!disabled}
+			class:cursor-not-allowed={disabled}
+			class:opacity-50={disabled}
+			disabled={disabled}
 			onclick={() => {
+				if (disabled) return;
 				const currentIndex = setting.options?.findIndex((opt) => opt.value === value) ?? 0;
 				const nextIndex = (currentIndex + 1) % (setting.options?.length ?? 1);
 				handleChange(setting.options?.[nextIndex]?.value);
 			}}>
-			{String(value)}
+			{toggleLabel}
 		</button>
 	{:else if setting.type === 'select' && setting.options}
 		<Select
 			bind:value={value as number}
 			options={selectOptions}
 			showCustomOption={!setting.dynamicOption}
+			{disabled}
 			onchange={() => onChange?.(setting.key, value, setting)} />
 	{:else if setting.type === 'number'}
 		<div class="flex items-center gap-2">

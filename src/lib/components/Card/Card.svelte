@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Snippet, Component } from 'svelte';
 	import type { ClassValue } from 'svelte/elements';
+	import Button from '../Button/Button.svelte';
 
 	const props: {
 		title: string;
@@ -33,16 +34,16 @@
 			{#if props.actions}
 				<div class="flex items-center gap-1">
 					{#each props.actions as action}
-						<button
-							class="flex cursor-pointer items-center gap-1 rounded px-2 py-1 text-xs text-[var(--color-app-text-muted)] transition-colors duration-200 hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)] active:bg-[var(--color-app-surface-active)] {action.class ||
-								''}"
+						<Button
+							variant="header"
 							onclick={action.onClick}
-							title={action.label}>
+							title={action.label}
+							class="flex items-center gap-1 {action.class || ''}">
 							<action.icon class="h-3 w-3" />
 							{#if action.label}
 								<span class="font-medium">{action.label}</span>
 							{/if}
-						</button>
+						</Button>
 					{/each}
 				</div>
 			{/if}

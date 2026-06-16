@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
 	import { TreeView } from '../TreeView';
+	import { ModalPanel } from '../ModalPanel';
+	import { AlertBanner } from '../AlertBanner';
 	import type { TreeNode } from '../TreeView/types';
 	import type { InstrumentPresetData } from '../../presets/instrument-presets';
 	import { getInstrumentPresetTree } from '../../presets/instrument-presets';
@@ -68,22 +70,16 @@
 	function handleCancel(): void {
 		resolve?.(undefined);
 	}
-
 </script>
 
-<div class="flex max-h-[90vh] w-[420px] flex-col overflow-hidden">
-	<div
-		class="flex shrink-0 items-center justify-between border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<h2 class="text-sm font-bold text-[var(--color-app-text-primary)]">
-			{presetType === 'instrument' ? 'Instrument presets' : 'Presets'}
-		</h2>
-	</div>
-
-	<div class="min-h-0 flex-1 overflow-y-auto p-4">
+<ModalPanel
+	title={presetType === 'instrument' ? 'Instrument presets' : 'Presets'}
+	width="w-[420px]">
+	{#snippet children()}
 		{#if error}
-			<div class="mb-2 rounded border border-red-500/50 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+			<AlertBanner class="mb-2">
 				{error}
-			</div>
+			</AlertBanner>
 		{/if}
 		{#if treeNodes.length === 0}
 			<p class="text-xs text-[var(--color-app-text-muted)]">
@@ -103,10 +99,9 @@
 				Select a preset and click Load.
 			</p>
 		{/if}
-	</div>
+	{/snippet}
 
-	<div
-		class="flex shrink-0 justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+	{#snippet footer()}
 		<Button variant="secondary" onclick={handleCancel}>Cancel</Button>
 		<Button
 			variant="primary"
@@ -114,5 +109,5 @@
 			disabled={!selectedId || loading}>
 			{loading ? 'Loading…' : 'Load'}
 		</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

@@ -11,6 +11,79 @@ import type {
 import type { ChipSettings } from '../../services/audio/chip-settings';
 import type { CatchUpSegment } from '../../services/audio/play-from-position';
 import { MixerWorkletBridge } from '../../services/audio/mixer-worklet-bridge';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from './sample-region';
+import type { AyTimerPwmSweepShape } from './instrument';
+
+type WorkletInstrument = Instrument & {
+	timerLoop?: number;
+	timerRows?: Record<string, unknown>[];
+	timerPwmDuty?: number;
+	timerPwmSweepMin?: number;
+	timerPwmSweep?: number;
+	timerPwmPreserveOnNewNote?: boolean;
+	timerPwmReverseSweep?: boolean;
+	timerPwmSweepStartPhase?: number;
+	timerPwmSweepShape?: AyTimerPwmSweepShape;
+	sampleData?: number[];
+	sampleRate?: number;
+	sampleStart?: number;
+	sampleEnd?: number;
+	sampleLoopStart?: number;
+	sampleLength?: number;
+	sampleLoopEnabled?: boolean;
+	sampleLoop?: number;
+};
+
+export function sanitizeInstrumentForWorklet(instrument: Instrument): WorkletInstrument {
+	const extended = instrument as WorkletInstrument;
+	const sampleData =
+		extended.sampleData?.length &&
+		isValidInstrumentSampleByteLength(extended.sampleData.length)
+			? extended.sampleData.map((value) => value & 0xff)
+			: undefined;
+	return {
+		id: instrument.id,
+		rows: Array.from(instrument.rows).map((row) => ({ ...row })),
+		loop: instrument.loop,
+		name: instrument.name,
+		timerLoop: extended.timerLoop ?? instrument.loop,
+		timerPwmDuty: extended.timerPwmDuty,
+		timerPwmSweepMin: extended.timerPwmSweepMin,
+		timerPwmSweep: extended.timerPwmSweep,
+		timerPwmPreserveOnNewNote: extended.timerPwmPreserveOnNewNote,
+		timerPwmSweepStartPhase: extended.timerPwmSweepStartPhase,
+		timerPwmSweepShape: extended.timerPwmSweepShape,
+		timerPwmReverseSweep: extended.timerPwmReverseSweep,
+		timerRows: extended.timerRows?.map((row) => ({
+			...row,
+			timerWaveform: (row as { timerWaveform?: number[] }).timerWaveform
+				? [...((row as { timerWaveform?: number[] }).timerWaveform as number[])]
+				: undefined
+		})),
+		...(sampleData?.length
+			? (() => {
+					const bounds = normalizeSamplePlaybackBounds({
+						sampleData,
+						sampleStart: extended.sampleStart,
+						sampleEnd: extended.sampleEnd,
+						sampleLoopStart: extended.sampleLoopStart,
+						sampleLength: extended.sampleLength,
+						sampleLoop: extended.sampleLoop
+					});
+					return {
+						sampleData,
+						sampleRate: extended.sampleRate,
+						sampleStart: bounds?.start ?? 0,
+						sampleEnd: bounds?.end ?? sampleData.length - 1,
+						sampleLoopStart: bounds?.loopStart ?? 0,
+						sampleLoopEnabled: extended.sampleLoopEnabled !== false
+					};
+				})()
+			: {})
+	};
+}
+
 export class AYProcessor
 	implements
 		MixerWorkletSlotProcessor,
@@ -62,6 +135,14 @@ export class AYProcessor
 		);
 
 		this.settingsUnsubscribers.push(
+			chipSettings.subscribe('stMixing', (value) => {
+				if (typeof value === 'boolean') {
+					this.sendUpdateStMixing(value);
+				}
+			})
+		);
+
+		this.settingsUnsubscribers.push(
 			chipSettings.subscribe('stereoLayout', (value) => {
 				if (typeof value === 'string') {
 					this.sendUpdateStereoLayout(value);
@@ -106,6 +187,28 @@ export class AYProcessor
 
 	setWaveformCallback(callback: (channels: Float32Array[]) => void): void {
 		this.bridge.setWaveformCallback(callback);
+	}
+
+	setChannelToneHzCallback(
+		callback: (payload: {
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+			registers: number[];
+		}) => void
+	): void {
+		this.bridge.setChannelToneHzCallback(callback);
+	}
+
+	setTimerPwmSweepPhaseCallback(
+		callback: (payload: {
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+		}) => void
+	): void {
+		this.bridge.setTimerPwmSweepPhaseCallback(callback);
 	}
 
 	play(initialSpeed?: number): void {
@@ -164,12 +267,7 @@ export class AYProcessor
 	}
 
 	sendInitInstruments(instruments: Instrument[]): void {
-		const sanitized: Instrument[] = instruments.map((o) => ({
-			id: o.id,
-			rows: Array.from(o.rows).map((row) => ({ ...row })),
-			loop: o.loop,
-			name: o.name
-		}));
+		const sanitized = instruments.map(sanitizeInstrumentForWorklet);
 		this.bridge.sendCommand({ type: 'init_instruments', instruments: sanitized });
 	}
 
@@ -204,6 +302,10 @@ export class AYProcessor
 		this.bridge.sendCommand({ type: 'update_chip_variant', chipVariant });
 	}
 
+	sendUpdateStMixing(stMixing: boolean): void {
+		this.bridge.sendCommand({ type: 'update_st_mixing', stMixing });
+	}
+
 	sendUpdateStereoLayout(stereoLayout: string): void {
 		this.bridge.sendCommand({ type: 'update_stereo_layout', stereoLayout });
 	}
@@ -227,6 +329,9 @@ export class AYProcessor
 			case 'chipVariant':
 				this.sendUpdateChipVariant(value as string);
 				break;
+			case 'stMixing':
+				this.sendUpdateStMixing(value as boolean);
+				break;
 			case 'stereoLayout':
 				this.sendUpdateStereoLayout(value as string);
 				break;
@@ -242,14 +347,7 @@ export class AYProcessor
 	playPreviewRow(pattern: Pattern, rowIndex: number, instrument?: Instrument): void {
 		if (rowIndex < 0 || rowIndex >= pattern.length) return;
 		const patternCopy = structuredClone(pattern);
-		const instrumentCopy = instrument
-			? {
-					id: instrument.id,
-					rows: Array.from(instrument.rows).map((row) => ({ ...row })),
-					loop: instrument.loop,
-					name: instrument.name
-				}
-			: undefined;
+		const instrumentCopy = instrument ? sanitizeInstrumentForWorklet(instrument) : undefined;
 		this.bridge.sendCommand({
 			type: 'preview_row',
 			pattern: patternCopy,

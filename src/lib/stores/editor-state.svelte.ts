@@ -18,8 +18,10 @@ class EditorStateStore {
 		const stored = localStorage.getItem(EDITOR_STATE_STORAGE_KEY);
 		if (stored) {
 			const parsed = JSON.parse(stored) as StoredEditorState;
-			if (typeof parsed.octave === 'number' && parsed.octave >= 0 && parsed.octave <= 8) {
+			if (typeof parsed.octave === 'number' && parsed.octave >= 1 && parsed.octave <= 8) {
 				this.octave = parsed.octave;
+			} else if (typeof parsed.octave === 'number' && parsed.octave === 0) {
+				this.octave = 1;
 			}
 			if (typeof parsed.step === 'number' && parsed.step >= 0 && parsed.step <= 255) {
 				this.step = parsed.step;
@@ -28,7 +30,7 @@ class EditorStateStore {
 	}
 
 	setOctave(octave: number): void {
-		if (octave >= 0 && octave <= 8) {
+		if (octave >= 1 && octave <= 8) {
 			this.octave = octave;
 			this.saveEditorState();
 		}

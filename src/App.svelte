@@ -36,6 +36,7 @@
 	import { runAppBootstrap } from './lib/app-bootstrap';
 	import { createMenuActionHandler } from './lib/services/app/menu-action-handler';
 	import type { MenuActionContext } from './lib/services/app/menu-action-context';
+	import type { ChipProcessor } from './lib/chips/base/processor';
 	import { projectStore } from './lib/stores/project.svelte';
 	import AlphaNoticeModal from './lib/components/Modal/AlphaNoticeModal.svelte';
 	import { alphaNoticeStore } from './lib/stores/alpha-notice.svelte';
@@ -79,8 +80,11 @@
 	});
 
 	const projectService = new ProjectService(container.audioService);
+	let chipProcessors = $state<ChipProcessor[]>([]);
 
-	container.audioService.addChipProcessor(AY_CHIP);
+	function syncChipProcessors() {
+		chipProcessors = container.audioService.chipProcessors;
+	}
 
 	$effect(() => {
 		const volume = settingsStore.volume;
@@ -123,6 +127,7 @@
 
 		(async () => {
 			const newProject = await projectService.resetProject(AY_CHIP);
+			syncChipProcessors();
 			projectStore.applyProject(newProject);
 
 			const backup = await autobackupService.getAutobackup();
@@ -131,6 +136,7 @@
 				for (const _ of backup.songs) {
 					await container.audioService.addChipProcessor(AY_CHIP);
 				}
+				syncChipProcessors();
 				ProjectService.ensureChipSettingsConsistency(backup.songs);
 				projectStore.applyProject(backup);
 			}
@@ -216,9 +222,11 @@
 		removeSong: (index) => {
 			projectStore.removeSong(index);
 			container.audioService.removeChipProcessor(index);
+			syncChipProcessors();
 		},
 		addSong: (song) => {
 			projectStore.addSong(song);
+			syncChipProcessors();
 		},
 		setActiveSongIndex: (index) => {
 			activeSongIndex = index;
@@ -239,7 +247,12 @@
 		}
 	};
 
-	const handleMenuAction = createMenuActionHandler(menuActionContext);
+	const baseHandleMenuAction = createMenuActionHandler(menuActionContext);
+
+	async function handleMenuAction(data: { action: string; songIndex?: number }) {
+		await baseHandleMenuAction(data);
+		syncChipProcessors();
+	}
 
 	setContext('container', container);
 
@@ -259,7 +272,7 @@
 				return;
 			}
 			if (action === ACTION_OCTAVE_DOWN) {
-				if (editorStateStore.octave > 0) {
+				if (editorStateStore.octave > 1) {
 					editorStateStore.setOctave(editorStateStore.octave - 1);
 				}
 				return;
@@ -298,7 +311,7 @@
 			bind:patternEditor
 			bind:activeEditorIndex={activeSongIndex}
 			onaction={handleMenuAction}
-			chipProcessors={container.audioService.chipProcessors} />
+			chipProcessors={chipProcessors} />
 	</div>
 	<ModalContainer />
 	<HistoryFeedback />

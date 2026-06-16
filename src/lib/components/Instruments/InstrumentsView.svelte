@@ -6,15 +6,15 @@
 	import IconCarbonHexagonSolid from '~icons/carbon/hexagon-solid';
 	import IconCarbonHexagonOutline from '~icons/carbon/hexagon-outline';
 	import IconCarbonAdd from '~icons/carbon/add';
-	import IconCarbonCopy from '~icons/carbon/copy';
-	import IconCarbonTrashCan from '~icons/carbon/trash-can';
 	import IconCarbonMaximize from '~icons/carbon/maximize';
 	import IconCarbonMinimize from '~icons/carbon/minimize';
 	import IconCarbonSave from '~icons/carbon/save';
 	import IconCarbonDocumentImport from '~icons/carbon/document-import';
 	import IconCarbonFolder from '~icons/carbon/folder';
-	import IconCarbonArrowsVertical from '~icons/carbon/arrows-vertical';
 	import Card from '../Card/Card.svelte';
+	import { ToolbarButton } from '../ToolbarButton';
+	import { ItemGridCell } from '../ItemGridCell';
+	import { ListResizeDivider } from '../ListResizeDivider';
 	import PresetsModal from '../Modal/PresetsModal.svelte';
 	import { open } from '../../services/modal/modal-service';
 	import { downloadJson, pickFileAsText } from '../../utils/file-download';
@@ -30,6 +30,7 @@
 		MAX_INSTRUMENT_ID_NUM
 	} from '../../utils/instrument-id';
 	import { migrateInstrumentIdInSong } from '../../services/project/id-migration';
+	import { copyAyInstrumentFields, type AyInstrumentFields } from '../../chips/ay/instrument';
 	import { editorStateStore } from '../../stores/editor-state.svelte';
 	import { projectStore } from '../../stores/project.svelte';
 	import { computeGridRows } from '../../utils/compute-grid-rows';
@@ -269,6 +270,10 @@
 			copiedRows,
 			instrument.loop,
 			instrument.name + ' (Copy)'
+		);
+		copyAyInstrumentFields(
+			instrument as Instrument & Partial<AyInstrumentFields>,
+			copy as Instrument & Partial<AyInstrumentFields>
 		);
 
 		const beforeInstruments = projectStore.cloneForHistory(projectStore.instruments);
@@ -514,17 +519,29 @@
 							{#each rowIndices as index}
 								{@const instrument = instruments[index]}
 								{#if instrument}
-									{@const isUsed = isInstrumentUsed(instrument)}
 									{@const isSelected = selectedInstrumentIndex === index}
-									{@const isEditing = editingInstrumentId === index}
-									{#if isEditing}
-										<div
-											data-instrument-index={index}
-											class="group relative flex min-w-[6rem] shrink-0 flex-col items-center justify-center border-r border-[var(--color-app-border)] p-3 {isSelected
-												? 'bg-[var(--color-app-primary)]'
-												: isUsed
-													? 'bg-[var(--color-app-surface-secondary)]/40 hover:bg-[var(--color-app-surface-secondary)]/70'
-													: 'bg-[var(--color-app-background)]/60 hover:bg-[var(--color-app-background)]/80'}">
+									<ItemGridCell
+										dataIndexKind="instrument"
+										dataValue={index}
+										{isSelected}
+										isUsed={isInstrumentUsed(instrument)}
+										isEditing={editingInstrumentId === index}
+										idLabel={instrument.id}
+										nameLabel={instrument.name}
+										copyTitle="Copy instrument"
+										removeTitle="Remove instrument"
+										showRemove={instruments.length > 1}
+										onSelect={() => (selectedInstrumentIndex = index)}
+										onDoubleClick={() => startEditingInstrumentId(index)}
+										onCopy={(e) => {
+											e.stopPropagation();
+											copyInstrument(index);
+										}}
+										onRemove={(e) => {
+											e.stopPropagation();
+											removeInstrument(index);
+										}}>
+										{#snippet edit()}
 											<EditableIdField
 												bind:value={editingInstrumentIdValue}
 												error={editingInstrumentIdValue
@@ -538,61 +555,8 @@
 														.toUpperCase()
 														.slice(0, 2)
 														.replace(/[^0-9A-Z]/g, '')} />
-										</div>
-									{:else}
-										<div
-											data-instrument-index={index}
-											class="group relative flex min-w-[6rem] shrink-0 flex-col items-center border-r border-[var(--color-app-border)]">
-											<button
-												class="flex h-full w-full shrink-0 cursor-pointer flex-col items-center justify-center p-3 {isSelected
-													? 'bg-[var(--color-app-primary)]'
-													: isUsed
-														? 'bg-[var(--color-app-surface-secondary)]/40 hover:bg-[var(--color-app-surface-secondary)]/70'
-														: 'bg-[var(--color-app-background)]/60 hover:bg-[var(--color-app-background)]/80'}"
-												onclick={() => (selectedInstrumentIndex = index)}
-												ondblclick={() => startEditingInstrumentId(index)}>
-												<span
-													class="font-mono text-xs font-semibold {isSelected
-														? 'text-[var(--color-app-on-primary)]'
-														: isUsed
-															? 'text-[var(--color-app-text-tertiary)] group-hover:text-[var(--color-app-text-primary)]'
-															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'}">
-													{instrument.id}
-												</span>
-												<span
-													class="text-xs {isSelected
-														? 'text-[var(--color-app-on-primary)]'
-														: isUsed
-															? 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'
-															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-muted)]'}">
-													{instrument.name}
-												</span>
-											</button>
-											<div
-												class="absolute top-1 right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-												<button
-													class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-[var(--color-app-text-primary)]"
-													onclick={(e) => {
-														e.stopPropagation();
-														copyInstrument(index);
-													}}
-													title="Copy instrument">
-													<IconCarbonCopy class="h-3 w-3" />
-												</button>
-												{#if instruments.length > 1}
-													<button
-														class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-[var(--color-pattern-note-off)]"
-														onclick={(e) => {
-															e.stopPropagation();
-															removeInstrument(index);
-														}}
-														title="Remove instrument">
-														<IconCarbonTrashCan class="h-3 w-3" />
-													</button>
-												{/if}
-											</div>
-										</div>
-									{/if}
+										{/snippet}
+									</ItemGridCell>
 								{/if}
 							{/each}
 						</div>
@@ -600,54 +564,39 @@
 				</div>
 				<div
 					class="flex shrink-0 items-center gap-2 border-t border-[var(--color-app-border)] px-2 py-1.5">
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+					<ToolbarButton
+						icon={IconCarbonAdd}
+						label="Add"
 						onclick={addInstrument}
 						disabled={instruments.length >= MAX_INSTRUMENT_ID_NUM}
 						title={instruments.length >= MAX_INSTRUMENT_ID_NUM
 							? 'Maximum 1295 instruments (01–ZZ)'
-							: 'Add new instrument'}>
-						<IconCarbonAdd class="h-3.5 w-3.5" />
-						<span>Add</span>
-					</button>
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+							: 'Add new instrument'} />
+					<ToolbarButton
+						icon={IconCarbonSave}
+						label="Save"
 						onclick={saveInstrument}
 						disabled={instruments.length === 0}
-						title="Save selected instrument to JSON file">
-						<IconCarbonSave class="h-3.5 w-3.5" />
-						<span>Save</span>
-					</button>
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)]"
+						title="Save selected instrument to JSON file" />
+					<ToolbarButton
+						icon={IconCarbonDocumentImport}
+						label="Load"
 						onclick={loadInstrument}
 						disabled={instruments.length === 0}
-						title="Load instrument from JSON file into selected slot">
-						<IconCarbonDocumentImport class="h-3.5 w-3.5" />
-						<span>Load</span>
-					</button>
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+						title="Load instrument from JSON file into selected slot" />
+					<ToolbarButton
+						icon={IconCarbonFolder}
+						label="Presets"
 						onclick={openPresets}
 						disabled={instruments.length === 0}
-						title="Load instrument from built-in presets">
-						<IconCarbonFolder class="h-3.5 w-3.5" />
-						<span>Presets</span>
-					</button>
+						title="Load instrument from built-in presets" />
 				</div>
 			</div>
 
-			<div
-				class="flex shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] py-1 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)] {instrumentListResize.isResizing
-					? 'bg-[var(--color-app-surface-hover)]'
-					: ''}"
-				role="button"
-				tabindex="0"
-				aria-label="Drag to resize instrument list"
-				title="Drag to resize instrument list"
-				onmousedown={instrumentListResize.beginResize}>
-				<IconCarbonArrowsVertical class="h-3 w-3" />
-			</div>
+			<ListResizeDivider
+				isResizing={instrumentListResize.isResizing}
+				label="Drag to resize instrument list"
+				onmousedown={instrumentListResize.beginResize} />
 
 			<div class="min-h-0 flex-1 overflow-auto p-4">
 				{#if instruments && instruments[selectedInstrumentIndex]}

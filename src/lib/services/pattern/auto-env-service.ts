@@ -83,6 +83,29 @@ export class AutoEnvService {
 		return updatedPattern;
 	}
 
+	static applyAutoEnvelopeIfEligible(
+		pattern: Pattern,
+		rowIndex: number,
+		fieldInfo:
+			| { channelIndex: number; fieldType?: string; fieldKey?: string }
+			| null
+			| undefined,
+		tuningTable: number[],
+		ratio: AutoEnvRatio,
+		enabled: boolean
+	): Pattern {
+		if (!enabled || !fieldInfo || fieldInfo.channelIndex < 0) {
+			return pattern;
+		}
+		if (fieldInfo.fieldType !== 'note' && fieldInfo.fieldKey !== 'envelopeShape') {
+			return pattern;
+		}
+		return (
+			this.applyAutoEnvelope(pattern, rowIndex, fieldInfo.channelIndex, tuningTable, ratio) ??
+			pattern
+		);
+	}
+
 	private static getEnvelopeDivisor(envelopeShape: number): number | null {
 		switch (envelopeShape) {
 			case 8:

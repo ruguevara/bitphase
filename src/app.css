@@ -151,6 +151,10 @@ html {
 	outline: none;
 }
 
+.row-editor-table .timer-steps-column {
+	width: 100%;
+}
+
 .instrument-cell-boolean-on {
 	background: color-mix(in srgb, var(--color-pattern-table) 20%, var(--color-app-surface));
 	color: var(--color-pattern-table);

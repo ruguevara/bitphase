@@ -12,15 +12,17 @@ import { AYUMI_AUDIO_SLOT_KIND } from './audio-slot-kind';
 import type { ResourceLoader } from '../base/resource-loader';
 import { BrowserResourceLoader } from '../base/resource-loader';
 import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
+import {
+	AYUMI_STRUCT_SIZE,
+	AYUMI_STRUCT_LEFT_OFFSET,
+	AYUMI_STRUCT_RIGHT_OFFSET,
+	AYUMI_STRUCT_CHANNEL_OUT_OFFSET,
+	DEFAULT_AYM_FREQUENCY
+} from './ayumi-constants';
 
 const SAMPLE_RATE = 44100;
 const DEFAULT_SPEED = 6;
-const AYUMI_STRUCT_SIZE = 22928;
-const AYUMI_STRUCT_LEFT_OFFSET = 22888;
-const AYUMI_STRUCT_RIGHT_OFFSET = 22896;
-const AYUMI_STRUCT_CHANNEL_OUT_OFFSET = 22904;
 const TONE_CHANNELS = 3;
-const DEFAULT_AYM_FREQUENCY = 1773400;
 
 type PanSetting = { channel: number; pan: number; isEqp: number };
 type GetPanSettingsForLayout = (layout: string) => PanSetting[];
@@ -70,15 +72,27 @@ export class AYChipRenderer implements ChipRenderer {
 		getPanSettingsForLayout: GetPanSettingsForLayout
 	): number {
 		const chipFrequency = song.chipFrequency || DEFAULT_AYM_FREQUENCY;
-		const ayumiPtr = wasm.malloc(AYUMI_STRUCT_SIZE);
+		const structSize =
+			typeof wasm.ayumi_struct_size === 'function'
+				? wasm.ayumi_struct_size()
+				: AYUMI_STRUCT_SIZE;
+		const ayumiPtr = wasm.malloc(structSize);
 		if (!ayumiPtr) {
 			throw new Error('Failed to allocate Ayumi structure');
 		}
 
-		const isYM = song.chipType === 'ay' && song.chipVariant === 'YM' ? 1 : 0;
-		wasm.ayumi_configure(ayumiPtr, isYM, chipFrequency, SAMPLE_RATE);
+		const isYM =
+			song.chipType === 'ay' &&
+			(song.chipVariant === 'YM' || Boolean((song as { stMixing?: boolean }).stMixing))
+				? 1
+				: 0;
+		const stMixing = Boolean((song as { stMixing?: boolean }).stMixing);
+		const isST = song.chipType === 'ay' && stMixing ? 1 : 0;
+		wasm.ayumi_configure(ayumiPtr, isYM, chipFrequency, SAMPLE_RATE, isST);
 
-		const stereoLayout = (song as { stereoLayout?: string }).stereoLayout ?? 'ABC';
+		const stereoLayout = stMixing
+			? 'mono'
+			: ((song as { stereoLayout?: string }).stereoLayout ?? 'ABC');
 		const panSettings = getPanSettingsForLayout(stereoLayout);
 		panSettings.forEach(({ channel, pan, isEqp }) => {
 			wasm.ayumi_set_pan(ayumiPtr, channel, pan, isEqp);
@@ -98,25 +112,26 @@ export class AYChipRenderer implements ChipRenderer {
 		VirtualChannelMixer: any;
 	}> {
 		onProgress?.(20, 'Loading processor modules...');
-		const { default: AyumiState } = await this.loader.loadModule<{ default: new () => unknown }>(
-			'ayumi-state.js'
-		);
+		const { default: AyumiState } = await this.loader.loadModule<{
+			default: new () => unknown;
+		}>('ayumi-state.js');
 		onProgress?.(30, 'Loading pattern processor...');
-		const { default: TrackerPatternProcessor } =
-			await this.loader.loadModule<{ default: new (a: unknown, b: unknown, c: unknown) => unknown }>(
-				'tracker-pattern-processor.js'
-			);
+		const { default: TrackerPatternProcessor } = await this.loader.loadModule<{
+			default: new (a: unknown, b: unknown, c: unknown) => unknown;
+		}>('tracker-pattern-processor.js');
 		onProgress?.(40, 'Loading audio driver...');
-		const { default: AYAudioDriver } =
-			await this.loader.loadModule<{ default: new () => unknown }>('ay-audio-driver.js');
-		const { default: AyumiEngine } =
-			await this.loader.loadModule<{ default: new (a: unknown, b: unknown) => unknown }>(
-				'ayumi-engine.js'
-			);
-		const { default: AYChipRegisterState } =
-			await this.loader.loadModule<{ default: new () => unknown }>('ay-chip-register-state.js');
-		const { default: VirtualChannelMixer } =
-			await this.loader.loadModule<{ default: new () => unknown }>('virtual-channel-mixer.js');
+		const { default: AYAudioDriver } = await this.loader.loadModule<{
+			default: new () => unknown;
+		}>('ay-audio-driver.js');
+		const { default: AyumiEngine } = await this.loader.loadModule<{
+			default: new (a: unknown, b: unknown) => unknown;
+		}>('ayumi-engine.js');
+		const { default: AYChipRegisterState } = await this.loader.loadModule<{
+			default: new () => unknown;
+		}>('ay-chip-register-state.js');
+		const { default: VirtualChannelMixer } = await this.loader.loadModule<{
+			default: new () => unknown;
+		}>('virtual-channel-mixer.js');
 
 		return {
 			AyumiState,
@@ -137,6 +152,33 @@ export class AYChipRenderer implements ChipRenderer {
 		wasmBuffer: ArrayBuffer
 	): void {
 		this.applyAyExportLaneSetup(state, song, project, wasm, ayumiPtr, wasmBuffer, true);
+	}
+
+	private syncExportEngineRegisterState(
+		audioDriver: any,
+		ayumiEngine: any,
+		registerState: any,
+		mixer: any,
+		state: any
+	): void {
+		audioDriver.resetChannelMixerState();
+		registerState.reset();
+		ayumiEngine.reset();
+		if (mixer.hasVirtualChannels()) {
+			ayumiEngine.applyRegisterState(mixer.merge(registerState, state));
+		} else {
+			ayumiEngine.applyRegisterState(registerState);
+		}
+	}
+
+	private resolveSampleAyumiChannel(
+		mixer: { hasVirtualChannels?: () => boolean; getHardwareChannelIndex?: (i: number) => number },
+		channelIndex: number
+	): number {
+		if (mixer?.hasVirtualChannels?.()) {
+			return mixer.getHardwareChannelIndex?.(channelIndex) ?? channelIndex;
+		}
+		return channelIndex;
 	}
 
 	private applyAyExportLaneSetup(
@@ -276,7 +318,9 @@ export class AYChipRenderer implements ChipRenderer {
 					ayumiEngine.applyRegisterState(registerState);
 				}
 
-				const isLastPattern = state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
+				const isLastPattern =
+					state.timeline.currentPatternOrderIndex >=
+					state.timeline.patternOrder.length - 1;
 				const isLastRow = state.timeline.currentRow >= state.currentPattern.length - 1;
 				const isLastTick = state.timeline.currentTick >= state.timeline.currentSpeed - 1;
 
@@ -289,7 +333,10 @@ export class AYChipRenderer implements ChipRenderer {
 
 				const needsPatternChange = state.advancePosition();
 				if (needsPatternChange) {
-					if (state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length) {
+					if (
+						state.timeline.currentPatternOrderIndex >=
+						state.timeline.patternOrder.length
+					) {
 						break;
 					}
 					if (state.timeline.currentPatternOrderIndex < patterns.length) {
@@ -302,6 +349,13 @@ export class AYChipRenderer implements ChipRenderer {
 				state.timeline.tickAccumulator -= 1.0;
 			}
 
+			audioDriver.updateSamplePlayback(
+				state,
+				registerState,
+				ayumiEngine,
+				SAMPLE_RATE,
+				(channelIndex: number) => this.resolveSampleAyumiChannel(mixer, channelIndex)
+			);
 			ayumiEngine.process();
 			ayumiEngine.removeDC();
 
@@ -450,6 +504,13 @@ export class AYChipRenderer implements ChipRenderer {
 			}
 
 			for (const ctx of contexts) {
+				ctx.audioDriver.updateSamplePlayback(
+					ctx.state,
+					ctx.registerState,
+					ctx.ayumiEngine,
+					SAMPLE_RATE,
+					(channelIndex: number) => this.resolveSampleAyumiChannel(ctx.mixer, channelIndex)
+				);
 				ctx.ayumiEngine.process();
 				ctx.ayumiEngine.removeDC();
 			}
@@ -500,10 +561,9 @@ export class AYChipRenderer implements ChipRenderer {
 				: 0;
 
 		const { wasm, wasmBuffer } = await this.loadWasmModule(onProgress);
-		const { getPanSettingsForLayout } =
-			await this.loader.loadModule<{ getPanSettingsForLayout: GetPanSettingsForLayout }>(
-				'ayumi-constants.js'
-			);
+		const { getPanSettingsForLayout } = await this.loader.loadModule<{
+			getPanSettingsForLayout: GetPanSettingsForLayout;
+		}>('ayumi-constants.js');
 		const {
 			AyumiState,
 			TrackerPatternProcessor,
@@ -558,6 +618,14 @@ export class AYChipRenderer implements ChipRenderer {
 					postMessage: () => {}
 				});
 
+				this.syncExportEngineRegisterState(
+					audioDriver,
+					ayumiEngine,
+					registerState,
+					mixer,
+					state
+				);
+
 				const patterns = this.getPatterns(song, patternOrder);
 				if (patterns.length === 0) {
 					throw new Error('No patterns found');
@@ -565,6 +633,9 @@ export class AYChipRenderer implements ChipRenderer {
 
 				state.currentPattern = patterns[startOrderIndex]!;
 				state.timeline.currentPatternOrderIndex = startOrderIndex;
+				if (contexts.length === 0) {
+					state.timeline.tickAccumulator = 1.0;
+				}
 
 				contexts.push({
 					songIndex,
@@ -643,10 +714,9 @@ export class AYChipRenderer implements ChipRenderer {
 				: 0;
 
 		const { wasm, wasmBuffer } = await this.loadWasmModule(onProgress);
-		const { getPanSettingsForLayout } =
-			await this.loader.loadModule<{ getPanSettingsForLayout: GetPanSettingsForLayout }>(
-				'ayumi-constants.js'
-			);
+		const { getPanSettingsForLayout } = await this.loader.loadModule<{
+			getPanSettingsForLayout: GetPanSettingsForLayout;
+		}>('ayumi-constants.js');
 		const ayumiPtr = this.initializeAyumi(wasm, song, getPanSettingsForLayout);
 		const {
 			AyumiState,
@@ -677,6 +747,8 @@ export class AYChipRenderer implements ChipRenderer {
 			postMessage: () => {}
 		});
 
+		this.syncExportEngineRegisterState(audioDriver, ayumiEngine, registerState, mixer, state);
+
 		const patterns = this.getPatterns(song, patternOrder);
 
 		if (patterns.length === 0) {
@@ -686,6 +758,7 @@ export class AYChipRenderer implements ChipRenderer {
 
 		state.currentPattern = patterns[startOrderIndex];
 		state.timeline.currentPatternOrderIndex = startOrderIndex;
+		state.timeline.tickAccumulator = 1.0;
 
 		onProgress?.(50, 'Initializing renderer...');
 		const firstPassRows = this.calculateTotalRows(song, patternOrder);

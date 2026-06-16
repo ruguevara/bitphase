@@ -131,4 +131,62 @@ describe('AutoEnvService', () => {
 			expect(result).toBeNull();
 		});
 	});
+
+	describe('applyAutoEnvelopeIfEligible', () => {
+		it('returns pattern unchanged when disabled', () => {
+			const pattern = new Pattern(1, 64, AY_CHIP_SCHEMA);
+			pattern.channels[0].rows[0].note = { name: 2, octave: 4 };
+			pattern.channels[0].rows[0].envelopeShape = 8;
+			const ratio = { numerator: 1, denominator: 1, label: '1:1' };
+
+			const result = AutoEnvService.applyAutoEnvelopeIfEligible(
+				pattern,
+				0,
+				{ channelIndex: 0, fieldType: 'note' },
+				tuningTable,
+				ratio,
+				false
+			);
+
+			expect(result).toBe(pattern);
+			expect(result.patternRows[0].envelopeValue).toBe(0);
+		});
+
+		it('applies auto envelope for note field edits when enabled', () => {
+			const pattern = new Pattern(1, 64, AY_CHIP_SCHEMA);
+			pattern.channels[0].rows[0].note = { name: 2, octave: 4 };
+			pattern.channels[0].rows[0].envelopeShape = 8;
+			const ratio = { numerator: 1, denominator: 1, label: '1:1' };
+
+			const result = AutoEnvService.applyAutoEnvelopeIfEligible(
+				pattern,
+				0,
+				{ channelIndex: 0, fieldType: 'note' },
+				tuningTable,
+				ratio,
+				true
+			);
+
+			expect(result.patternRows[0].envelopeValue).toBeGreaterThan(0);
+		});
+
+		it('ignores non-note and non-envelope-shape fields', () => {
+			const pattern = new Pattern(1, 64, AY_CHIP_SCHEMA);
+			pattern.channels[0].rows[0].note = { name: 2, octave: 4 };
+			pattern.channels[0].rows[0].envelopeShape = 8;
+			const ratio = { numerator: 1, denominator: 1, label: '1:1' };
+
+			const result = AutoEnvService.applyAutoEnvelopeIfEligible(
+				pattern,
+				0,
+				{ channelIndex: 0, fieldKey: 'instrument' },
+				tuningTable,
+				ratio,
+				true
+			);
+
+			expect(result).toBe(pattern);
+			expect(result.patternRows[0].envelopeValue).toBe(0);
+		});
+	});
 });

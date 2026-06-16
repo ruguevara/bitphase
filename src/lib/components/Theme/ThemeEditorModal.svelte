@@ -3,6 +3,7 @@
 	import { themeStore } from '../../stores/theme.svelte';
 	import { mergeThemeColors, themeService } from '../../services/theme/theme-service';
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import Input from '../Input/Input.svelte';
 	import HexColorInput from '../Input/HexColorInput.svelte';
 	import { FormField } from '../FormField';
@@ -142,18 +143,17 @@
 		tabindex="-1"
 		onkeydown={handleKeyDown}>
 		<div
-			class="pointer-events-auto max-h-[90vh] w-[400px] overflow-y-auto rounded-sm border border-[var(--color-app-border)] bg-[var(--color-app-surface)] shadow-xl"
+			class="pointer-events-auto rounded-sm border border-[var(--color-app-border)] bg-[var(--color-app-surface)] shadow-xl"
 			role="presentation"
 			onclick={(e) => e.stopPropagation()}
 			onkeydown={(e) => e.stopPropagation()}>
-			<div
-				class="border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-				<h2 class="text-sm font-bold text-[var(--color-app-text-primary)]">
-					{isNew ? 'Create Theme' : 'Edit Theme'}
-				</h2>
-			</div>
-
-			<div class="overflow-y-auto p-4">
+			<ModalPanel
+				title={isNew ? 'Create Theme' : 'Edit Theme'}
+				width="w-[400px]"
+				maxHeightClass="max-h-[90vh]"
+				scrollMode="panel"
+				class="border-0 shadow-none">
+				{#snippet children()}
 				<FormField label="Theme Name">
 					<Input bind:value={editedTheme.name} />
 				</FormField>
@@ -196,13 +196,13 @@
 						{/each}
 					</div>
 				</div>
-			</div>
+				{/snippet}
 
-			<div
-				class="flex justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-				<Button variant="secondary" onclick={handleCancel}>Cancel</Button>
-				<Button variant="primary" onclick={handleSave}>Save</Button>
-			</div>
+				{#snippet footer()}
+					<Button variant="secondary" onclick={handleCancel}>Cancel</Button>
+					<Button variant="primary" onclick={handleSave}>Save</Button>
+				{/snippet}
+			</ModalPanel>
 		</div>
 	</div>
 </Portal>

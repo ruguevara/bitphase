@@ -1,5 +1,9 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import FormField from '../FormField/FormField.svelte';
+	import Input from '../Input/Input.svelte';
+	import { ModalPanel } from '../ModalPanel';
+	import { AlertBanner } from '../AlertBanner';
 	import type { UserScript } from '../../services/user-scripts/types';
 	import { settingsStore } from '../../stores/settings.svelte';
 
@@ -56,56 +60,51 @@
 	}
 
 	const monoFont = $derived(settingsStore.patternEditorFontFamily || 'monospace');
+	const secondaryTextareaClass =
+		'w-full resize-none rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-accent)] focus:outline-none';
 </script>
 
-<div class="flex max-h-[90vh] w-[700px] flex-col overflow-hidden">
-	<div
-		class="flex shrink-0 items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
-		<h2 class="font-bold text-[var(--color-app-text-primary)]">
-			{isNew ? 'New Script' : 'Edit Script'}
-		</h2>
-	</div>
-
-	<div class="min-h-0 flex-1 overflow-y-auto">
+<ModalPanel
+	title={isNew ? 'New Script' : 'Edit Script'}
+	width="w-[700px]"
+	bodyClass="min-h-0 flex-1 overflow-y-auto">
+	{#snippet children()}
 		<div class="flex flex-col gap-3 p-4">
 			{#if error}
-				<div class="rounded bg-red-900/20 px-3 py-2 text-xs text-red-400">
+				<AlertBanner variant="error-inline">
 					{error}
-				</div>
+				</AlertBanner>
 			{/if}
 
-			<div>
-				<label for="script-name" class="mb-1 block text-xs text-[var(--color-app-text-tertiary)]">Name</label>
-				<input
+			<FormField id="script-name" label="Name">
+				<Input
 					id="script-name"
 					type="text"
 					bind:value={name}
+					variant="secondary"
 					placeholder="Script name"
-					class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-accent)] focus:outline-none" />
-			</div>
+					class="w-full py-1.5 text-xs" />
+			</FormField>
 
-			<div>
-				<label for="script-description" class="mb-1 block text-xs text-[var(--color-app-text-tertiary)]"
-					>Description</label>
-				<input
+			<FormField id="script-description" label="Description">
+				<Input
 					id="script-description"
 					type="text"
 					bind:value={description}
+					variant="secondary"
 					placeholder="What does this script do?"
-					class="w-full rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-accent)] focus:outline-none" />
-			</div>
+					class="w-full py-1.5 text-xs" />
+			</FormField>
 
-			<div>
-				<label for="script-code" class="mb-1 block text-xs text-[var(--color-app-text-tertiary)]">Code</label>
+			<FormField id="script-code" label="Code">
 				<textarea
 					id="script-code"
 					bind:value={code}
 					placeholder="-- Your Lua script here"
 					rows="12"
 					style="font-family: {monoFont}, monospace;"
-					class="w-full resize-none rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-primary)] placeholder-[var(--color-app-text-tertiary)] focus:border-[var(--color-app-accent)] focus:outline-none"
-				></textarea>
-			</div>
+					class={secondaryTextareaClass}></textarea>
+			</FormField>
 
 			<div
 				class="max-h-48 overflow-y-auto rounded bg-[var(--color-app-surface-secondary)] p-3 text-xs text-[var(--color-app-text-tertiary)]">
@@ -168,11 +167,10 @@ for i, row in ipairs(rows) do
 end</pre>
 			</div>
 		</div>
-	</div>
+	{/snippet}
 
-	<div
-		class="flex shrink-0 justify-end gap-2 border-t border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-4 py-3">
+	{#snippet footer()}
 		<Button variant="secondary" onclick={handleCancel}>Cancel</Button>
 		<Button variant="primary" onclick={handleSave}>Save</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

@@ -387,6 +387,10 @@
 
 	function refreshAfterVirtualChannelChange(): void {
 		sendVirtualChannelConfigToProcessor();
+		const pattern = currentPattern ?? ensurePatternExists();
+		if (pattern) {
+			chipProcessor.sendInitPattern(pattern, currentPatternOrderIndex);
+		}
 		clearAllCaches();
 		updateSize();
 		setupCanvas();
@@ -1424,24 +1428,14 @@
 		const didMutate = editingResult.didChange !== false;
 
 		if (didMutate) {
-			if (
-				autoEnvStore.enabled &&
-				fieldInfoBeforeEdit &&
-				fieldInfoBeforeEdit.channelIndex >= 0 &&
-				(fieldInfoBeforeEdit.fieldType === 'note' ||
-					fieldInfoBeforeEdit.fieldKey === 'envelopeShape')
-			) {
-				const autoEnvPattern = AutoEnvService.applyAutoEnvelope(
-					finalPattern,
-					selectedRow,
-					fieldInfoBeforeEdit.channelIndex,
-					tuningTable,
-					autoEnvStore.currentRatio
-				);
-				if (autoEnvPattern) {
-					finalPattern = autoEnvPattern;
-				}
-			}
+			finalPattern = AutoEnvService.applyAutoEnvelopeIfEligible(
+				finalPattern,
+				selectedRow,
+				fieldInfoBeforeEdit,
+				tuningTable,
+				autoEnvStore.currentRatio,
+				autoEnvStore.enabled
+			);
 
 			recordPatternEdit(context.pattern, finalPattern);
 			updatePatternInArray(finalPattern);
@@ -1475,7 +1469,7 @@
 				fieldInfoBeforeEdit.fieldKey === 'envelopeValue';
 			const previewChannelResult = previewService.playFromContext(
 				processor,
-				editingResult.updatedPattern,
+				finalPattern,
 				previewChannel,
 				selectedRow,
 				schema,
@@ -1569,6 +1563,36 @@
 		return remove;
 	});
 
+	function stopPreviewForKey(key: string): void {
+		const channel = pressedKeyChannels.get(key);
+		if (channel === undefined) return;
+		if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
+			const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+			previewService.stopNote(processor, channel === -1 ? undefined : channel);
+		}
+		services.audioService.setPreviewActiveForChips(null);
+		pressedKeyChannels.delete(key);
+	}
+
+	function releaseAllPressedPreviewNotes(): void {
+		if (pressedKeyChannels.size === 0) return;
+		if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
+			const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
+			previewService.stopNote(processor, undefined);
+		}
+		services.audioService.setPreviewActiveForChips(null);
+		pressedKeyChannels.clear();
+	}
+
+	function releaseHeldInputOnFocusLoss(): void {
+		releaseAllPressedPreviewNotes();
+		if (isEnterKeyHeld) {
+			isEnterKeyHeld = false;
+			playbackStore.isPlaying = false;
+			pausePlayback();
+		}
+	}
+
 	function handleKeyUp(event: KeyboardEvent) {
 		if (isPlayFromRowShortcut(event) && isEnterKeyHeld) {
 			isEnterKeyHeld = false;
@@ -1577,16 +1601,26 @@
 			return;
 		}
 
-		const channel = pressedKeyChannels.get(event.key);
-		if (channel !== undefined) {
-			if (chipProcessor && 'stopPreviewNote' in chipProcessor) {
-				const processor = chipProcessor as ChipProcessor & PreviewNoteSupport;
-				previewService.stopNote(processor, channel === -1 ? undefined : channel);
-			}
-			services.audioService.setPreviewActiveForChips(null);
-			pressedKeyChannels.delete(event.key);
-		}
+		stopPreviewForKey(event.key);
 	}
+
+	function handleCanvasBlur(): void {
+		releaseHeldInputOnFocusLoss();
+	}
+
+	$effect(() => {
+		const onWindowKeyUp = (event: KeyboardEvent) => {
+			if (canvas && document.activeElement === canvas) return;
+			stopPreviewForKey(event.key);
+			if (isPlayFromRowShortcut(event) && isEnterKeyHeld) {
+				isEnterKeyHeld = false;
+				playbackStore.isPlaying = false;
+				pausePlayback();
+			}
+		};
+		window.addEventListener('keyup', onWindowKeyUp);
+		return () => window.removeEventListener('keyup', onWindowKeyUp);
+	});
 
 	function handleWheel(event: WheelEvent) {
 		if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
@@ -2627,8 +2661,17 @@
 				isOctaveIncrement
 			);
 
-			recordPatternEdit(pattern, updatedPattern);
-			updatePatternInArray(updatedPattern);
+			const finalPattern = AutoEnvService.applyAutoEnvelopeIfEligible(
+				updatedPattern,
+				selectedRow,
+				fieldInfo,
+				tuningTable,
+				autoEnvStore.currentRatio,
+				autoEnvStore.enabled
+			);
+
+			recordPatternEdit(pattern, finalPattern);
+			updatePatternInArray(finalPattern);
 
 			const previewChannel =
 				fieldInfo.fieldKey === 'envelopeValue' ? 0 : fieldInfo.channelIndex;
@@ -2644,7 +2687,7 @@
 					fieldInfo.fieldType === 'note' || fieldInfo.fieldKey === 'envelopeValue';
 				previewService.playFromContext(
 					processor,
-					updatedPattern,
+					finalPattern,
 					previewChannel,
 					selectedRow,
 					schema,
@@ -2968,6 +3011,7 @@
 			tabindex="0"
 			onkeydown={handleKeyDown}
 			onkeyup={handleKeyUp}
+			onblur={handleCanvasBlur}
 			onwheel={handleWheel}
 			onmouseenter={handleMouseEnter}
 			onmouseleave={handleMouseLeave}

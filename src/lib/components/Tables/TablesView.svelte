@@ -6,15 +6,15 @@
 	import IconCarbonHexagonOutline from '~icons/carbon/hexagon-outline';
 	import IconCarbonDataTable from '~icons/carbon/data-table';
 	import IconCarbonAdd from '~icons/carbon/add';
-	import IconCarbonCopy from '~icons/carbon/copy';
-	import IconCarbonTrashCan from '~icons/carbon/trash-can';
 	import IconCarbonMaximize from '~icons/carbon/maximize';
 	import IconCarbonMinimize from '~icons/carbon/minimize';
 	import IconCarbonSave from '~icons/carbon/save';
 	import IconCarbonDocumentImport from '~icons/carbon/document-import';
-	import IconCarbonArrowsVertical from '~icons/carbon/arrows-vertical';
 	import TableEditor from './TableEditor.svelte';
 	import Card from '../Card/Card.svelte';
+	import { ToolbarButton } from '../ToolbarButton';
+	import { ItemGridCell } from '../ItemGridCell';
+	import { ListResizeDivider } from '../ListResizeDivider';
 	import { downloadJson, pickFileAsText } from '../../utils/file-download';
 	import EditableIdField from '../EditableIdField/EditableIdField.svelte';
 	import { getContext, tick, untrack } from 'svelte';
@@ -412,17 +412,29 @@
 							{#each rowIndices as index}
 								{@const table = tables[index]}
 								{#if table}
-									{@const isUsed = isTableUsed(table)}
 									{@const isSelected = selectedTableIndex === index}
-									{@const isEditing = editingTableId === index}
-									{#if isEditing}
-										<div
-											data-table-index={index}
-											class="group relative flex min-w-[6rem] shrink-0 flex-col items-center justify-center border-r border-[var(--color-app-border)] p-3 {isSelected
-												? 'bg-[var(--color-app-primary)]'
-												: isUsed
-													? 'bg-[var(--color-app-surface-secondary)]/40 hover:bg-[var(--color-app-surface-secondary)]/70'
-													: 'bg-[var(--color-app-background)]/60 hover:bg-[var(--color-app-background)]/80'}">
+									<ItemGridCell
+										dataIndexKind="table"
+										dataValue={index}
+										{isSelected}
+										isUsed={isTableUsed(table)}
+										isEditing={editingTableId === index}
+										idLabel={tableIdToDisplayChar(table.id)}
+										nameLabel={table.name}
+										copyTitle="Copy table"
+										removeTitle="Remove table"
+										showRemove={tables.length > 1}
+										onSelect={() => (selectedTableIndex = index)}
+										onDoubleClick={() => startEditingTableId(index)}
+										onCopy={(e) => {
+											e.stopPropagation();
+											copyTable(index);
+										}}
+										onRemove={(e) => {
+											e.stopPropagation();
+											removeTable(index);
+										}}>
+										{#snippet edit()}
 											<EditableIdField
 												bind:value={editingTableIdValue}
 												error={editingTableIdValue
@@ -436,61 +448,8 @@
 														.toUpperCase()
 														.slice(0, 1)
 														.replace(/[^1-9A-Z]/g, '')} />
-										</div>
-									{:else}
-										<div
-											data-table-index={index}
-											class="group relative flex min-w-[6rem] shrink-0 flex-col items-center border-r border-[var(--color-app-border)]">
-											<button
-												class="flex h-full w-full shrink-0 cursor-pointer flex-col items-center justify-center p-3 {isSelected
-													? 'bg-[var(--color-app-primary)]'
-													: isUsed
-														? 'bg-[var(--color-app-surface-secondary)]/40 hover:bg-[var(--color-app-surface-secondary)]/70'
-														: 'bg-[var(--color-app-background)]/60 hover:bg-[var(--color-app-background)]/80'}"
-												onclick={() => (selectedTableIndex = index)}
-												ondblclick={() => startEditingTableId(index)}>
-												<span
-													class="font-mono text-xs font-semibold {isSelected
-														? 'text-[var(--color-app-on-primary)]'
-														: isUsed
-															? 'text-[var(--color-app-text-tertiary)] group-hover:text-[var(--color-app-text-primary)]'
-															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'}">
-													{tableIdToDisplayChar(table.id)}
-												</span>
-												<span
-													class="text-xs {isSelected
-														? 'text-[var(--color-app-on-primary)]'
-														: isUsed
-															? 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-tertiary)]'
-															: 'text-[var(--color-app-text-muted)] group-hover:text-[var(--color-app-text-muted)]'}">
-													{table.name}
-												</span>
-											</button>
-											<div
-												class="absolute top-1 right-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-												<button
-													class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-[var(--color-app-text-primary)]"
-													onclick={(e) => {
-														e.stopPropagation();
-														copyTable(index);
-													}}
-													title="Copy table">
-													<IconCarbonCopy class="h-3 w-3" />
-												</button>
-												{#if tables.length > 1}
-													<button
-														class="cursor-pointer rounded p-0.5 text-[var(--color-app-text-muted)] hover:text-[var(--color-pattern-note-off)]"
-														onclick={(e) => {
-															e.stopPropagation();
-															removeTable(index);
-														}}
-														title="Remove table">
-														<IconCarbonTrashCan class="h-3 w-3" />
-													</button>
-												{/if}
-											</div>
-										</div>
-									{/if}
+										{/snippet}
+									</ItemGridCell>
 								{/if}
 							{/each}
 						</div>
@@ -498,46 +457,31 @@
 				</div>
 				<div
 					class="flex shrink-0 items-center gap-2 border-t border-[var(--color-app-border)] px-2 py-1.5">
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+					<ToolbarButton
+						icon={IconCarbonAdd}
+						label="Add"
 						onclick={addTable}
 						disabled={tables.length > MAX_TABLE_ID}
-						title={tables.length > MAX_TABLE_ID
-							? 'Maximum 35 tables'
-							: 'Add new table'}>
-						<IconCarbonAdd class="h-3.5 w-3.5" />
-						<span>Add</span>
-					</button>
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+						title={tables.length > MAX_TABLE_ID ? 'Maximum 35 tables' : 'Add new table'} />
+					<ToolbarButton
+						icon={IconCarbonSave}
+						label="Save"
 						onclick={saveTable}
 						disabled={tables.length === 0}
-						title="Save selected table to JSON file">
-						<IconCarbonSave class="h-3.5 w-3.5" />
-						<span>Save</span>
-					</button>
-					<button
-						class="flex cursor-pointer items-center gap-1.5 rounded border border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] px-2 py-1.5 text-xs text-[var(--color-app-text-tertiary)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
+						title="Save selected table to JSON file" />
+					<ToolbarButton
+						icon={IconCarbonDocumentImport}
+						label="Load"
 						onclick={loadTable}
 						disabled={tables.length === 0}
-						title="Load table from JSON file into selected slot">
-						<IconCarbonDocumentImport class="h-3.5 w-3.5" />
-						<span>Load</span>
-					</button>
+						title="Load table from JSON file into selected slot" />
 				</div>
 			</div>
 
-			<div
-				class="flex shrink-0 cursor-ns-resize items-center justify-center border-y border-[var(--color-app-border)] bg-[var(--color-app-surface-secondary)] py-1 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-app-text-secondary)] {tableListResize.isResizing
-					? 'bg-[var(--color-app-surface-hover)]'
-					: ''}"
-				role="button"
-				tabindex="0"
-				aria-label="Drag to resize table list"
-				title="Drag to resize table list"
-				onmousedown={tableListResize.beginResize}>
-				<IconCarbonArrowsVertical class="h-3 w-3" />
-			</div>
+			<ListResizeDivider
+				isResizing={tableListResize.isResizing}
+				label="Drag to resize table list"
+				onmousedown={tableListResize.beginResize} />
 
 			<div class="min-h-0 flex-1 overflow-auto p-4">
 				{#if tables[selectedTableIndex]}

@@ -4,14 +4,20 @@ import TrackerState from './tracker-state.js';
 const AY_CHANNEL_ARRAY_SPECS = [
 	['channelInstruments', -1],
 	['instrumentPositions', 0],
+	['channelTimerPositions', 0],
 	['channelInstrumentVolumes', 0],
 	['channelToneAccumulator', 0],
 	['channelNoiseAccumulator', 0],
 	['channelEnvelopeAccumulator', 0],
 	['channelAmplitudeSliding', 0],
+	['channelTimerPwmSweep', -1],
 	['channelEnvelopeEnabled', false],
 	['channelMuted', false],
-	['channelSoundEnabled', false]
+	['channelSoundEnabled', false],
+	['channelTimerEffectReset', false],
+	['channelSamplePositions', 0],
+	['channelSamplePhase', 0],
+	['channelPatternEnvelopeShapes', 0]
 ];
 
 class AyumiState extends TrackerState {
@@ -21,6 +27,7 @@ class AyumiState extends TrackerState {
 		this.ayumiPtr = null;
 		this.aymFrequency = DEFAULT_AYM_FREQUENCY;
 		this.isYM = 0;
+		this.isST = 0;
 		this.wasmBuffer = null;
 
 		this.instruments = [];
@@ -86,6 +93,13 @@ class AyumiState extends TrackerState {
 
 	setChipVariant(chipVariant) {
 		this.isYM = chipVariant === 'YM' ? 1 : 0;
+	}
+
+	setStMixing(enabled) {
+		this.isST = enabled ? 1 : 0;
+		if (enabled) {
+			this.isYM = 1;
+		}
 	}
 
 	setInstruments(instruments) {

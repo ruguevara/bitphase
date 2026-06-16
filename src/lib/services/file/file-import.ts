@@ -13,6 +13,8 @@ import {
 	Instrument,
 	InstrumentRow
 } from '../../models/song';
+import { isValidInstrumentSampleByteLength } from '../../utils/audio-sample-decode';
+import { normalizeSamplePlaybackBounds } from '../../chips/ay/sample-region';
 import type { ChipSchema } from '../../chips/base/schema';
 import { computeEffectiveChannelLabels } from '../../models/virtual-channels';
 
@@ -93,6 +95,12 @@ function reconstructSong(data: any, getChip: (chipType: string) => Chip | null):
 	}
 	if (schema?.defaultChipVariant !== undefined && songRecord.chipVariant === undefined) {
 		songRecord.chipVariant = schema.defaultChipVariant;
+	}
+	if (songRecord.chipVariant === 'ST') {
+		songRecord.stMixing = true;
+	}
+	if (schema?.normalizeSettings) {
+		Object.assign(songRecord, schema.normalizeSettings(songRecord));
 	}
 	const loadedSpeed = data.initialSpeed;
 	song.initialSpeed =
@@ -187,6 +195,170 @@ function reconstructInstrument(data: any): Instrument {
 	if (data.rows) {
 		instrument.rows = data.rows.map((rowData: any) => reconstructInstrumentRow(rowData));
 	}
+	if (data.timerRows) {
+		(
+			instrument as Instrument & {
+				timerRows?: {
+					sid: boolean;
+					syncbuzzer?: boolean;
+					fm?: boolean;
+					envFm?: boolean;
+					fmOffsetMode?: 'semitone' | 'period';
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+					semitone?: number;
+					timerWaveform?: number[];
+					timerWaveformLoop?: number;
+					fmWaveform?: number[];
+					fmWaveformLoop?: number;
+					envFmWaveform?: number[];
+					envFmWaveformLoop?: number;
+				}[];
+			}
+		).timerRows = data.timerRows.map(
+			(row: {
+				sid?: boolean;
+				syncbuzzer?: boolean;
+				fm?: boolean;
+				envFm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
+				sidPeriodMode?: 'auto' | 'manual';
+				detune?: number;
+				period?: number;
+				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
+			}) => {
+				const timerRow: {
+					sid: boolean;
+					syncbuzzer?: boolean;
+					fm?: boolean;
+					envFm?: boolean;
+					fmOffsetMode?: 'semitone' | 'period';
+					sidPeriodMode?: 'auto' | 'manual';
+					detune?: number;
+					period?: number;
+					semitone?: number;
+					timerWaveform?: number[];
+					timerWaveformLoop?: number;
+					fmWaveform?: number[];
+					fmWaveformLoop?: number;
+					envFmWaveform?: number[];
+					envFmWaveformLoop?: number;
+					timerPwmDuty?: number;
+					timerPwmSweepMin?: number;
+					timerPwmSweep?: number;
+				} = {
+					sid: row.sid ?? false,
+					syncbuzzer: row.syncbuzzer ?? false,
+					fm: row.fm ?? false,
+					envFm: row.envFm ?? false,
+					fmOffsetMode: row.fmOffsetMode === 'period' ? 'period' : 'semitone',
+					sidPeriodMode:
+						row.sidPeriodMode === 'auto' || row.sidPeriodMode === 'manual'
+							? row.sidPeriodMode
+							: 'auto'
+				};
+				if (row.detune !== undefined) timerRow.detune = row.detune;
+				if (row.period !== undefined) timerRow.period = row.period;
+				if (row.semitone !== undefined) timerRow.semitone = row.semitone;
+				if (row.timerWaveform) timerRow.timerWaveform = [...row.timerWaveform];
+				if (row.timerWaveformLoop !== undefined) {
+					timerRow.timerWaveformLoop = row.timerWaveformLoop;
+				}
+				if (row.fmWaveform) timerRow.fmWaveform = [...row.fmWaveform];
+				if (row.fmWaveformLoop !== undefined) {
+					timerRow.fmWaveformLoop = row.fmWaveformLoop;
+				}
+				if (row.envFmWaveform) timerRow.envFmWaveform = [...row.envFmWaveform];
+				if (row.envFmWaveformLoop !== undefined) {
+					timerRow.envFmWaveformLoop = row.envFmWaveformLoop;
+				}
+				if (row.timerPwmDuty !== undefined) timerRow.timerPwmDuty = row.timerPwmDuty;
+				if (row.timerPwmSweepMin !== undefined) timerRow.timerPwmSweepMin = row.timerPwmSweepMin;
+				if (row.timerPwmSweep !== undefined) timerRow.timerPwmSweep = row.timerPwmSweep;
+				return timerRow;
+			}
+		);
+	}
+	if (data.timerLoop !== undefined) {
+		(
+			instrument as Instrument & {
+				timerLoop?: number;
+			}
+		).timerLoop = data.timerLoop;
+	}
+	const extended = instrument as Instrument & {
+		timerPwmDuty?: number;
+		timerPwmSweepMin?: number;
+		timerPwmSweep?: number;
+		timerPwmPreserveOnNewNote?: boolean;
+		timerPwmReverseSweep?: boolean;
+		timerPwmSweepStartPhase?: number;
+		timerPwmSweepShape?: string;
+	};
+	if (data.timerPwmDuty !== undefined) extended.timerPwmDuty = data.timerPwmDuty;
+	if (data.timerPwmSweepMin !== undefined) extended.timerPwmSweepMin = data.timerPwmSweepMin;
+	if (data.timerPwmSweep !== undefined) extended.timerPwmSweep = data.timerPwmSweep;
+	if (data.timerPwmPreserveOnNewNote !== undefined) {
+		extended.timerPwmPreserveOnNewNote = data.timerPwmPreserveOnNewNote === true;
+	}
+	if (data.timerPwmSweepStartPhase !== undefined) {
+		extended.timerPwmSweepStartPhase = data.timerPwmSweepStartPhase;
+	}
+	if (data.timerPwmReverseSweep !== undefined) {
+		extended.timerPwmReverseSweep = data.timerPwmReverseSweep === true;
+	}
+	if (data.timerPwmSweepShape !== undefined) {
+		extended.timerPwmSweepShape = data.timerPwmSweepShape as typeof extended.timerPwmSweepShape;
+	}
+	const withSample = extended as Instrument & {
+		sampleData?: number[];
+		sampleRate?: number;
+		sampleStart?: number;
+		sampleEnd?: number;
+		sampleLoopStart?: number;
+		sampleLength?: number;
+		sampleLoopEnabled?: boolean;
+		sampleLoop?: number;
+	};
+	if (Array.isArray(data.sampleData) && data.sampleData.length > 0) {
+		const sampleBytes = data.sampleData.map((value: number) => value & 0xff);
+		if (isValidInstrumentSampleByteLength(sampleBytes.length)) {
+			withSample.sampleData = sampleBytes;
+		}
+	}
+	if (typeof data.sampleRate === 'number' && data.sampleRate > 0) {
+		withSample.sampleRate = data.sampleRate;
+	}
+	if (withSample.sampleData?.length) {
+		const bounds = normalizeSamplePlaybackBounds({
+			sampleData: withSample.sampleData,
+			sampleStart: data.sampleStart ?? data.sampleLoop,
+			sampleEnd: data.sampleEnd,
+			sampleLoopStart: data.sampleLoopStart ?? data.sampleLoop,
+			sampleLength: data.sampleLength,
+			sampleLoop: data.sampleLoop
+		});
+		if (bounds) {
+			withSample.sampleStart = bounds.start;
+			withSample.sampleEnd = bounds.end;
+			withSample.sampleLoopStart = bounds.loopStart;
+		}
+		if (data.sampleLoopEnabled === false) {
+			withSample.sampleLoopEnabled = false;
+		} else {
+			withSample.sampleLoopEnabled = true;
+		}
+	}
 	return instrument;
 }
 
@@ -210,10 +382,7 @@ function reconstructInstrumentRow(data: any): InstrumentRow {
 }
 
 export class FileImportService {
-	static reconstructFromJson(
-		json: string,
-		getChip?: (chipType: string) => Chip | null
-	): Project {
+	static reconstructFromJson(json: string, getChip?: (chipType: string) => Chip | null): Project {
 		const data = JSON.parse(json);
 		const resolveChip =
 			getChip ??
@@ -287,9 +456,7 @@ export class FileImportService {
 								'Unknown format. Expected PT3 or VT2 module (.pt3, .vt2).'
 							);
 						}
-						const project = isPT3
-							? await loadPT3File(file)
-							: await loadVT2File(file);
+						const project = isPT3 ? await loadPT3File(file) : await loadVT2File(file);
 						resolve(project);
 					} catch (error) {
 						console.error('Error loading module file:', error);

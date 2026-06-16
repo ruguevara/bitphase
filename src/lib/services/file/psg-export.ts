@@ -2,11 +2,26 @@ import type { Project } from '../../models/project';
 import { downloadFile, sanitizeFilename } from '../../utils/file-download';
 import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 import JSZip from 'jszip';
+import {
+	convertRegisterStateToAYRegisters,
+	extractHardwareEnvFmStates,
+	extractHardwareFmStates,
+	extractHardwareSidStates,
+	extractHardwareSyncBuzzerStates,
+	TONE_CHANNELS,
+	type SongCaptureFrame
+} from './ay-export-utils';
 
 const DEFAULT_SPEED = 6;
-const TONE_CHANNELS = 3;
 
-export interface PsgExportModules {
+export type SongCaptureResult = {
+	frames: SongCaptureFrame[];
+	chipFrequency: number;
+	interruptFrequency: number;
+	isYm: boolean;
+};
+
+export type PsgExportModules = {
 	AyumiState: new (channelCount?: number) => any;
 	TrackerPatternProcessor: new (
 		state: any,
@@ -16,54 +31,7 @@ export interface PsgExportModules {
 	AYAudioDriver: new (channelCount?: number) => any;
 	AYChipRegisterState: new (channelCount?: number) => any;
 	VirtualChannelMixer: new () => any;
-}
-
-interface AYRegisterState {
-	registers: number[];
-}
-
-function convertRegisterStateToAYRegisters(registerState: any): number[] {
-	const registers = new Array(14).fill(0);
-
-	for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
-		const channel = registerState.channels[channelIndex];
-		const toneReg = channelIndex * 2;
-		const tone = channel.tone & 0xfff;
-		registers[toneReg] = tone & 0xff;
-		registers[toneReg + 1] = (tone >> 8) & 0x0f;
-	}
-
-	registers[6] = registerState.noise & 0x1f;
-
-	let mixer = 0;
-	for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
-		const channel = registerState.channels[channelIndex];
-		if (!channel.mixer.tone) {
-			mixer |= 1 << channelIndex;
-		}
-		if (!channel.mixer.noise) {
-			mixer |= 1 << (channelIndex + 3);
-		}
-	}
-	registers[7] = mixer;
-
-	for (let channelIndex = 0; channelIndex < 3; channelIndex++) {
-		const channel = registerState.channels[channelIndex];
-		let volume = channel.volume & 0x0f;
-		if (channel.mixer.envelope) {
-			volume |= 0x10;
-		}
-		registers[8 + channelIndex] = volume;
-	}
-
-	const envelopePeriod = registerState.envelopePeriod & 0xffff;
-	registers[11] = envelopePeriod & 0xff;
-	registers[12] = (envelopePeriod >> 8) & 0xff;
-
-	registers[13] = registerState.envelopeShape & 0x0f;
-
-	return registers;
-}
+};
 
 function encodePSG(registerFrames: number[][]): ArrayBuffer {
 	const headerSize = 16;
@@ -147,8 +115,8 @@ class PsgExportService {
 		totalRows: number,
 		patterns: any[],
 		onProgress?: (progress: number, message: string) => void
-	): Promise<number[][]> {
-		const registerFrames: number[][] = [];
+	): Promise<SongCaptureFrame[]> {
+		const captureFrames: SongCaptureFrame[] = [];
 		let totalTicks = 0;
 		const maxTicks = 1000000;
 
@@ -206,7 +174,13 @@ class PsgExportService {
 				? mixer.merge(registerState, state)
 				: registerState;
 			const ayRegisters = convertRegisterStateToAYRegisters(stateToConvert);
-			registerFrames.push([...ayRegisters]);
+			captureFrames.push({
+				registers: [...ayRegisters],
+				sid: extractHardwareSidStates(stateToConvert),
+				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert),
+				fm: extractHardwareFmStates(stateToConvert),
+				envFm: extractHardwareEnvFmStates(stateToConvert)
+			});
 			if (mixer.hasVirtualChannels()) {
 				registerState.forceEnvelopeShapeWrite = false;
 			}
@@ -234,20 +208,24 @@ class PsgExportService {
 			totalTicks++;
 		}
 
-		return registerFrames;
+		return captureFrames;
 	}
 
-	async runCaptureWithModules(
+	async captureSongFrames(
 		project: Project,
 		songIndex: number,
 		modules: PsgExportModules,
 		onProgress?: (progress: number, message: string) => void,
 		abortSignal?: AbortSignal
-	): Promise<ArrayBuffer> {
+	): Promise<SongCaptureResult> {
 		const song = project.songs[songIndex];
 		if (!song || song.patterns.length === 0) {
 			throw new Error('Song is empty');
 		}
+
+		const chipFrequency = song.chipFrequency ?? 1773400;
+		const interruptFrequency = song.interruptFrequency ?? 50;
+		const isYm = chipFrequency >= 2000000;
 
 		const {
 			AyumiState,
@@ -293,7 +271,7 @@ class PsgExportService {
 		state.timeline.currentPatternOrderIndex = 0;
 
 		const totalRows = this.calculateTotalRows(song, patternOrder);
-		const registerFrames = await this.captureRegisterStates(
+		const frames = await this.captureRegisterStates(
 			state,
 			patternProcessor,
 			audioDriver,
@@ -309,7 +287,29 @@ class PsgExportService {
 			throw new Error('Export cancelled');
 		}
 
-		return encodePSG(registerFrames);
+		return {
+			frames,
+			chipFrequency,
+			interruptFrequency,
+			isYm
+		};
+	}
+
+	async runCaptureWithModules(
+		project: Project,
+		songIndex: number,
+		modules: PsgExportModules,
+		onProgress?: (progress: number, message: string) => void,
+		abortSignal?: AbortSignal
+	): Promise<ArrayBuffer> {
+		const capture = await this.captureSongFrames(
+			project,
+			songIndex,
+			modules,
+			onProgress,
+			abortSignal
+		);
+		return encodePSG(capture.frames.map((frame) => frame.registers));
 	}
 
 	async export(
@@ -433,15 +433,19 @@ class PsgExportService {
 
 const psgExportService = new PsgExportService();
 
-export interface GeneratePSGBufferOptions {
+interface GeneratePSGBufferOptions {
 	modules?: PsgExportModules;
 }
 
-export async function generatePSGBuffer(
+export interface GenerateCaptureOptions {
+	modules?: PsgExportModules;
+}
+
+export async function captureSongRegisterFrames(
 	project: Project,
 	songIndex: number = 0,
-	options?: GeneratePSGBufferOptions
-): Promise<ArrayBuffer> {
+	options?: GenerateCaptureOptions
+): Promise<SongCaptureResult> {
 	const song = project.songs[songIndex];
 	if (!song || song.patterns.length === 0) {
 		throw new Error('Song is empty');
@@ -472,7 +476,16 @@ export async function generatePSGBuffer(
 		};
 	}
 
-	return psgExportService.runCaptureWithModules(project, songIndex, modules);
+	return psgExportService.captureSongFrames(project, songIndex, modules);
+}
+
+export async function generatePSGBuffer(
+	project: Project,
+	songIndex: number = 0,
+	options?: GeneratePSGBufferOptions
+): Promise<ArrayBuffer> {
+	const capture = await captureSongRegisterFrames(project, songIndex, options);
+	return encodePSG(capture.frames.map((frame) => frame.registers));
 }
 
 export async function exportToPSG(

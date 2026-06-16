@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Button from '../Button/Button.svelte';
+	import { ModalPanel } from '../ModalPanel';
 	import ContributorsModal from './ContributorsModal.svelte';
+	import TmrCheckerModal from './TmrCheckerModal.svelte';
 	import { open } from '../../services/modal/modal-service';
 
 	let { resolve } = $props<{
@@ -18,15 +20,14 @@
 	async function openContributors() {
 		await open(ContributorsModal, {});
 	}
+
+	async function openTmrChecker() {
+		await open(TmrCheckerModal, {});
+	}
 </script>
 
-<div class="flex w-[400px] flex-col">
-	<div
-		class="flex items-center gap-2 border-b border-[var(--color-app-border)] bg-[var(--color-app-surface)] px-3 py-2">
-		<h2 class="font-bold text-[var(--color-app-text-primary)]">About</h2>
-	</div>
-
-	<div class="flex flex-col items-center gap-3 p-4">
+<ModalPanel title="About" width="w-[400px]" maxHeightClass="" compact bodyClass="flex flex-col items-center gap-3 p-4">
+	{#snippet children()}
 		<img src="logo.svg" alt="Bitphase Logo" class="h-16 w-16" />
 
 		<div class="text-center">
@@ -53,6 +54,12 @@
 			<button
 				type="button"
 				class="cursor-pointer text-[var(--color-app-text-secondary)] hover:text-[var(--color-app-text-primary)] hover:underline"
+				onclick={openTmrChecker}>
+				TMR Checker
+			</button>
+			<button
+				type="button"
+				class="cursor-pointer text-[var(--color-app-text-secondary)] hover:text-[var(--color-app-text-primary)] hover:underline"
 				onclick={openContributors}>
 				Credits
 			</button>
@@ -65,5 +72,5 @@
 			</a>
 		</div>
 		<Button variant="primary" onclick={handleClose}>Close</Button>
-	</div>
-</div>
+	{/snippet}
+</ModalPanel>

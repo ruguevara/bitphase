@@ -11,6 +11,7 @@
 	import IconCarbonActivity from '~icons/carbon/activity';
 	import IconCarbonRepeat from '~icons/carbon/repeat';
 	import Input from '../../components/Input/Input.svelte';
+	import PillTabs, { type PillTab } from '../../components/PillTabs/PillTabs.svelte';
 	import SelectableRowNumberCell from '../../components/RowEditorTable/SelectableRowNumberCell.svelte';
 	import {
 		ROW_SELECTION_STYLES,
@@ -18,6 +19,7 @@
 		filterValidSelection,
 		isRowSelected as checkRowSelected
 	} from '../../utils/row-selection';
+	import { compactTableInputClass } from '../../utils/compact-table-input';
 	import { keybindingsStore } from '../../stores/keybindings.svelte';
 	import { ShortcutString } from '../../utils/shortcut-string';
 	import {
@@ -27,6 +29,18 @@
 		ACTION_TRANSPOSE_OCTAVE_DOWN
 	} from '../../config/keybindings';
 	import { isEditableElement } from '../../utils/shortcut-input-exclusion';
+	import AYTimerWaveformEditor from './AYTimerWaveformEditor.svelte';
+	import AYTimerEffectsHeaderCells from './AYTimerEffectsHeaderCells.svelte';
+	import AYTimerEffectsRowCells from './AYTimerEffectsRowCells.svelte';
+	import AYTimerPwmControls from './AYTimerPwmControls.svelte';
+	import AYInstrumentSamplePanel from './AYInstrumentSamplePanel.svelte';
+	import { AyTimerEffectsController } from './ay-timer-effects-controller.svelte.js';
+	import type { TimerEditPanel, TimerEffectDragField } from './ay-timer-effects-controller.svelte';
+	import { setAyTimerEffectsContext } from './ay-timer-effects-context';
+	import { type AyInstrumentFields } from './instrument';
+	import { instrumentHasSample } from './sample-region';
+
+	type InstrumentTab = 'mixer' | 'timer' | 'sample';
 
 	let {
 		instrument,
@@ -43,9 +57,40 @@
 	} = $props();
 
 	let selectionAnchor = $state<number | null>(null);
+	let activeTab = $state<InstrumentTab>('mixer');
+
+	const extendedInstrument = $derived(instrument as Instrument & Partial<AyInstrumentFields>);
+	const hasSample = $derived(instrumentHasSample(extendedInstrument));
+
+	const instrumentTabs = $derived.by((): PillTab[] => [
+		{ id: 'mixer', label: 'Mixer', icon: IconCarbonVolumeUp, disabled: hasSample },
+		{ id: 'timer', label: 'Timer Effects', icon: IconCarbonActivity, disabled: hasSample },
+		{ id: 'sample', label: 'Sample', icon: IconCarbonWaveform }
+	]);
+
+	const timerEditTabs = $derived.by((): PillTab[] => [
+		{ id: 'mix', label: 'Mix (SID / Sync)' },
+		{ id: 'fm', label: 'FM' },
+		{ id: 'envFm', label: 'Env+FM' }
+	]);
 
 	const VOLUME_VALUES = Array.from({ length: 16 }, (_, i) => i);
-	const showVolumeGrid = $derived(isExpanded);
+	const showVolumeGrid = $derived(isExpanded && activeTab === 'mixer');
+	const FIXED_TABLE_COLUMNS = 3;
+	const TIMER_EFFECT_COLUMNS = 7;
+	const MIXER_EFFECT_COLUMNS = 13;
+	const tableColSpan = $derived(
+		activeTab === 'mixer'
+			? FIXED_TABLE_COLUMNS + MIXER_EFFECT_COLUMNS
+			: FIXED_TABLE_COLUMNS + TIMER_EFFECT_COLUMNS
+	);
+
+	const timerEffects = new AyTimerEffectsController(
+		() => instrument,
+		onInstrumentChange,
+		() => asHex
+	);
+	setAyTimerEffectsContext(timerEffects);
 
 	const EMPTY_ROW = {
 		tone: false,
@@ -73,12 +118,10 @@
 		| 'toneAccumulation'
 		| 'noiseAccumulation'
 		| 'envelopeAccumulation';
+	type InstrumentUpdate = Partial<Instrument & AyInstrumentFields>;
 
 	let isDragging = $state(false);
-	let dragType:
-		| 'volume'
-		| BooleanInstrumentField
-		| null = $state(null);
+	let dragType: 'volume' | BooleanInstrumentField | null = $state(null);
 	let dragValue: boolean | null = $state(null);
 
 	function formatNum(value: number): string {
@@ -154,15 +197,15 @@
 	let rows = $state(ensureNonEmptyRows([...instrument.rows]));
 	let loopRow = $state(instrument.loop);
 	let name = $state(instrument.name);
-	let loopColumnRef: HTMLTableCellElement | null = $state(null);
 	let tableRef: HTMLTableElement | null = $state(null);
+	let loopMarkerStyle = $state<{ left: number; top: number; height: number } | null>(null);
 	let editorContainerRef: HTMLDivElement | null = $state(null);
 	let lastInstrumentId = $state(instrument.id);
 	let lastSyncedName = $state(instrument.name);
 	let lastSyncedRows = $state([...instrument.rows]);
 	let lastSyncedLoop = $state(instrument.loop);
 
-	function updateInstrument(updates: Partial<Instrument>) {
+	function updateInstrument(updates: InstrumentUpdate) {
 		onInstrumentChange({ ...instrument, ...updates });
 	}
 
@@ -336,7 +379,85 @@
 	function updateArraysAfterRowChange(newRows: any[]) {
 		rows = newRows;
 		if (loopRow >= rows.length) loopRow = rows.length - 1;
-		updateInstrument({ rows });
+		updateInstrument({ rows, loop: loopRow });
+	}
+
+	const displayRowCount = $derived(
+		activeTab === 'timer' ? timerEffects.fields.timerRows.length : rows.length
+	);
+
+	const activeLoopRow = $derived(
+		activeTab === 'timer' ? timerEffects.fields.timerLoop : loopRow
+	);
+
+	function setActiveLoop(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.setTimerLoop(index);
+		} else {
+			setLoop(index);
+		}
+	}
+
+	function addDisplayRow(): void {
+		if (activeTab === 'timer') {
+			timerEffects.addTimerRow();
+		} else {
+			addRow();
+		}
+	}
+
+	function setDisplayRowCount(targetCount: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.setTimerRowCount(targetCount);
+		} else {
+			setRowCount(targetCount);
+		}
+	}
+
+	function removeDisplayRow(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.removeTimerRow(index);
+		} else {
+			removeRow(index);
+		}
+	}
+
+	function removeDisplayRowsFromBottom(index: number): void {
+		if (activeTab === 'timer') {
+			timerEffects.removeTimerRowsFromBottom(index);
+		} else {
+			removeRowsFromBottom(index);
+		}
+	}
+
+	function paintTimerEffectAt(clientX: number, clientY: number): void {
+		const target = document.elementFromPoint(clientX, clientY);
+		const cell = target?.closest('[data-timer-effect-cell]') as HTMLElement | null;
+		if (!cell) {
+			return;
+		}
+		const rowIndex = Number(cell.dataset.rowIndex);
+		const field = cell.dataset.timerEffectField as TimerEffectDragField | undefined;
+		if (!field || Number.isNaN(rowIndex)) {
+			return;
+		}
+		timerEffects.dragOverTimerEffect(rowIndex, field);
+	}
+
+	function handleTimerEffectPointerMove(event: PointerEvent): void {
+		if (activeTab !== 'timer' || !timerEffects.isDragging) {
+			return;
+		}
+		paintTimerEffectAt(event.clientX, event.clientY);
+	}
+
+	function handleTimerEffectPointerEnd(event: PointerEvent): void {
+		if (!timerEffects.isDragging) {
+			return;
+		}
+		paintTimerEffectAt(event.clientX, event.clientY);
+		timerEffects.stopDrag();
+		tableRef?.releasePointerCapture(event.pointerId);
 	}
 
 	function addRow() {
@@ -371,6 +492,65 @@
 		loopRow = index;
 		updateInstrument({ loop: loopRow });
 	}
+
+	const timerTableLayoutKey = $derived(
+		activeTab === 'timer'
+			? timerEffects.fields.timerRows
+					.map((row) => `${row.sid ? 1 : 0}${row.syncbuzzer ? 1 : 0}${row.fm ? 1 : 0}`)
+					.join('')
+			: ''
+	);
+
+	$effect(() => {
+		const table = tableRef;
+		const container = table?.parentElement;
+		const currentLoopRow = activeLoopRow;
+		const rowCount = displayRowCount;
+		void isExpanded;
+		void activeTab;
+		void timerTableLayoutKey;
+		void timerEffects.waveformEditorRowIndex;
+
+		if (!table || !container || currentLoopRow < 0 || currentLoopRow >= rowCount) {
+			loopMarkerStyle = null;
+			return;
+		}
+
+		const measureLoopMarker = () => {
+			if (!tableRef || !container) {
+				loopMarkerStyle = null;
+				return;
+			}
+
+			const tbody = tableRef.querySelector('tbody');
+			const loopCell = tbody?.querySelector(
+				`tr:nth-child(${currentLoopRow + 1}) > td:nth-of-type(3)`
+			) as HTMLTableCellElement | null;
+			const lastRow = tbody?.querySelector(
+				`tr:nth-child(${rowCount})`
+			) as HTMLTableRowElement | null;
+			if (!loopCell || !lastRow) {
+				loopMarkerStyle = null;
+				return;
+			}
+
+			const containerRect = container.getBoundingClientRect();
+			const loopRect = loopCell.getBoundingClientRect();
+			const lastRowRect = lastRow.getBoundingClientRect();
+
+			loopMarkerStyle = {
+				left: loopRect.left - containerRect.left + loopRect.width / 2,
+				top: loopRect.top - containerRect.top,
+				height: lastRowRect.bottom - loopRect.top
+			};
+		};
+
+		measureLoopMarker();
+		const observer = new ResizeObserver(measureLoopMarker);
+		observer.observe(table);
+		observer.observe(container);
+		return () => observer.disconnect();
+	});
 
 	export function addRowExternal() {
 		addRow();
@@ -427,9 +607,20 @@
 	});
 
 	$effect(() => {
-		const validIndices = filterValidSelection(selectedRowIndices, rows.length);
+		const validIndices = filterValidSelection(selectedRowIndices, displayRowCount);
 		if (validIndices.length !== selectedRowIndices.length) {
 			selectedRowIndices = validIndices;
+		}
+	});
+
+	$effect(() => {
+		timerEffects.handleInstrumentChange(instrument);
+	});
+
+	$effect(() => {
+		if (hasSample && activeTab !== 'sample') {
+			activeTab = 'sample';
+			timerEffects.closeWaveformEditor();
 		}
 	});
 
@@ -438,6 +629,7 @@
 			isDragging = false;
 			dragType = null;
 			dragValue = null;
+			timerEffects.stopDrag();
 		};
 		window.addEventListener('mouseup', stop);
 		return () => window.removeEventListener('mouseup', stop);
@@ -527,7 +719,7 @@
 {/snippet}
 
 <div
-	class="w-full overflow-x-auto outline-none focus:outline-none"
+	class="w-full max-w-full min-w-0 overflow-x-auto outline-none focus:outline-none"
 	bind:this={editorContainerRef}
 	tabindex="-1">
 	<div class="mt-2 ml-2 flex items-center gap-2">
@@ -535,511 +727,584 @@
 		<Input class="w-48 text-xs" bind:value={name} />
 	</div>
 
-	<div class="mt-3 flex items-start gap-2 overflow-x-auto">
-		{#key isExpanded}
-			<div class="relative flex flex-col">
-				{#if loopRow >= 0 && loopRow < rows.length && loopColumnRef && tableRef}
-					{@const tbody = tableRef.querySelector('tbody')}
-					{@const firstRow = tbody?.querySelector('tr') as HTMLTableRowElement | null}
-					{@const rowTop = firstRow ? firstRow.offsetTop : 0}
-					{@const rowHeight = isExpanded ? '2rem' : '1.75rem'}
-					{@const leftOffset = isExpanded ? '1rem' : '0.65rem'}
-					<div
-						class="pointer-events-none absolute top-0 z-0"
-						style="left: calc({loopColumnRef.offsetLeft}px + {leftOffset}); margin-top: calc({rowTop}px + {rowHeight} * {loopRow}); height: calc({rowHeight} * {rows.length -
-							loopRow});">
-						<div class="relative h-full">
-							<div
-								class="absolute top-0 left-0 h-full w-0.5 border-l-2 border-[var(--color-app-primary)]">
-							</div>
-							<div
-								class="absolute top-0 left-0 h-2 w-2 border-t-2 border-l-2 border-[var(--color-app-primary)]">
-							</div>
-							<div
-								class="absolute bottom-0 left-0 h-2 w-2 border-b-2 border-l-2 border-[var(--color-app-primary)]">
+	<PillTabs
+		bind:activeTabId={activeTab}
+		tabs={instrumentTabs}
+		class="mt-3 ml-2"
+		onSelect={(tabId) => {
+			if (tabId === 'sample') {
+				timerEffects.closeWaveformEditor();
+			}
+		}} />
+
+	{#if activeTab === 'timer'}
+		<PillTabs
+			activeTabId={timerEffects.timerEditPanel}
+			tabs={timerEditTabs}
+			size="sm"
+			class="mt-2 ml-2"
+			onSelect={(tabId) => timerEffects.setTimerEditPanel(tabId as TimerEditPanel)} />
+	{/if}
+
+	{#if activeTab === 'timer' && timerEffects.waveformEditorRowIndex !== null}
+		<AYTimerWaveformEditor
+			rowIndex={timerEffects.waveformEditorRowIndex}
+			{isExpanded}
+			onclose={() => timerEffects.closeWaveformEditor()} />
+	{/if}
+
+	{#if activeTab === 'sample'}
+		<div class="mt-3 mr-2 ml-2 box-border min-w-0">
+			<AYInstrumentSamplePanel {instrument} {isExpanded} {onInstrumentChange} />
+		</div>
+	{:else}
+		<div class="mt-3 flex items-start gap-2 overflow-x-auto">
+			{#key `${isExpanded}-${activeTab}`}
+				<div
+					class="relative flex flex-col {activeTab === 'timer'
+						? 'w-full min-w-0'
+						: ''}">
+					{#if loopMarkerStyle}
+						<div
+							class="pointer-events-none absolute z-0 -translate-x-1/2"
+							style="left: {loopMarkerStyle.left}px; top: {loopMarkerStyle.top}px; height: {loopMarkerStyle.height}px;">
+							<div class="relative h-full">
+								<div
+									class="absolute top-0 left-0 h-full w-0.5 border-l-2 border-[var(--color-app-primary)]">
+								</div>
+								<div
+									class="absolute top-0 left-0 h-2 w-2 border-t-2 border-l-2 border-[var(--color-app-primary)]">
+								</div>
+								<div
+									class="absolute bottom-0 left-0 h-2 w-2 border-b-2 border-l-2 border-[var(--color-app-primary)]">
+								</div>
 							</div>
 						</div>
-					</div>
-				{/if}
-				<table
-					bind:this={tableRef}
-					class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none">
-					<thead>
-						<tr>
-							<th class={isExpanded ? 'w-14 min-w-14 px-2 py-1.5' : 'px-1 py-1'}
-								>row</th>
-							<th class={isExpanded ? 'w-8 px-1.5' : 'w-6 px-0.5'}></th>
-							<th
-								class={isExpanded ? 'w-6 px-1.5' : 'w-4 px-0.5'}
-								bind:this={loopColumnRef}>{isExpanded ? 'loop' : 'lp'}</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-								title="Tone Generator">
-								<div class="flex items-center justify-center">
-									<IconCarbonChartWinLoss
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-								title="Noise Generator">
-								<div class="flex items-center justify-center">
-									<IconCarbonWaveform
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-								title="Hardware Envelope">
-								<div class="flex items-center justify-center">
-									<IconCarbonActivity
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-								title="Retrigger envelope when this row is played (only when envelope is on)">
-								<div class="flex items-center justify-center">
-									<IconCarbonRepeat
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-16 min-w-16 px-1.5'
-									: 'w-12 px-0.5 text-[0.65rem]'}
-								title="Tone Offset">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonChartWinLoss
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>+</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-10 px-0.5 text-[0.65rem]'}
-								title="Tone Accumulation">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonChartWinLoss
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>↑</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-16 min-w-16 px-1.5'
-									: 'w-12 px-0.5 text-[0.65rem]'}
-								title="Noise Offset">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonWaveform
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>+</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-10 px-0.5 text-[0.65rem]'}
-								title="Noise Accumulation">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonWaveform
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>↑</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-16 min-w-16 px-1.5'
-									: 'w-12 px-0.5 text-[0.65rem]'}
-								title="Envelope Offset">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonActivity
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>+</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-10 px-0.5 text-[0.65rem]'}
-								title="Envelope Accumulation">
-								<div class="flex items-center justify-center gap-0.5">
-									<IconCarbonActivity
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-									<span>↑</span>
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-12 min-w-12 px-1'
-									: 'w-12 px-0.5 text-[0.65rem]'}
-								title="Volume Level">
-								<div class="flex items-center justify-center">
-									<IconCarbonVolumeUp
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-							<th
-								class={isExpanded
-									? 'w-8 min-w-8 px-1'
-									: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
-								title="Amplitude Slide: ↑ up / ↓ down / blank off">
-								<div class="flex items-center justify-center">
-									<IconCarbonArrowsVertical
-										class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-								</div>
-							</th>
-						</tr>
-						{#if showVolumeGrid}
+					{/if}
+					<table
+						bind:this={tableRef}
+						onpointermove={handleTimerEffectPointerMove}
+						onpointerup={handleTimerEffectPointerEnd}
+						onpointercancel={handleTimerEffectPointerEnd}
+						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none {activeTab ===
+						'timer'
+							? 'w-full'
+							: ''}">
+						<thead>
 							<tr>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-								<th></th>
-							</tr>
-						{/if}
-					</thead>
-					<tbody>
-						{#each rows as row, index}
-							{@const selected = isRowSelected(index)}
-							<tr
-								class="{isExpanded ? 'h-8' : 'h-7'} {selected
-									? ROW_SELECTION_STYLES.row
-									: ''}">
-								<SelectableRowNumberCell
-									{index}
-									{selected}
-									sizeClass={isExpanded
+								<th
+									class={isExpanded
 										? 'w-14 min-w-14 px-2 py-1.5'
-										: 'px-1 py-1 text-[0.65rem]'}
-									onmousedown={(e) => handleRowSelect(index, e)} />
-								<td
-									class="border border-[var(--color-app-border)] {selected
-										? ROW_SELECTION_STYLES.cell
-										: 'bg-[var(--color-app-surface-secondary)]'} {isExpanded
-										? 'px-1.5'
-										: 'px-0.5'}">
-									<div
-										class="flex items-center justify-center {isExpanded
-											? 'gap-1'
-											: 'gap-0.5'}">
-										<button
-											class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
-											onclick={(e) => {
-												e.stopPropagation();
-												removeRow(index);
-											}}
-											title="Remove this row">
-											<IconCarbonTrashCan
+										: 'w-8 min-w-8 px-1 py-1'}>row</th>
+								<th class={isExpanded ? 'w-12 min-w-12 px-1' : 'w-10 min-w-10 px-0.5'}></th>
+								<th
+									class={isExpanded ? 'w-6 min-w-6 px-1.5' : 'w-4 min-w-4 px-0.5'}
+									>{isExpanded ? 'loop' : 'lp'}</th>
+								{#if activeTab === 'mixer'}
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
+										title="Tone Generator">
+										<div class="flex items-center justify-center">
+											<IconCarbonChartWinLoss
 												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
-										</button>
-										{#if index < rows.length - 1}
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
+										title="Noise Generator">
+										<div class="flex items-center justify-center">
+											<IconCarbonWaveform
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
+										title="Hardware Envelope">
+										<div class="flex items-center justify-center">
+											<IconCarbonActivity
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
+										title="Retrigger envelope when this row is played (only when envelope is on)">
+										<div class="flex items-center justify-center">
+											<IconCarbonRepeat
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-16 min-w-16 px-1.5'
+											: 'w-12 px-0.5 text-[0.65rem]'}
+										title="Tone Offset">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonChartWinLoss
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>+</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-10 px-0.5 text-[0.65rem]'}
+										title="Tone Accumulation">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonChartWinLoss
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>↑</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-16 min-w-16 px-1.5'
+											: 'w-12 px-0.5 text-[0.65rem]'}
+										title="Noise Offset">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonWaveform
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>+</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-10 px-0.5 text-[0.65rem]'}
+										title="Noise Accumulation">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonWaveform
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>↑</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-16 min-w-16 px-1.5'
+											: 'w-12 px-0.5 text-[0.65rem]'}
+										title="Envelope Offset">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonActivity
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>+</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-10 px-0.5 text-[0.65rem]'}
+										title="Envelope Accumulation">
+										<div class="flex items-center justify-center gap-0.5">
+											<IconCarbonActivity
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+											<span>↑</span>
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-12 min-w-12 px-1'
+											: 'w-12 px-0.5 text-[0.65rem]'}
+										title="Volume Level">
+										<div class="flex items-center justify-center">
+											<IconCarbonVolumeUp
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+										</div>
+									</th>
+									<th
+										class={isExpanded
+											? 'w-8 min-w-8 px-1'
+											: 'w-8 min-w-8 px-0.5 text-[0.65rem]'}
+										title="Amplitude Slide: ↑ up / ↓ down / blank off">
+										<div class="flex items-center justify-center">
+											<IconCarbonArrowsVertical
+												class={isExpanded ? 'h-3.5 w-3.5' : 'h-3 w-3'} />
+										</div>
+									</th>
+								{:else}
+									<AYTimerEffectsHeaderCells {isExpanded} />
+								{/if}
+							</tr>
+							{#if showVolumeGrid}
+								<tr>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+									<th></th>
+								</tr>
+							{/if}
+						</thead>
+						<tbody>
+							{#each activeTab === 'timer' ? timerEffects.timerRows : rows as _, index (index)}
+								{@const selected = isRowSelected(index)}
+								<tr
+									class="{isExpanded ? 'h-8' : 'h-7'} {selected
+										? ROW_SELECTION_STYLES.row
+										: ''}">
+									<SelectableRowNumberCell
+										{index}
+										{selected}
+										sizeClass={isExpanded
+											? 'w-14 min-w-14 px-2 py-1.5'
+											: 'w-8 min-w-8 px-1 py-1 text-[0.65rem]'}
+										onmousedown={(e) => handleRowSelect(index, e)} />
+									<td
+										class="overflow-hidden border border-[var(--color-app-border)] {selected
+											? ROW_SELECTION_STYLES.cell
+											: 'bg-[var(--color-app-surface-secondary)]'} {isExpanded
+											? 'w-12 min-w-12 px-1'
+											: 'w-10 min-w-10 px-0.5'}">
+										<div
+											class="flex min-w-0 items-center justify-center {isExpanded
+												? 'gap-0.5'
+												: 'gap-0'}">
 											<button
-												class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
+												class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
 												onclick={(e) => {
 													e.stopPropagation();
-													removeRowsFromBottom(index);
+													removeDisplayRow(index);
 												}}
-												title="Remove all rows from bottom up to this one">
-												<IconCarbonDelete
+												title="Remove this row">
+												<IconCarbonTrashCan
 													class={isExpanded
 														? 'h-3.5 w-3.5'
 														: 'h-3 w-3'} />
 											</button>
-										{/if}
+											{#if index < displayRowCount - 1}
+												<button
+													class="flex shrink-0 cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-note-off)]"
+													onclick={(e) => {
+														e.stopPropagation();
+														removeDisplayRowsFromBottom(index);
+													}}
+													title="Remove all rows from bottom up to this one">
+													<IconCarbonDelete
+														class={isExpanded
+															? 'h-3.5 w-3.5'
+															: 'h-3 w-3'} />
+												</button>
+											{/if}
+										</div>
+									</td>
+									<td
+										class="{isExpanded
+											? 'w-6 min-w-6 cursor-pointer px-1.5 text-center text-sm'
+											: 'w-4 min-w-4 cursor-pointer px-0.5 text-center text-[0.65rem]'} {selected
+											? ROW_SELECTION_STYLES.cell
+											: ''}"
+										onclick={() => setActiveLoop(index)}>
+									</td>
+									{#if activeTab === 'mixer'}
+										{@const row = rows[index]}
+										<!-- Tone -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.tone
+													? 'instrument-cell-boolean-on'
+													: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() => beginDragBoolean(index, 'tone')}
+											onmouseover={() => dragOverBoolean(index, 'tone')}
+											onfocus={() => dragOverBoolean(index, 'tone')}>
+											{row.tone ? '✓' : ''}
+										</td>
+										<!-- Noise -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.noise
+													? 'instrument-cell-boolean-on'
+													: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() => beginDragBoolean(index, 'noise')}
+											onmouseover={() => dragOverBoolean(index, 'noise')}
+											onfocus={() => dragOverBoolean(index, 'noise')}>
+											{row.noise ? '✓' : ''}
+										</td>
+										<!-- Envelope -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.envelope
+													? 'instrument-cell-boolean-on'
+													: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() => beginDragBoolean(index, 'envelope')}
+											onmouseover={() => dragOverBoolean(index, 'envelope')}
+											onfocus={() => dragOverBoolean(index, 'envelope')}>
+											{row.envelope ? '✓' : ''}
+										</td>
+										<!-- Retrigger envelope -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: (row.retriggerEnvelope ?? false)
+													? 'instrument-cell-boolean-on'
+													: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											title="Retrigger envelope when this row is played"
+											onmousedown={() =>
+												beginDragBoolean(index, 'retriggerEnvelope')}
+											onmouseover={() =>
+												dragOverBoolean(index, 'retriggerEnvelope')}
+											onfocus={() =>
+												dragOverBoolean(index, 'retriggerEnvelope')}>
+											{(row.retriggerEnvelope ?? false) ? '✓' : ''}
+										</td>
+										<!-- ToneAdd -->
+										<td
+											class={isExpanded
+												? 'w-16 min-w-16 px-1.5'
+												: 'w-12 px-0.5'}>
+											<input
+												type="text"
+												class={compactTableInputClass({ selected, isExpanded })}
+												value={formatNum(row.toneAdd)}
+												onkeydown={(e) => handleNumericKeyDown(index, e)}
+												onfocus={(e) =>
+													(e.target as HTMLInputElement).select()}
+												oninput={(e) =>
+													updateNumericField(index, 'toneAdd', e)} />
+										</td>
+										<!-- Tone Accumulation -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.toneAccumulation
+													? 'bg-[var(--color-app-primary)]/30'
+													: 'bg-[var(--color-app-surface)]'} {row.toneAccumulation
+												? 'text-[var(--color-app-primary)]'
+												: 'text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() =>
+												beginDragBoolean(index, 'toneAccumulation')}
+											onmouseover={() =>
+												dragOverBoolean(index, 'toneAccumulation')}
+											onfocus={() =>
+												dragOverBoolean(index, 'toneAccumulation')}>
+											{row.toneAccumulation ? '↑' : ''}
+										</td>
+										<!-- NoiseAdd -->
+										<td
+											class={isExpanded
+												? 'w-16 min-w-16 px-1.5'
+												: 'w-12 px-0.5'}>
+											<input
+												type="text"
+												class={compactTableInputClass({ selected, isExpanded })}
+												value={formatNum(row.noiseAdd)}
+												onkeydown={(e) => handleNumericKeyDown(index, e)}
+												onfocus={(e) =>
+													(e.target as HTMLInputElement).select()}
+												oninput={(e) =>
+													updateNumericField(index, 'noiseAdd', e)} />
+										</td>
+										<!-- Noise Accumulation -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.noiseAccumulation
+													? 'bg-[var(--color-app-primary)]/30'
+													: 'bg-[var(--color-app-surface)]'} {row.noiseAccumulation
+												? 'text-[var(--color-app-primary)]'
+												: 'text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() =>
+												beginDragBoolean(index, 'noiseAccumulation')}
+											onmouseover={() =>
+												dragOverBoolean(index, 'noiseAccumulation')}
+											onfocus={() =>
+												dragOverBoolean(index, 'noiseAccumulation')}>
+											{row.noiseAccumulation ? '↑' : ''}
+										</td>
+										<!-- EnvelopeAdd -->
+										<td
+											class={isExpanded
+												? 'w-16 min-w-16 px-1.5'
+												: 'w-12 px-0.5'}>
+											<input
+												type="text"
+												class={compactTableInputClass({ selected, isExpanded })}
+												value={formatNum(row.envelopeAdd ?? 0)}
+												onkeydown={(e) => handleNumericKeyDown(index, e)}
+												onfocus={(e) =>
+													(e.target as HTMLInputElement).select()}
+												oninput={(e) =>
+													updateNumericField(index, 'envelopeAdd', e)} />
+										</td>
+										<!-- Envelope Accumulation -->
+										<td
+											class="{isExpanded
+												? 'w-8 min-w-8 px-1'
+												: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.envelopeAccumulation
+													? 'bg-[var(--color-app-primary)]/30'
+													: 'bg-[var(--color-app-surface)]'} {row.envelopeAccumulation
+												? 'text-[var(--color-app-primary)]'
+												: 'text-[var(--color-app-text-muted)]'}"
+											tabindex="-1"
+											onmousedown={() =>
+												beginDragBoolean(index, 'envelopeAccumulation')}
+											onmouseover={() =>
+												dragOverBoolean(index, 'envelopeAccumulation')}
+											onfocus={() =>
+												dragOverBoolean(index, 'envelopeAccumulation')}>
+											{row.envelopeAccumulation ? '↑' : ''}
+										</td>
+										<!-- Volume -->
+										<td
+											class={isExpanded
+												? 'w-12 min-w-12 px-1.5'
+												: 'w-12 px-0.5'}>
+											<input
+												type="text"
+												class={compactTableInputClass({ selected, isExpanded })}
+												value={formatNum(row.volume)}
+												onkeydown={(e) => handleNumericKeyDown(index, e)}
+												onfocus={(e) =>
+													(e.target as HTMLInputElement).select()}
+												oninput={(e) =>
+													updateNumericField(index, 'volume', e)} />
+										</td>
+										<!-- Amplitude Slide (merged: off/up/down) -->
+										<td
+											class="w-8 min-w-8 {isExpanded
+												? 'px-1'
+												: 'px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
+												? ROW_SELECTION_STYLES.cell
+												: row.amplitudeSliding && row.amplitudeSlideUp
+													? 'instrument-cell-boolean-on'
+													: row.amplitudeSliding
+														? 'instrument-cell-slide-negative'
+														: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
+											onclick={() => cycleAmplitudeSlide(index)}
+											title={row.amplitudeSliding
+												? row.amplitudeSlideUp
+													? 'Slide up'
+													: 'Slide down'
+												: 'No slide'}>
+											<span class="inline-block min-w-[1ch]"
+												>{row.amplitudeSliding
+													? row.amplitudeSlideUp
+														? '↑'
+														: '↓'
+													: ''}</span>
+										</td>
+									{:else}
+										<AYTimerEffectsRowCells {index} {selected} {isExpanded} />
+									{/if}
+								</tr>
+							{/each}
+						</tbody>
+						<tfoot>
+							{#if activeTab === 'timer'}
+								<tr>
+									<td
+										colspan={tableColSpan}
+										class="border-t border-[var(--color-app-border)] px-0 py-0">
+										<AYTimerPwmControls {isExpanded} />
+									</td>
+								</tr>
+							{/if}
+							<tr>
+								<td colspan={tableColSpan} class="px-2 py-1">
+									<div class="flex items-center justify-center">
+										<button
+											class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
+											onclick={addDisplayRow}
+											title="Add new row">
+											<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
+											<span class="mr-1 text-xs">Add new row</span>
+										</button>
 									</div>
 								</td>
+							</tr>
+							<tr>
 								<td
-									class="{isExpanded
-										? 'w-6 cursor-pointer px-1.5 text-center text-sm'
-										: 'w-4 cursor-pointer px-0.5 text-center text-[0.65rem]'} {selected
-										? ROW_SELECTION_STYLES.cell
-										: ''}"
-									onclick={() => setLoop(index)}>
-								</td>
-								<!-- Tone -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.tone
-											? 'instrument-cell-boolean-on'
-											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() => beginDragBoolean(index, 'tone')}
-									onmouseover={() => dragOverBoolean(index, 'tone')}
-									onfocus={() => dragOverBoolean(index, 'tone')}>
-									{row.tone ? '✓' : ''}
-								</td>
-								<!-- Noise -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.noise
-											? 'instrument-cell-boolean-on'
-											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() => beginDragBoolean(index, 'noise')}
-									onmouseover={() => dragOverBoolean(index, 'noise')}
-									onfocus={() => dragOverBoolean(index, 'noise')}>
-									{row.noise ? '✓' : ''}
-								</td>
-								<!-- Envelope -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.envelope
-											? 'instrument-cell-boolean-on'
-											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() => beginDragBoolean(index, 'envelope')}
-									onmouseover={() => dragOverBoolean(index, 'envelope')}
-									onfocus={() => dragOverBoolean(index, 'envelope')}>
-									{row.envelope ? '✓' : ''}
-								</td>
-								<!-- Retrigger envelope -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'w-8 min-w-8 px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: (row.retriggerEnvelope ?? false)
-											? 'instrument-cell-boolean-on'
-											: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									title="Retrigger envelope when this row is played"
-									onmousedown={() => beginDragBoolean(index, 'retriggerEnvelope')}
-									onmouseover={() => dragOverBoolean(index, 'retriggerEnvelope')}
-									onfocus={() => dragOverBoolean(index, 'retriggerEnvelope')}>
-									{(row.retriggerEnvelope ?? false) ? '✓' : ''}
-								</td>
-								<!-- ToneAdd -->
-								<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
-									<input
-										type="text"
-										class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-											? ROW_SELECTION_STYLES.input
-											: 'bg-[var(--color-app-surface)]'} {isExpanded
-											? 'px-2 py-1 text-xs'
-											: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
-										value={formatNum(row.toneAdd)}
-										onkeydown={(e) => handleNumericKeyDown(index, e)}
-										onfocus={(e) => (e.target as HTMLInputElement).select()}
-										oninput={(e) => updateNumericField(index, 'toneAdd', e)} />
-								</td>
-								<!-- Tone Accumulation -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.toneAccumulation
-											? 'bg-[var(--color-app-primary)]/30'
-											: 'bg-[var(--color-app-surface)]'} {row.toneAccumulation
-										? 'text-[var(--color-app-primary)]'
-										: 'text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() => beginDragBoolean(index, 'toneAccumulation')}
-									onmouseover={() => dragOverBoolean(index, 'toneAccumulation')}
-									onfocus={() => dragOverBoolean(index, 'toneAccumulation')}>
-									{row.toneAccumulation ? '↑' : ''}
-								</td>
-								<!-- NoiseAdd -->
-								<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
-									<input
-										type="text"
-										class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-											? ROW_SELECTION_STYLES.input
-											: 'bg-[var(--color-app-surface)]'} {isExpanded
-											? 'px-2 py-1 text-xs'
-											: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
-										value={formatNum(row.noiseAdd)}
-										onkeydown={(e) => handleNumericKeyDown(index, e)}
-										onfocus={(e) => (e.target as HTMLInputElement).select()}
-										oninput={(e) => updateNumericField(index, 'noiseAdd', e)} />
-								</td>
-								<!-- Noise Accumulation -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.noiseAccumulation
-											? 'bg-[var(--color-app-primary)]/30'
-											: 'bg-[var(--color-app-surface)]'} {row.noiseAccumulation
-										? 'text-[var(--color-app-primary)]'
-										: 'text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() => beginDragBoolean(index, 'noiseAccumulation')}
-									onmouseover={() => dragOverBoolean(index, 'noiseAccumulation')}
-									onfocus={() => dragOverBoolean(index, 'noiseAccumulation')}>
-									{row.noiseAccumulation ? '↑' : ''}
-								</td>
-								<!-- EnvelopeAdd -->
-								<td class={isExpanded ? 'w-16 min-w-16 px-1.5' : 'w-12 px-0.5'}>
-									<input
-										type="text"
-										class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-											? ROW_SELECTION_STYLES.input
-											: 'bg-[var(--color-app-surface)]'} {isExpanded
-											? 'px-2 py-1 text-xs'
-											: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
-										value={formatNum(row.envelopeAdd ?? 0)}
-										onkeydown={(e) => handleNumericKeyDown(index, e)}
-										onfocus={(e) => (e.target as HTMLInputElement).select()}
-										oninput={(e) =>
-											updateNumericField(index, 'envelopeAdd', e)} />
-								</td>
-								<!-- Envelope Accumulation -->
-								<td
-									class="{isExpanded
-										? 'w-8 min-w-8 px-1'
-										: 'px-1.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.envelopeAccumulation
-											? 'bg-[var(--color-app-primary)]/30'
-											: 'bg-[var(--color-app-surface)]'} {row.envelopeAccumulation
-										? 'text-[var(--color-app-primary)]'
-										: 'text-[var(--color-app-text-muted)]'}"
-									tabindex="-1"
-									onmousedown={() =>
-										beginDragBoolean(index, 'envelopeAccumulation')}
-									onmouseover={() =>
-										dragOverBoolean(index, 'envelopeAccumulation')}
-									onfocus={() => dragOverBoolean(index, 'envelopeAccumulation')}>
-									{row.envelopeAccumulation ? '↑' : ''}
-								</td>
-								<!-- Volume -->
-								<td class={isExpanded ? 'w-12 min-w-12 px-1.5' : 'w-12 px-0.5'}>
-									<input
-										type="text"
-										class="w-full min-w-0 overflow-x-auto rounded border border-[var(--color-app-border)] {selected
-											? ROW_SELECTION_STYLES.input
-											: 'bg-[var(--color-app-surface)]'} {isExpanded
-											? 'px-2 py-1 text-xs'
-											: 'px-1 py-0.5 text-[0.65rem]'} text-[var(--color-app-text-secondary)] placeholder-[var(--color-app-text-muted)] focus:border-[var(--color-app-primary)] focus:outline-none"
-										value={formatNum(row.volume)}
-										onkeydown={(e) => handleNumericKeyDown(index, e)}
-										onfocus={(e) => (e.target as HTMLInputElement).select()}
-										oninput={(e) => updateNumericField(index, 'volume', e)} />
-								</td>
-								<!-- Amplitude Slide (merged: off/up/down) -->
-								<td
-									class="w-8 min-w-8 {isExpanded
-										? 'px-1'
-										: 'px-0.5'} cursor-pointer border border-[var(--color-app-border)] text-center {selected
-										? ROW_SELECTION_STYLES.cell
-										: row.amplitudeSliding && row.amplitudeSlideUp
-											? 'instrument-cell-boolean-on'
-											: row.amplitudeSliding
-												? 'instrument-cell-slide-negative'
-												: 'bg-[var(--color-app-surface)] text-[var(--color-app-text-muted)]'}"
-									onclick={() => cycleAmplitudeSlide(index)}
-									title={row.amplitudeSliding
-										? row.amplitudeSlideUp
-											? 'Slide up'
-											: 'Slide down'
-										: 'No slide'}>
-									<span class="inline-block min-w-[1ch]"
-										>{row.amplitudeSliding
-											? row.amplitudeSlideUp
-												? '↑'
-												: '↓'
-											: ''}</span>
+									colspan={tableColSpan}
+									class="border-t border-[var(--color-app-border)] p-0">
+									<RowResizeHandle
+										rowCount={displayRowCount}
+										onRowCountChange={setDisplayRowCount}
+										rowHeightPx={isExpanded ? 32 : 28}
+										maxRows={MAX_ROWS} />
 								</td>
 							</tr>
-						{/each}
-					</tbody>
-					<tfoot>
-						<tr>
-							<td colspan="16" class="px-2 py-1">
-								<div class="flex items-center justify-center">
-									<button
-										class="flex cursor-pointer items-center justify-center rounded p-0.5 text-[var(--color-app-text-muted)] transition-colors hover:bg-[var(--color-app-surface-hover)] hover:text-[var(--color-pattern-table)]"
-										onclick={addRow}
-										title="Add new row">
-										<IconCarbonAdd class="mr-1 h-3.5 w-3.5" />
-										<span class="mr-1 text-xs">Add new row</span>
-									</button>
-								</div>
-							</td>
-						</tr>
-						<tr>
-							<td colspan="16" class="border-t border-[var(--color-app-border)] p-0">
-								<RowResizeHandle
-									rowCount={rows.length}
-									onRowCountChange={setRowCount}
-									rowHeightPx={isExpanded ? 32 : 28}
-									maxRows={MAX_ROWS} />
-							</td>
-						</tr>
-					</tfoot>
-				</table>
-			</div>
+						</tfoot>
+					</table>
+				</div>
 
-			{#if showVolumeGrid}
-				<table
-					class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none">
-					<thead>
-						<tr>
-							<th class="px-2 py-1.5">row</th>
-							{#each VOLUME_VALUES as v}
-								<th
-									class="w-6 min-w-6 bg-[var(--color-app-surface-secondary)] text-center"
-									title={String(v)}>
-									{formatNum(v)}
-								</th>
-							{/each}
-						</tr>
-						<tr>
-							<th></th>
-							{#each VOLUME_VALUES as v}
-								<th class="w-6 min-w-6"></th>
-							{/each}
-						</tr>
-					</thead>
-					<tbody>
-						{#each rows as row, index}
-							{@const selected = isRowSelected(index)}
-							<tr class="h-8 {selected ? ROW_SELECTION_STYLES.row : ''}">
-								<td
-									class="border border-[var(--color-app-border)] px-2 text-right {selected
-										? ROW_SELECTION_STYLES.rowNumber
-										: 'bg-[var(--color-app-surface-secondary)]'}">{index}</td>
+				{#if showVolumeGrid}
+					<table
+						class="row-editor-table table-fixed border-collapse bg-[var(--color-app-surface)] font-mono text-xs select-none">
+						<thead>
+							<tr>
+								<th class="px-2 py-1.5">row</th>
 								{#each VOLUME_VALUES as v}
-									{@render volumeCell(index, v, v === row.volume, selected)}
+									<th
+										class="w-6 min-w-6 bg-[var(--color-app-surface-secondary)] text-center"
+										title={String(v)}>
+										{formatNum(v)}
+									</th>
 								{/each}
 							</tr>
-						{/each}
-					</tbody>
-				</table>
-			{/if}
-		{/key}
-	</div>
+							<tr>
+								<th></th>
+								{#each VOLUME_VALUES as v}
+									<th class="w-6 min-w-6"></th>
+								{/each}
+							</tr>
+						</thead>
+						<tbody>
+							{#each rows as row, index}
+								{@const selected = isRowSelected(index)}
+								<tr class="h-8 {selected ? ROW_SELECTION_STYLES.row : ''}">
+									<td
+										class="border border-[var(--color-app-border)] px-2 text-right {selected
+											? ROW_SELECTION_STYLES.rowNumber
+											: 'bg-[var(--color-app-surface-secondary)]'}"
+										>{index}</td>
+									{#each VOLUME_VALUES as v}
+										{@render volumeCell(index, v, v === row.volume, selected)}
+									{/each}
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				{/if}
+			{/key}
+		</div>
+	{/if}
 </div>

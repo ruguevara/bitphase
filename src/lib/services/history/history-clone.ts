@@ -112,12 +112,99 @@ export class HistoryClone {
 	}
 
 	static instrument(instrument: Instrument): Instrument {
-		return new Instrument(
+		const cloned = new Instrument(
 			instrument.id,
 			instrument.rows.map((row) => this.instrumentRow(row)),
 			instrument.loop,
 			instrument.name
 		);
+		const extended = instrument as Instrument & {
+			timerRows?: {
+				sid: boolean;
+				syncbuzzer?: boolean;
+				fm?: boolean;
+				envFm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
+				sidPeriodMode?: 'auto' | 'manual';
+				detune?: number;
+				period?: number;
+				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
+			}[];
+			timerPwmDuty?: number;
+			timerPwmSweepMin?: number;
+			timerPwmSweep?: number;
+			timerPwmPreserveOnNewNote?: boolean;
+			timerPwmReverseSweep?: boolean;
+			timerPwmSweepStartPhase?: number;
+			timerPwmSweepShape?: string;
+			timerLoop?: number;
+		};
+		const clonedExtended = cloned as Instrument & {
+			timerRows?: {
+				sid: boolean;
+				syncbuzzer?: boolean;
+				fm?: boolean;
+				envFm?: boolean;
+				fmOffsetMode?: 'semitone' | 'period';
+				sidPeriodMode?: 'auto' | 'manual';
+				detune?: number;
+				period?: number;
+				semitone?: number;
+				timerWaveform?: number[];
+				timerWaveformLoop?: number;
+				fmWaveform?: number[];
+				fmWaveformLoop?: number;
+				envFmWaveform?: number[];
+				envFmWaveformLoop?: number;
+				timerPwmDuty?: number;
+				timerPwmSweepMin?: number;
+				timerPwmSweep?: number;
+			}[];
+			timerPwmDuty?: number;
+			timerPwmSweepMin?: number;
+			timerPwmSweep?: number;
+			timerPwmPreserveOnNewNote?: boolean;
+			timerPwmReverseSweep?: boolean;
+			timerPwmSweepStartPhase?: number;
+			timerPwmSweepShape?: string;
+			timerLoop?: number;
+		};
+		if (extended.timerRows) {
+			clonedExtended.timerRows = extended.timerRows.map((row) => ({
+				...row,
+				timerWaveform: row.timerWaveform ? [...row.timerWaveform] : undefined,
+				fmWaveform: row.fmWaveform ? [...row.fmWaveform] : undefined,
+				envFmWaveform: row.envFmWaveform ? [...row.envFmWaveform] : undefined
+			}));
+		}
+		if (extended.timerLoop !== undefined) clonedExtended.timerLoop = extended.timerLoop;
+		if (extended.timerPwmDuty !== undefined) clonedExtended.timerPwmDuty = extended.timerPwmDuty;
+		if (extended.timerPwmSweepMin !== undefined) {
+			clonedExtended.timerPwmSweepMin = extended.timerPwmSweepMin;
+		}
+		if (extended.timerPwmSweep !== undefined) clonedExtended.timerPwmSweep = extended.timerPwmSweep;
+		if (extended.timerPwmPreserveOnNewNote !== undefined) {
+			clonedExtended.timerPwmPreserveOnNewNote = extended.timerPwmPreserveOnNewNote;
+		}
+		if (extended.timerPwmSweepStartPhase !== undefined) {
+			clonedExtended.timerPwmSweepStartPhase = extended.timerPwmSweepStartPhase;
+		}
+		if (extended.timerPwmReverseSweep !== undefined) {
+			clonedExtended.timerPwmReverseSweep = extended.timerPwmReverseSweep;
+		}
+		if (extended.timerPwmSweepShape !== undefined) {
+			clonedExtended.timerPwmSweepShape = extended.timerPwmSweepShape;
+		}
+		return cloned;
 	}
 
 	static instrumentRow(row: InstrumentRow): InstrumentRow {

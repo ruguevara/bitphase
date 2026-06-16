@@ -22,11 +22,11 @@
 	import IconCarbonChevronUp from '~icons/carbon/chevron-up';
 	import IconCarbonChevronDown from '~icons/carbon/chevron-down';
 	import IconCarbonClose from '~icons/carbon/close';
-	import { PATTERN_EDITOR_CONSTANTS } from './types';
 	import { getContext, setContext, tick } from 'svelte';
 	import Input from '../Input/Input.svelte';
 	import { playbackStore } from '../../stores/playback.svelte';
 	import StatusBar from './StatusBar.svelte';
+	import PlaybackToneDebug from './PlaybackToneDebug.svelte';
 	import ChannelOscilloscopes from './ChannelOscilloscopes.svelte';
 	import { PatternService } from '../../services/pattern/pattern-service';
 	import { settingsStore } from '../../stores/settings.svelte';
@@ -386,34 +386,11 @@
 		return lastSpeed !== null ? lastSpeed : song.initialSpeed;
 	}
 
-	let patternOrderHeight = $state(PATTERN_EDITOR_CONSTANTS.DEFAULT_CANVAS_HEIGHT);
-
 	const rightPanelTabs = [
 		{ id: 'instruments', label: 'Instruments', icon: IconCarbonWaveform },
 		{ id: 'tables', label: 'Tables', icon: IconCarbonDataTable },
 		{ id: 'details', label: 'Details', icon: IconCarbonInformationSquare }
 	];
-
-	$effect(() => {
-		if (!songViewContainer) return;
-
-		const resizeObserver = new ResizeObserver(() => {
-			if (songViewContainer.clientHeight > 0) {
-				const availableHeight = songViewContainer.clientHeight;
-				const gap = 8;
-				patternOrderHeight = Math.max(
-					PATTERN_EDITOR_CONSTANTS.MIN_CANVAS_HEIGHT,
-					availableHeight - gap
-				);
-			}
-		});
-
-		resizeObserver.observe(songViewContainer);
-
-		return () => {
-			resizeObserver.disconnect();
-		};
-	});
 
 	const currentPatternId = $derived(projectStore.patternOrder[sharedPatternOrderIndex]);
 	const currentPatternLength = $derived.by(() => {
@@ -510,7 +487,6 @@
 					<PatternOrder
 						bind:currentPatternOrderIndex={sharedPatternOrderIndex}
 						bind:selectedRow={sharedSelectedRow}
-						canvasHeight={patternOrderHeight}
 						onMakeUnique={handleMakeUnique}
 						onPatternOrderEdited={async () => {
 							await tick();
@@ -652,6 +628,9 @@
 						{/if}
 					{/each}
 				</div>
+				{#if settingsStore.debugMode}
+					<PlaybackToneDebug {chipProcessors} />
+				{/if}
 			</div>
 			{#if isRightPanelExpanded}
 				<button

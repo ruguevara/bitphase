@@ -4,6 +4,7 @@ import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
 import AYChipRegisterState from './ay-chip-register-state.js';
 import VirtualChannelMixer from './virtual-channel-mixer.js';
+import { disableAllChannelTimerEffects, ensureChannelTimerEffects } from './ay-timer-effect-constants.js';
 import { WorkletSlotBase } from './worklet-slot-base.js';
 
 export class Ay8910WorkletSlot extends WorkletSlotBase {
@@ -78,6 +79,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 
 	_onTransportStop() {
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
+		if (this.ayumiEngine) {
+			this.ayumiEngine.reset();
+		}
 		this._applyRegisterStateToEngine();
 	}
 
@@ -170,6 +177,7 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 			noise: false,
 			envelope: false
 		};
+		disableAllChannelTimerEffects(ensureChannelTimerEffects(registerState.channels[channelIndex]));
 	}
 
 	handleSetVirtualChannelConfig({ virtualChannelMap, hwChannelCount }) {
@@ -182,6 +190,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		this.registerState.resize(totalChannels);
 		if (this.audioDriver) {
 			this.audioDriver.resizeChannels(totalChannels);
+		}
+		if (this.ayumiEngine) {
+			this.registerState.reset();
+			this.audioDriver?.resetChannelMixerState();
+			this.ayumiEngine.reset();
+			this._applyRegisterStateToEngine();
 		}
 	}
 
@@ -214,10 +228,33 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		this._applyRegisterStateToEngine();
 	}
 
+	_getEngineRegisterState() {
+		if (this.virtualChannelMixer.hasVirtualChannels()) {
+			return this.virtualChannelMixer.merge(this.registerState, this.state);
+		}
+		return this.registerState;
+	}
+
+	_collectHardwareRegisters() {
+		const wasmModule = this.state?.wasmModule;
+		const ayumiPtr = this.state?.ayumiPtr;
+		const getRegisters = wasmModule?.ayumi_get_registers;
+		if (typeof getRegisters === 'function' && ayumiPtr) {
+			if (!this._hardwareRegistersBufferPtr) {
+				this._hardwareRegistersBufferPtr = wasmModule.malloc(14);
+			}
+			getRegisters(ayumiPtr, this._hardwareRegistersBufferPtr);
+			return Array.from(
+				new Uint8Array(wasmModule.memory.buffer, this._hardwareRegistersBufferPtr, 14)
+			);
+		}
+		return this._getEngineRegisterState().toHardwareRegisters();
+	}
+
 	_applyRegisterStateToEngine() {
 		if (!this.ayumiEngine) return;
 		if (this.virtualChannelMixer.hasVirtualChannels()) {
-			const hwState = this.virtualChannelMixer.merge(this.registerState, this.state);
+			const hwState = this._getEngineRegisterState();
 			this.ayumiEngine.applyRegisterState(hwState);
 			this.registerState.forceEnvelopeShapeWrite = false;
 		} else {
@@ -291,6 +328,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 
 		this.state.reset({ resetTimeline: false });
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
+		if (this.ayumiEngine) {
+			this.ayumiEngine.reset();
+		}
 
 		for (let r = 0; r < rowIndex; r++) {
 			this._simulateRow(pattern, r);
@@ -317,6 +360,12 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 		} else {
 			this.previewActiveChannels.clear();
 			this.registerState.reset();
+			if (this.audioDriver) {
+				this.audioDriver.resetChannelMixerState();
+			}
+			if (this.ayumiEngine) {
+				this.ayumiEngine.reset();
+			}
 			this._applyRegisterStateToEngine();
 		}
 	}
@@ -340,9 +389,10 @@ export class Ay8910WorkletSlot extends WorkletSlotBase {
 			if (this.state.currentPattern.channels) {
 				this._ensureChannelCapacity(this.state.currentPattern.channels.length);
 			}
+			const rowIndex = this.state.timeline.currentRow;
 			this.patternProcessor.parsePatternRow(
 				this.state.currentPattern,
-				this.state.timeline.currentRow,
+				rowIndex,
 				this.registerState
 			);
 			this.patternProcessor.processSpeedTable();

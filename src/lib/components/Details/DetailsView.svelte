@@ -1,6 +1,12 @@
 <script lang="ts">
 	import type { ChipProcessor } from '../../chips/base/processor';
 	import type { ChipSetting } from '../../chips/base/schema';
+	import {
+		buildChipSettingsContext,
+		collectSettingSideEffects,
+		normalizeChipSettingsRecord,
+		resolveChipSettingDisplayValue
+	} from '../../chips/base/chip-settings';
 	import type { Song } from '../../models/song';
 	import { PROJECT_FIELDS } from '../../models/project-fields';
 	import { getChipByType } from '../../chips/registry';
@@ -141,6 +147,97 @@
 		services.audioService.chipSettings.set('tuningTable', [...table]);
 	}
 
+	function getChipSettingValue(chipType: string, key: string): unknown {
+		const songsOfType = songs.filter((s) => s.chipType === chipType);
+		if (songsOfType.length === 0) return undefined;
+		return (songsOfType[0] as unknown as Record<string, unknown>)[key];
+	}
+
+	function buildChipContext(
+		chipType: string,
+		chipSettings: ChipSetting[]
+	): Record<string, unknown> {
+		const values: Record<string, unknown> = {};
+		for (const setting of chipSettings) {
+			values[setting.key] =
+				chipSettingOverrides[chipType]?.[setting.key] ??
+				getChipSettingValue(chipType, setting.key) ??
+				setting.defaultValue;
+		}
+		return buildChipSettingsContext(chipSettings, values);
+	}
+
+	function getChipSettingDisplayValue(
+		chipType: string,
+		setting: ChipSetting,
+		context: Record<string, unknown>
+	): unknown {
+		const baseValue =
+			chipSettingOverrides[chipType]?.[setting.key] ??
+			getChipSettingValue(chipType, setting.key) ??
+			setting.defaultValue;
+		return resolveChipSettingDisplayValue(setting, baseValue, context);
+	}
+
+	function applyChipSettingValues(
+		chipType: string,
+		updates: Record<string, unknown>,
+		chipSettings: ChipSetting[],
+		processors: ChipProcessor[]
+	) {
+		const songsOfType = songs.filter((s) => s.chipType === chipType);
+		for (const [updateKey, updateValue] of Object.entries(updates)) {
+			const currentValue = getChipSettingValue(chipType, updateKey);
+			const audioValue = services.audioService.chipSettings.get(updateKey);
+			const updateSetting = chipSettings.find((s) => s.key === updateKey);
+			const needsSongUpdate = songsOfType.some(
+				(song) => (song as unknown as Record<string, unknown>)[updateKey] !== updateValue
+			);
+			const needsAudioUpdate =
+				updateSetting?.notifyAudioService &&
+				(currentValue !== updateValue || audioValue !== updateValue);
+			if (!needsSongUpdate && !needsAudioUpdate) continue;
+
+			if (needsSongUpdate) {
+				for (const song of songsOfType) {
+					(song as unknown as Record<string, unknown>)[updateKey] = updateValue;
+				}
+				chipSettingOverrides[chipType] = {
+					...(chipSettingOverrides[chipType] ?? {}),
+					[updateKey]: updateValue
+				};
+			}
+			if (needsAudioUpdate) {
+				for (const processor of processors) {
+					processor.updateParameter(updateKey, updateValue);
+				}
+				services.audioService.chipSettings.set(updateKey, updateValue);
+			}
+		}
+	}
+
+	function syncChipSettingsToAudio(chipType: string, chipSettings: ChipSetting[]) {
+		const chip = getChipByType(chipType);
+		if (!chip) return;
+
+		const songsOfType = songs.filter((s) => s.chipType === chipType);
+		if (songsOfType.length === 0) return;
+
+		const sourceRecord = songsOfType[0] as unknown as Record<string, unknown>;
+		const normalized = normalizeChipSettingsRecord(chip.schema, sourceRecord);
+		const processors = chipsByType.find((g) => g.type === chipType)?.processors || [];
+		const updates: Record<string, unknown> = {};
+
+		for (const setting of chipSettings.filter((s) => s.notifyAudioService)) {
+			const value = normalized[setting.key];
+			if (value !== undefined) {
+				updates[setting.key] = value;
+			}
+		}
+
+		applyChipSettingValues(chipType, updates, chipSettings, processors);
+	}
+
 	function handleChipSettingChange(
 		chipType: string,
 		key: string,
@@ -166,6 +263,7 @@
 		}
 
 		const chip = getChipByType(chipType);
+		const chipSettings = chip?.schema.settings?.filter((s) => s.group === 'chip') ?? [];
 		if (chip?.schema.tuningTableSettingKeys?.includes(key)) {
 			resolveAndPushTuningTable(chipType);
 			onChipSettingsApplied?.();
@@ -177,6 +275,27 @@
 				processor.updateParameter(key, normalized);
 			}
 			services.audioService.chipSettings.set(key, normalized);
+
+			if (chip) {
+				const context = buildChipContext(chipType, chipSettings);
+				const sideEffects = collectSettingSideEffects(chip.schema, key, normalized, context);
+				if (sideEffects.length > 0) {
+					applyChipSettingValues(
+						chipType,
+						Object.fromEntries(sideEffects.map((effect) => [effect.key, effect.value])),
+						chipSettings,
+						processors
+					);
+					if (
+						sideEffects.some((effect) =>
+							chip.schema.tuningTableSettingKeys?.includes(effect.key)
+						)
+					) {
+						resolveAndPushTuningTable(chipType);
+						onChipSettingsApplied?.();
+					}
+				}
+			}
 		}
 		projectStore.recordHistory(
 			{
@@ -188,24 +307,11 @@
 		);
 	}
 
-	function getChipSettingValue(chipType: string, key: string): unknown {
-		const songsOfType = songs.filter((s) => s.chipType === chipType);
-		if (songsOfType.length === 0) return undefined;
-		return (songsOfType[0] as unknown as Record<string, unknown>)[key];
-	}
-
 	$effect(() => {
 		songsByChipType.forEach((group) => {
 			if (!group.chip) return;
-			const settings = group.chip.schema.settings || [];
-			settings
-				.filter((s) => s.group === 'chip' && s.notifyAudioService)
-				.forEach((s) => {
-					const value = getChipSettingValue(group.chipType, s.key);
-					if (value !== undefined) {
-						services.audioService.chipSettings.set(s.key, value);
-					}
-				});
+			const chipSettings = group.chip.schema.settings?.filter((s) => s.group === 'chip') || [];
+			syncChipSettingsToAudio(group.chipType, chipSettings);
 			if (group.chip?.schema.resolveTuningTable) {
 				resolveAndPushTuningTable(group.chipType);
 			}
@@ -258,19 +364,11 @@
 									<div class="h-0 min-h-0 w-full basis-full" aria-hidden="true">
 									</div>
 								{/if}
-								{@const baseValue =
-									getChipSettingValue(group.chipType, setting.key) ??
-									setting.defaultValue}
-								{@const currentValue =
-									chipSettingOverrides[group.chipType]?.[setting.key] ??
-									baseValue}
-								{@const context = Object.fromEntries(
-									chipSettings.map((s) => [
-										s.key,
-										chipSettingOverrides[group.chipType]?.[s.key] ??
-											getChipSettingValue(group.chipType, s.key) ??
-											s.defaultValue
-									])
+								{@const context = buildChipContext(group.chipType, chipSettings)}
+								{@const currentValue = getChipSettingDisplayValue(
+									group.chipType,
+									setting,
+									context
 								)}
 								{@const settingVisible =
 									!setting.showWhen ||

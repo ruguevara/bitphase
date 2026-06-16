@@ -6,6 +6,14 @@ import {
 	getPanSettingsForLayout,
 	DEFAULT_AYM_FREQUENCY
 } from './ayumi-constants.js';
+import {
+	TIMER_EFFECT_KIND_VOLUME,
+	TIMER_EFFECT_KIND_ENVELOPE_SHAPE,
+	TIMER_EFFECT_KIND_TONE,
+	TIMER_EFFECT_SLOT_SID,
+	TIMER_EFFECT_SLOT_SYNCBUZZER,
+	disableAllChannelTimerEffects
+} from './ay-timer-effect-constants.js';
 import AYAudioDriver from './ay-audio-driver.js';
 import AyumiEngine from './ayumi-engine.js';
 import TrackerPatternProcessor from './tracker-pattern-processor.js';
@@ -45,6 +53,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			case 'update_chip_variant':
 				this.handleUpdateChipVariant(data);
 				break;
+			case 'update_st_mixing':
+				this.handleUpdateStMixing(data);
+				break;
 			case 'update_stereo_layout':
 				this.handleUpdateStereoLayout(data);
 				break;
@@ -56,22 +67,26 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	async handleInit({ wasmBuffer }) {
 		if (!wasmBuffer) return;
 
+		if (this._isReadyForPlayback()) {
+			this._applyAyumiConfiguration();
+			return;
+		}
+
 		try {
 			const result = await WebAssembly.instantiate(wasmBuffer, {
 				env: { emscripten_notify_memory_growth: () => {} }
 			});
 
 			const wasmModule = result.instance.exports;
-			const ayumiPtr = wasmModule.malloc(AYUMI_STRUCT_SIZE);
-
-			const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
-			const isYM = this.state.isYM ?? 0;
-			wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate);
-
-			this.applyPanSettings(wasmModule, ayumiPtr);
+			const structSize =
+				typeof wasmModule.ayumi_struct_size === 'function'
+					? wasmModule.ayumi_struct_size()
+					: AYUMI_STRUCT_SIZE;
+			const ayumiPtr = wasmModule.malloc(structSize);
 
 			this.state.setWasmModule(wasmModule, ayumiPtr, wasmBuffer);
 			this.state.updateSamplesPerTick(sampleRate);
+			this._applyAyumiConfiguration();
 			this.audioDriver = new AYAudioDriver();
 			this.ayumiEngine = new AyumiEngine(wasmModule, ayumiPtr);
 			this.patternProcessor = new TrackerPatternProcessor(
@@ -80,14 +95,42 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				this.port
 			);
 			this._applyVirtualChannelResize();
+			this.registerState.reset();
+			this._applyRegisterStateToEngine();
 			this.initialized = true;
 		} catch (error) {
 			console.error('Failed to initialize Ayumi:', error);
 		}
 	}
 
+	_applyAyumiConfiguration() {
+		const wasmModule = this.state.wasmModule;
+		const ayumiPtr = this.state.ayumiPtr;
+		if (!wasmModule || !ayumiPtr) {
+			return false;
+		}
+
+		const aymFrequency = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
+		const isYM = this.state.isYM ?? 0;
+		const isST = this.state.isST ?? 0;
+		if (isST) {
+			this.stereoLayout = 'mono';
+		}
+		wasmModule.ayumi_configure(ayumiPtr, isYM, aymFrequency, sampleRate, isST);
+		this.applyPanSettings(wasmModule, ayumiPtr);
+		this.state.updateSamplesPerTick(sampleRate);
+		if (this.ayumiEngine) {
+			this.ayumiEngine.forceFullApply = true;
+			this._applyRegisterStateToEngine();
+		}
+		return true;
+	}
+
 	handleUpdateAyFrequency(data) {
 		this.state.setAymFrequency(data.aymFrequency);
+		if (this._applyAyumiConfiguration()) {
+			return;
+		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
 
@@ -97,6 +140,21 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 
 	handleUpdateChipVariant(data) {
 		this.state.setChipVariant(data.chipVariant);
+		if (this._applyAyumiConfiguration()) {
+			return;
+		}
+		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
+	}
+
+	handleUpdateStMixing(data) {
+		this.state.setStMixing(Boolean(data.stMixing));
+		if (data.stMixing) {
+			this.state.setChipVariant('YM');
+			this.stereoLayout = 'mono';
+		}
+		if (this._applyAyumiConfiguration()) {
+			return;
+		}
 		this.handleInit({ wasmBuffer: this.state.wasmBuffer });
 	}
 
@@ -118,6 +176,9 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	_prepareOutputForPlay() {
 		this.fadeInSamples = Math.floor(sampleRate * this.fadeInDuration);
 		this.registerState.reset();
+		if (this.audioDriver) {
+			this.audioDriver.resetChannelMixerState();
+		}
 		if (this.ayumiEngine) {
 			this.ayumiEngine.reset();
 			this._applyRegisterStateToEngine();
@@ -130,6 +191,102 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 		}
 		this.channelWaveformWriteIndex = 0;
 		this.waveformPostCounter = 0;
+	}
+
+	_collectChannelPlaybackHz() {
+		const clock = this.state.aymFrequency ?? DEFAULT_AYM_FREQUENCY;
+		const wasmModule = this.state.wasmModule;
+		const ayumiPtr = this.state.ayumiPtr;
+		const getTimerEffectActivePeriod = wasmModule?.ayumi_get_timer_effect_active_period;
+		const resolveHardwareChannelIndex = this.virtualChannelMixer?.hasVirtualChannels?.()
+			? (channelIndex) => this.virtualChannelMixer.getHardwareChannelIndex(channelIndex)
+			: (channelIndex) => channelIndex;
+		const toneHz = [];
+		const sidTimerHz = [];
+		const syncbuzzerTimerHz = [];
+		const timerPwmSweepPhase = [];
+		const channelInstrumentIndex = [];
+		for (let i = 0; i < this.registerState.channelCount; i++) {
+			const channel = this.registerState.channels[i];
+			const hardwareChannelIndex = resolveHardwareChannelIndex(i);
+			const sweepPhase = this.state.channelTimerPwmSweep?.[i];
+			timerPwmSweepPhase.push(
+				typeof sweepPhase === 'number' && sweepPhase >= 0 ? sweepPhase : null
+			);
+			const instrumentIndex = this.state.channelInstruments?.[i];
+			channelInstrumentIndex.push(
+				typeof instrumentIndex === 'number' ? instrumentIndex : -1
+			);
+			const canQueryActivePeriod =
+				typeof getTimerEffectActivePeriod === 'function' &&
+				ayumiPtr &&
+				hardwareChannelIndex >= 0 &&
+				hardwareChannelIndex < 3;
+			if (!channel?.mixer?.tone) {
+				toneHz.push(null);
+			} else {
+				const tonePeriod = channel.tone & 0xfff;
+				toneHz.push(tonePeriod > 0 ? clock / (16 * tonePeriod) : null);
+			}
+
+			const sidEffect = channel?.timerEffects?.sid;
+			const fmEffect = channel?.timerEffects?.fm;
+			const syncbuzzerEffect = channel?.timerEffects?.syncbuzzer;
+			const volumeEffectActive =
+				sidEffect?.enabled && sidEffect.kind === TIMER_EFFECT_KIND_VOLUME;
+			const toneEffectActive = fmEffect?.enabled && fmEffect.kind === TIMER_EFFECT_KIND_TONE;
+			const envelopeShapeEffectActive =
+				syncbuzzerEffect?.enabled &&
+				syncbuzzerEffect.kind === TIMER_EFFECT_KIND_ENVELOPE_SHAPE;
+
+			if (!volumeEffectActive && !toneEffectActive) {
+				sidTimerHz.push(null);
+			} else if (canQueryActivePeriod) {
+				const activePeriod =
+					getTimerEffectActivePeriod(ayumiPtr, hardwareChannelIndex, TIMER_EFFECT_SLOT_SID) &
+					0xffff;
+				sidTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
+			} else {
+				const timerPeriod = (volumeEffectActive ? sidEffect : fmEffect).period & 0xffff;
+				sidTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
+			}
+
+			if (!envelopeShapeEffectActive) {
+				syncbuzzerTimerHz.push(null);
+			} else if (canQueryActivePeriod) {
+				const activePeriod =
+					getTimerEffectActivePeriod(
+						ayumiPtr,
+						hardwareChannelIndex,
+						TIMER_EFFECT_SLOT_SYNCBUZZER
+					) & 0xffff;
+				syncbuzzerTimerHz.push(activePeriod > 0 ? clock / (8 * activePeriod) : null);
+			} else {
+				const timerPeriod = syncbuzzerEffect.period & 0xffff;
+				syncbuzzerTimerHz.push(timerPeriod > 0 ? clock / (8 * timerPeriod) : null);
+			}
+		}
+		return { toneHz, sidTimerHz, syncbuzzerTimerHz, timerPwmSweepPhase, channelInstrumentIndex };
+	}
+
+	_postTimerPwmSweepPhase() {
+		const timerPwmSweepPhase = [];
+		const channelInstrumentIndex = [];
+		for (let i = 0; i < this.registerState.channelCount; i++) {
+			const sweepPhase = this.state.channelTimerPwmSweep?.[i];
+			timerPwmSweepPhase.push(
+				typeof sweepPhase === 'number' && sweepPhase >= 0 ? sweepPhase : null
+			);
+			const instrumentIndex = this.state.channelInstruments?.[i];
+			channelInstrumentIndex.push(
+				typeof instrumentIndex === 'number' ? instrumentIndex : -1
+			);
+		}
+		this._post({
+			type: 'timer_pwm_sweep_phase',
+			timerPwmSweepPhase,
+			channelInstrumentIndex
+		});
 	}
 
 	handleStop() {
@@ -151,6 +308,19 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 	}
 
 	accumulateStereoOutput(sampleIndex, mix) {
+		if (this.audioDriver && this.ayumiEngine) {
+			const resolveAyumiChannelIndex =
+				this.virtualChannelMixer?.hasVirtualChannels?.()
+					? (channelIndex) => this.virtualChannelMixer.getHardwareChannelIndex(channelIndex)
+					: (channelIndex) => channelIndex;
+			this.audioDriver.updateSamplePlayback(
+				this.state,
+				this.registerState,
+				this.ayumiEngine,
+				sampleRate,
+				resolveAyumiChannelIndex
+			);
+		}
 		this.ayumiEngine.process();
 		this.ayumiEngine.removeDC();
 
@@ -186,6 +356,7 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 			return;
 		}
 		this.channelWaveformWriteIndex = (this.channelWaveformWriteIndex + numSamples) % 512;
+		this._postTimerPwmSweepPhase();
 		this.waveformPostCounter++;
 		if (this.waveformPostCounter >= this.waveformPostInterval) {
 			this.waveformPostCounter = 0;
@@ -198,6 +369,16 @@ export class AyumiSlot extends Ay8910WorkletSlot {
 				return out;
 			});
 			this._post({ type: 'channel_waveform', channels });
+			const playbackHz = this._collectChannelPlaybackHz();
+			this._post({
+				type: 'channel_tone_hz',
+				frequencies: playbackHz.toneHz,
+				sidTimerHz: playbackHz.sidTimerHz,
+				syncbuzzerTimerHz: playbackHz.syncbuzzerTimerHz,
+				timerPwmSweepPhase: playbackHz.timerPwmSweepPhase,
+				channelInstrumentIndex: playbackHz.channelInstrumentIndex,
+				registers: this._collectHardwareRegisters()
+			});
 		}
 
 		this.finishAudioBlockFlushTransport(numSamples, this.paused);

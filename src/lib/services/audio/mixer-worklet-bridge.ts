@@ -19,6 +19,22 @@ export type MixerWorkletIncomingMessage =
 			type: 'channel_waveform';
 			chipIndex?: number;
 			channels: Float32Array[];
+	  }
+	| {
+			type: 'channel_tone_hz';
+			chipIndex?: number;
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase?: (number | null)[];
+			channelInstrumentIndex?: number[];
+			registers: number[];
+	  }
+	| {
+			type: 'timer_pwm_sweep_phase';
+			chipIndex?: number;
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
 	  };
 
 export type PlayFromPositionMixerCommand = {
@@ -46,6 +62,7 @@ export type MixerSlotCommand =
 	| { type: 'update_ay_frequency'; aymFrequency: number }
 	| { type: 'update_int_frequency'; intFrequency: number }
 	| { type: 'update_chip_variant'; chipVariant: string }
+	| { type: 'update_st_mixing'; stMixing: boolean }
 	| { type: 'update_stereo_layout'; stereoLayout: string }
 	| { type: 'set_channel_mute'; channelIndex: number; muted: boolean }
 	| {
@@ -69,6 +86,18 @@ export class MixerWorkletBridge {
 	private onPositionUpdate?: (currentRow: number, currentPatternOrderIndex?: number) => void;
 	private onPatternRequest?: (patternOrderIndex: number) => void;
 	private waveformCallback?: (channels: Float32Array[]) => void;
+	private channelToneHzCallback?: (payload: {
+		frequencies: (number | null)[];
+		sidTimerHz: (number | null)[];
+		syncbuzzerTimerHz: (number | null)[];
+		timerPwmSweepPhase: (number | null)[];
+		channelInstrumentIndex: number[];
+		registers: number[];
+	}) => void;
+	private timerPwmSweepPhaseCallback?: (payload: {
+		timerPwmSweepPhase: (number | null)[];
+		channelInstrumentIndex: number[];
+	}) => void;
 	private readonly commandQueue: MixerSlotCommand[] = [];
 
 	constructor(private readonly slotKindSource: Pick<Chip, 'audioSlotKind'>) {}
@@ -89,6 +118,28 @@ export class MixerWorkletBridge {
 		this.waveformCallback = callback;
 	}
 
+	setChannelToneHzCallback(
+		callback: (payload: {
+			frequencies: (number | null)[];
+			sidTimerHz: (number | null)[];
+			syncbuzzerTimerHz: (number | null)[];
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+			registers: number[];
+		}) => void
+	): void {
+		this.channelToneHzCallback = callback;
+	}
+
+	setTimerPwmSweepPhaseCallback(
+		callback: (payload: {
+			timerPwmSweepPhase: (number | null)[];
+			channelInstrumentIndex: number[];
+		}) => void
+	): void {
+		this.timerPwmSweepPhaseCallback = callback;
+	}
+
 	acceptWorkletPayload(data: unknown): void {
 		if (typeof data !== 'object' || data === null || !('type' in data)) {
 			return;
@@ -97,7 +148,9 @@ export class MixerWorkletBridge {
 		if (
 			msgType !== 'position_update' &&
 			msgType !== 'request_pattern' &&
-			msgType !== 'channel_waveform'
+			msgType !== 'channel_waveform' &&
+			msgType !== 'channel_tone_hz' &&
+			msgType !== 'timer_pwm_sweep_phase'
 		) {
 			return;
 		}
@@ -111,6 +164,22 @@ export class MixerWorkletBridge {
 				break;
 			case 'channel_waveform':
 				this.waveformCallback?.(message.channels);
+				break;
+			case 'channel_tone_hz':
+				this.channelToneHzCallback?.({
+					frequencies: message.frequencies,
+					registers: message.registers ?? [],
+					sidTimerHz: message.sidTimerHz ?? [],
+					syncbuzzerTimerHz: message.syncbuzzerTimerHz ?? [],
+					timerPwmSweepPhase: message.timerPwmSweepPhase ?? [],
+					channelInstrumentIndex: message.channelInstrumentIndex ?? []
+				});
+				break;
+			case 'timer_pwm_sweep_phase':
+				this.timerPwmSweepPhaseCallback?.({
+					timerPwmSweepPhase: message.timerPwmSweepPhase,
+					channelInstrumentIndex: message.channelInstrumentIndex
+				});
 				break;
 		}
 	}
