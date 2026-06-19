@@ -506,6 +506,51 @@ describe('tmr encoder', () => {
 		expect(merged.eventItems[1]!.timerEventIndex).toBe(0);
 	});
 
+	it('emits per-event timer frequencies for a duty sync-buzzer (PWM skew)', () => {
+		// Bassline first note: a sync-buzzer with a non-50% duty. Like SID PWM,
+		// each waveform step rides a different timer period (high vs low phase),
+		// so the .tel chain must carry BOTH timer frequencies -- not 0/inherit.
+		// Regression: getOrCreateSyncBuzzerEventChain hardcoded timerFrequency 0,
+		// flattening the duty to a single period (the .tmr slot period only).
+		const periodHigh = 6960;
+		const periodLow = 3480; // duty != 50% -> high phase != low phase
+		const frame = disabledSidFrame();
+		frame.syncbuzzer[1] = {
+			enabled: true,
+			pwm: true,
+			period: periodHigh,
+			periodLow,
+			waveform: [0x0d, 0x09], // 2 steps: step0 high phase, step1 low phase
+			waveformLoop: 0
+		};
+
+		const encoded = encodeTMR([frame], {
+			chipFrequency: 1773400,
+			interruptFrequency: 50
+		});
+
+		const shapeMask = envelopeShapeRegisterApplyMask();
+		const secondTimerOffset = TMR_HEADER_SIZE + 8;
+		// .tmr Start carries the high-phase period (waveform[0]).
+		expect(readU32LE(encoded.tmr, secondTimerOffset)).toBe(storedTimerHz(periodHigh));
+		expect(readU16LE(encoded.tmr, secondTimerOffset + 4)).toBe(0);
+
+		// two event items, each re-pitching the timer to its step period.
+		expect(encoded.eventList.byteLength).toBe(TEL_HEADER_SIZE + 2 * TMR_ITEM_SIZE);
+		const ev0 = TEL_HEADER_SIZE;
+		const ev1 = TEL_HEADER_SIZE + TMR_ITEM_SIZE;
+		// event 0: shape A, high-phase freq, next -> event 1
+		expect(readU8(encoded.eventList, ev0 + 13)).toBe(0x0d);
+		expect(readU16LE(encoded.eventList, ev0 + 14)).toBe(encodeEventPsgApplyMask(shapeMask, 1));
+		expect(readU32LE(encoded.eventList, ev0 + 16)).toBe(storedTimerHz(periodHigh));
+		expect(readU16LE(encoded.eventList, ev0 + 20)).toBe(1);
+		// event 1: shape B, low-phase freq, next -> event 0 (loop)
+		expect(readU8(encoded.eventList, ev1 + 13)).toBe(0x09);
+		expect(readU16LE(encoded.eventList, ev1 + 14)).toBe(encodeEventPsgApplyMask(shapeMask, 1));
+		expect(readU32LE(encoded.eventList, ev1 + 16)).toBe(storedTimerHz(periodLow));
+		expect(readU16LE(encoded.eventList, ev1 + 20)).toBe(0);
+	});
+
 	it('emits timer stop when FM turns off', () => {
 		const onFrame = disabledSidFrame();
 		onFrame.fm[0] = {

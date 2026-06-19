@@ -166,6 +166,21 @@ export function encodeSidEventTimerFrequency(
 	return encodeExportTimerFrequencyHz(currentPeriod, options);
 }
 
+export function encodeSyncBuzzerEventTimerFrequency(
+	stepIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState,
+	options: TmrEncodeOptions
+): number {
+	// A duty sync-buzzer skews its retrigger period per waveform step (high vs
+	// low phase), exactly like FM/SID PWM. Without duty (period == periodLow)
+	// every step resolves to the same period, so all but the entry inherit (0).
+	return encodePwmEventTimerFrequency(stepIndex, syncbuzzer, options);
+}
+
+function syncBuzzerStartPeriod(syncbuzzer: HardwareSyncBuzzerState): number {
+	return pwmEventStepPeriod(syncbuzzer, 0);
+}
+
 function fmStartPeriod(fm: HardwareFmState): number {
 	return pwmEventStepPeriod(fm, 0);
 }
@@ -288,7 +303,9 @@ export function encodeTMR(
 	}));
 	const previousSyncbuzzer: HardwareSyncBuzzerState[] = Array.from({ length: 3 }, () => ({
 		enabled: false,
+		pwm: false,
 		period: 0,
+		periodLow: 0,
 		waveform: [0],
 		waveformLoop: 0
 	}));
@@ -328,11 +345,17 @@ export function encodeTMR(
 						periodLow: sid.periodLow > 0 ? sid.periodLow : sid.period
 					}
 				: sid;
-			const syncbuzzer = frame.syncbuzzer?.[channelIndex] ?? {
+			const syncbuzzer: HardwareSyncBuzzerState = frame.syncbuzzer?.[channelIndex] ?? {
 				enabled: false,
+				pwm: false,
 				period: 0,
-				shape: 0
+				periodLow: 0,
+				waveform: [0],
+				waveformLoop: 0
 			};
+			const effectiveSyncbuzzer: HardwareSyncBuzzerState = syncbuzzer.enabled
+				? normalizePwmPeriods(syncbuzzer)
+				: syncbuzzer;
 			const fm = frame.fm?.[channelIndex] ?? {
 				enabled: false,
 				pwm: false,
@@ -361,27 +384,49 @@ export function encodeTMR(
 			if (syncbuzzer.enabled) {
 				const syncbuzzerWaveformChanged =
 					!prevSyncbuzzer.enabled ||
-					!syncBuzzerWaveformConfigEqual(prevSyncbuzzer, syncbuzzer);
+					!syncBuzzerWaveformConfigEqual(prevSyncbuzzer, effectiveSyncbuzzer);
+				const syncbuzzerPeriodChanged =
+					prevSyncbuzzer.period !== effectiveSyncbuzzer.period ||
+					prevSyncbuzzer.periodLow !== effectiveSyncbuzzer.periodLow;
 				if (syncbuzzerWaveformChanged) {
 					const eventIndex = getOrCreateSyncBuzzerEventChain(
 						eventItems,
 						chainStartByKey,
 						channelIndex,
-						syncbuzzer
+						effectiveSyncbuzzer,
+						options
 					);
 					timers.push({
-						frequency: encodeExportTimerFrequencyHz(syncbuzzer.period, options),
+						frequency: encodeExportTimerFrequencyHz(
+							syncBuzzerStartPeriod(effectiveSyncbuzzer),
+							options
+						),
 						eventIndex
 					});
-				} else if (prevSyncbuzzer.period !== syncbuzzer.period) {
+				} else if (syncbuzzerPeriodChanged && isPwmDutySweep(prevSyncbuzzer, effectiveSyncbuzzer)) {
+					const eventIndex = appendSyncBuzzerEventChain(
+						eventItems,
+						channelIndex,
+						effectiveSyncbuzzer,
+						options
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(
+							syncBuzzerStartPeriod(effectiveSyncbuzzer),
+							options
+						),
+						eventIndex
+					});
+				} else if (syncbuzzerPeriodChanged) {
 					const eventIndex = getOrCreateSyncBuzzerEventChain(
 						eventItems,
 						chainStartByKey,
 						channelIndex,
-						syncbuzzer
+						effectiveSyncbuzzer,
+						options
 					);
 					timers.push({
-						frequency: encodeExportTimerFrequencyHz(syncbuzzer.period, options),
+						frequency: encodeExportTimerFrequencyHz(effectiveSyncbuzzer.period, options),
 						eventIndex
 					});
 				} else {
@@ -545,7 +590,9 @@ export function encodeTMR(
 			};
 			previousSyncbuzzer[channelIndex] = {
 				enabled: syncbuzzer.enabled,
-				period: syncbuzzer.period,
+				pwm: effectiveSyncbuzzer.pwm,
+				period: effectiveSyncbuzzer.period,
+				periodLow: effectiveSyncbuzzer.periodLow,
 				waveform: [...syncbuzzer.waveform],
 				waveformLoop: syncbuzzer.waveformLoop
 			};
@@ -662,7 +709,8 @@ function getOrCreateSyncBuzzerEventChain(
 	eventItems: EventItem[],
 	chainStartByKey: Map<string, number>,
 	channelIndex: number,
-	syncbuzzer: HardwareSyncBuzzerState
+	syncbuzzer: HardwareSyncBuzzerState,
+	options: TmrEncodeOptions
 ): number {
 	const key = syncBuzzerEventChainKey(channelIndex, syncbuzzer);
 	const existing = chainStartByKey.get(key);
@@ -670,8 +718,18 @@ function getOrCreateSyncBuzzerEventChain(
 		return existing;
 	}
 
-	const startIndex = eventItems.length;
+	const startIndex = appendSyncBuzzerEventChain(eventItems, channelIndex, syncbuzzer, options);
 	chainStartByKey.set(key, startIndex);
+	return startIndex;
+}
+
+function appendSyncBuzzerEventChain(
+	eventItems: EventItem[],
+	channelIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState,
+	options: TmrEncodeOptions
+): number {
+	const startIndex = eventItems.length;
 	const shapeMask = envelopeShapeRegisterApplyMask();
 
 	for (let stepIndex = 0; stepIndex < syncbuzzer.waveform.length; stepIndex++) {
@@ -681,7 +739,7 @@ function getOrCreateSyncBuzzerEventChain(
 		eventItems.push({
 			psgData,
 			psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
-			timerFrequency: 0,
+			timerFrequency: encodeSyncBuzzerEventTimerFrequency(stepIndex, syncbuzzer, options),
 			timerEventIndex: startIndex + nextIndex
 		});
 	}
