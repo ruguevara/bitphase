@@ -49,7 +49,9 @@ function downloadTmrPair(baseName: string, encoded: EncodedTmrFiles): void {
 	);
 }
 
-export interface GenerateTMRBufferOptions extends GenerateCaptureOptions {}
+export interface GenerateTMRBufferOptions extends GenerateCaptureOptions {
+	chipIndex?: number;
+}
 
 export async function generateTMRFiles(
 	project: Project,
@@ -60,7 +62,8 @@ export async function generateTMRFiles(
 	return encodeTMR(capture.frames, {
 		chipFrequency: capture.chipFrequency,
 		interruptFrequency: capture.interruptFrequency,
-		isYm: capture.isYm
+		isYm: capture.isYm,
+		chipIndex: options?.chipIndex
 	});
 }
 
