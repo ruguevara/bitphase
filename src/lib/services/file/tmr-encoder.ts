@@ -1,5 +1,6 @@
 import {
 	AY_REGISTER_COUNT,
+	ENVELOPE_SHAPE_REGISTER,
 	envelopeShapeRegisterApplyMask,
 	envelopePeriodRegisterApplyMask,
 	registerApplyMask,
@@ -135,10 +136,6 @@ function sidStartPeriod(sid: HardwareSidState): number {
 	return timerPwmStepPeriod(sid.waveform[0] ?? 0, sid.period, sid.periodLow);
 }
 
-function normalizeSidPeriods(sid: HardwareSidState): HardwareSidState {
-	return normalizePwmPeriods(sid);
-}
-
 export function isSidPwmDutySweep(prev: HardwareSidState, next: HardwareSidState): boolean {
 	if (!prev.enabled || !next.enabled) {
 		return false;
@@ -189,29 +186,199 @@ function envFmStartPeriod(envFm: HardwareEnvFmState): number {
 	return pwmEventStepPeriod(envFm, 0);
 }
 
+type StepRegisterWrite = { register: number; value: number };
+
+type TimerEffectStepSource = {
+	registerMask: number;
+	length: number;
+	loop: number;
+	writesAtStep(stepIndex: number): StepRegisterWrite[];
+	stepTimerFrequency(stepIndex: number): number;
+};
+
+type EffectChainStep = {
+	sourceSteps: number[];
+	nextIndex: number;
+};
+
+function sidStepSource(
+	channelIndex: number,
+	sid: HardwareSidState,
+	options: TmrEncodeOptions
+): TimerEffectStepSource {
+	const volumeReg = volumeRegisterIndex(channelIndex);
+	return {
+		registerMask: registerApplyMask(volumeReg),
+		length: sid.waveform.length,
+		loop: sid.waveformLoop,
+		writesAtStep: (stepIndex) => [
+			{ register: volumeReg, value: sidVolumeLevel(sid.waveform[stepIndex]!, sid.baseVolume) }
+		],
+		stepTimerFrequency: (stepIndex) => encodeSidEventTimerFrequency(stepIndex, sid, options)
+	};
+}
+
+function fmStepSource(
+	channelIndex: number,
+	fm: HardwareFmState,
+	options: TmrEncodeOptions
+): TimerEffectStepSource {
+	const toneReg = channelIndex * 2;
+	return {
+		registerMask: toneRegisterApplyMask(channelIndex),
+		length: fm.waveform.length,
+		loop: fm.waveformLoop,
+		writesAtStep: (stepIndex) => {
+			const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+			const tonePeriod = computeFmTonePeriod(
+				fm.baseTonePeriod,
+				fm.waveform[stepIndex]!,
+				fm.fmOffsetMode
+			);
+			writeTonePeriodToPsgData(psgData, channelIndex, tonePeriod);
+			return [
+				{ register: toneReg, value: psgData[toneReg]! },
+				{ register: toneReg + 1, value: psgData[toneReg + 1]! }
+			];
+		},
+		stepTimerFrequency: (stepIndex) => encodePwmEventTimerFrequency(stepIndex, fm, options)
+	};
+}
+
+function envFmStepSource(
+	_channelIndex: number,
+	envFm: HardwareEnvFmState,
+	options: TmrEncodeOptions
+): TimerEffectStepSource {
+	return {
+		registerMask: envelopePeriodRegisterApplyMask(),
+		length: envFm.waveform.length,
+		loop: envFm.waveformLoop,
+		writesAtStep: (stepIndex) => {
+			const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+			const envelopePeriod = computeEnvFmEnvelopePeriod(
+				envFm.baseEnvelopePeriod,
+				envFm.waveform[stepIndex]!,
+				envFm.fmOffsetMode
+			);
+			writeEnvelopePeriodToPsgData(psgData, envelopePeriod);
+			return [
+				{ register: 11, value: psgData[11]! },
+				{ register: 12, value: psgData[12]! }
+			];
+		},
+		stepTimerFrequency: (stepIndex) => encodePwmEventTimerFrequency(stepIndex, envFm, options)
+	};
+}
+
+function syncBuzzerStepSource(
+	_channelIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState,
+	options: TmrEncodeOptions
+): TimerEffectStepSource {
+	return {
+		registerMask: envelopeShapeRegisterApplyMask(),
+		length: syncbuzzer.waveform.length,
+		loop: syncbuzzer.waveformLoop,
+		writesAtStep: (stepIndex) => [
+			{ register: ENVELOPE_SHAPE_REGISTER, value: (syncbuzzer.waveform[stepIndex] ?? 0) & 0xf }
+		],
+		stepTimerFrequency: (stepIndex) =>
+			encodeSyncBuzzerEventTimerFrequency(stepIndex, syncbuzzer, options)
+	};
+}
+
+function sourceNextStepIndex(stepIndex: number, source: TimerEffectStepSource): number {
+	return resolveNextWaveformIndex(stepIndex, {
+		waveform: new Array(source.length),
+		waveformLoop: source.loop
+	});
+}
+
+function sourceStepStateKey(sourceSteps: number[]): string {
+	return sourceSteps.join(',');
+}
+
+function buildEffectChainSteps(sources: TimerEffectStepSource[]): EffectChainStep[] {
+	if (sources.some((source) => source.length <= 0)) {
+		return [];
+	}
+
+	const steps: EffectChainStep[] = [];
+	const indexByState = new Map<string, number>();
+	let sourceSteps = sources.map(() => 0);
+
+	while (true) {
+		const key = sourceStepStateKey(sourceSteps);
+		const existingIndex = indexByState.get(key);
+		if (existingIndex !== undefined) {
+			if (steps.length > 0) {
+				steps[steps.length - 1]!.nextIndex = existingIndex;
+			}
+			break;
+		}
+
+		const stepIndex = steps.length;
+		if (steps.length > 0) {
+			steps[steps.length - 1]!.nextIndex = stepIndex;
+		}
+
+		indexByState.set(key, stepIndex);
+		steps.push({ sourceSteps: [...sourceSteps], nextIndex: stepIndex });
+		sourceSteps = sourceSteps.map((sourceStep, sourceIndex) =>
+			sourceNextStepIndex(sourceStep, sources[sourceIndex]!)
+		);
+	}
+
+	return steps;
+}
+
+function appendEffectStepSources(
+	eventItems: EventItem[],
+	channelIndex: number,
+	sources: TimerEffectStepSource[]
+): number {
+	const startIndex = eventItems.length;
+	const chainSteps = buildEffectChainSteps(sources);
+
+	for (const chainStep of chainSteps) {
+		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
+		let registerMask = 0;
+		let timerFrequency = 0;
+
+		for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+			const source = sources[sourceIndex]!;
+			const sourceStep = chainStep.sourceSteps[sourceIndex]!;
+			registerMask |= source.registerMask;
+			for (const write of source.writesAtStep(sourceStep)) {
+				psgData[write.register] = write.value;
+			}
+			const stepFrequency = source.stepTimerFrequency(sourceStep);
+			if (timerFrequency === 0 && stepFrequency !== 0) {
+				timerFrequency = stepFrequency;
+			}
+		}
+
+		eventItems.push({
+			psgData,
+			psgMask: encodeEventPsgApplyMask(registerMask, channelIndex),
+			timerFrequency,
+			timerEventIndex: startIndex + chainStep.nextIndex
+		});
+	}
+
+	return startIndex;
+}
+
 function appendSidEventChain(
 	eventItems: EventItem[],
 	channelIndex: number,
 	sid: HardwareSidState,
 	options: TmrEncodeOptions
 ): number {
-	const startIndex = eventItems.length;
-	const volumeReg = volumeRegisterIndex(channelIndex);
-	const volumeMask = registerApplyMask(volumeReg);
-
-	for (let stepIndex = 0; stepIndex < sid.waveform.length; stepIndex++) {
-		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-		psgData[volumeReg] = sidVolumeLevel(sid.waveform[stepIndex]!, sid.baseVolume);
-		const nextIndex = resolveNextWaveformIndex(stepIndex, sid);
-		eventItems.push({
-			psgData,
-			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
-			timerFrequency: encodeSidEventTimerFrequency(stepIndex, sid, options),
-			timerEventIndex: startIndex + nextIndex
-		});
-	}
-
-	return startIndex;
+	return appendEffectStepSources(eventItems, channelIndex, [
+		sidStepSource(channelIndex, sid, options)
+	]);
 }
 
 function appendFmEventChain(
@@ -220,27 +387,9 @@ function appendFmEventChain(
 	fm: HardwareFmState,
 	options: TmrEncodeOptions
 ): number {
-	const startIndex = eventItems.length;
-	const toneMask = toneRegisterApplyMask(channelIndex);
-
-	for (let stepIndex = 0; stepIndex < fm.waveform.length; stepIndex++) {
-		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-		const tonePeriod = computeFmTonePeriod(
-			fm.baseTonePeriod,
-			fm.waveform[stepIndex]!,
-			fm.fmOffsetMode
-		);
-		writeTonePeriodToPsgData(psgData, channelIndex, tonePeriod);
-		const nextIndex = resolveNextWaveformIndex(stepIndex, fm);
-		eventItems.push({
-			psgData,
-			psgMask: encodeEventPsgApplyMask(toneMask, channelIndex),
-			timerFrequency: encodePwmEventTimerFrequency(stepIndex, fm, options),
-			timerEventIndex: startIndex + nextIndex
-		});
-	}
-
-	return startIndex;
+	return appendEffectStepSources(eventItems, channelIndex, [
+		fmStepSource(channelIndex, fm, options)
+	]);
 }
 
 function appendEnvFmEventChain(
@@ -249,26 +398,157 @@ function appendEnvFmEventChain(
 	envFm: HardwareEnvFmState,
 	options: TmrEncodeOptions
 ): number {
-	const startIndex = eventItems.length;
-	const envelopeMask = envelopePeriodRegisterApplyMask();
+	return appendEffectStepSources(eventItems, channelIndex, [
+		envFmStepSource(channelIndex, envFm, options)
+	]);
+}
 
-	for (let stepIndex = 0; stepIndex < envFm.waveform.length; stepIndex++) {
-		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-		const envelopePeriod = computeEnvFmEnvelopePeriod(
-			envFm.baseEnvelopePeriod,
-			envFm.waveform[stepIndex]!,
-			envFm.fmOffsetMode
-		);
-		writeEnvelopePeriodToPsgData(psgData, envelopePeriod);
-		const nextIndex = resolveNextWaveformIndex(stepIndex, envFm);
-		eventItems.push({
-			psgData,
-			psgMask: encodeEventPsgApplyMask(envelopeMask, channelIndex),
-			timerFrequency: encodePwmEventTimerFrequency(stepIndex, envFm, options),
-			timerEventIndex: startIndex + nextIndex
+type ChannelEffect = {
+	source: TimerEffectStepSource;
+	configKey: string;
+	startPeriod: number;
+	periodKey: string;
+	timingKey: string;
+};
+
+function timerPeriodKey(state: PwmTimerState): string {
+	return `${state.period}:${state.periodLow}`;
+}
+
+function eventChainHasTimerFrequencies(
+	state: WaveformChainState,
+	stepPeriod: (stepIndex: number) => number
+): boolean {
+	for (let stepIndex = 0; stepIndex < state.waveform.length; stepIndex++) {
+		if (stepPeriod(stepIndex) !== stepPeriod(previousWaveformStepIndex(stepIndex, state))) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function sidEventChainTimingKey(sid: HardwareSidState): string {
+	return eventChainHasTimerFrequencies(sid, (stepIndex) => sidEventStepPeriod(sid, stepIndex))
+		? timerPeriodKey(sid)
+		: '';
+}
+
+function pwmEventChainTimingKey(state: PwmTimerState): string {
+	return eventChainHasTimerFrequencies(state, (stepIndex) => pwmEventStepPeriod(state, stepIndex))
+		? timerPeriodKey(state)
+		: '';
+}
+
+function eventChainCacheKey(configKey: string, timingKey: string): string {
+	return timingKey ? `${configKey}:timer:${timingKey}` : configKey;
+}
+
+function sidEventChainCacheKey(channelIndex: number, sid: HardwareSidState): string {
+	return eventChainCacheKey(sidEventChainKey(channelIndex, sid), sidEventChainTimingKey(sid));
+}
+
+function syncBuzzerEventChainCacheKey(
+	channelIndex: number,
+	syncbuzzer: HardwareSyncBuzzerState
+): string {
+	return eventChainCacheKey(
+		syncBuzzerEventChainKey(channelIndex, syncbuzzer),
+		pwmEventChainTimingKey(syncbuzzer)
+	);
+}
+
+function fmEventChainCacheKey(channelIndex: number, fm: HardwareFmState): string {
+	return eventChainCacheKey(fmEventChainKey(channelIndex, fm), pwmEventChainTimingKey(fm));
+}
+
+function envFmEventChainCacheKey(channelIndex: number, envFm: HardwareEnvFmState): string {
+	return eventChainCacheKey(envFmEventChainKey(channelIndex, envFm), pwmEventChainTimingKey(envFm));
+}
+
+function buildChannelEffects(
+	channelIndex: number,
+	states: {
+		syncbuzzer: HardwareSyncBuzzerState;
+		sid: HardwareSidState;
+		fm: HardwareFmState;
+		envFm: HardwareEnvFmState;
+	},
+	options: TmrEncodeOptions
+): ChannelEffect[] {
+	const effects: ChannelEffect[] = [];
+	const { syncbuzzer, sid, fm, envFm } = states;
+	if (syncbuzzer.enabled) {
+		effects.push({
+			source: syncBuzzerStepSource(channelIndex, syncbuzzer, options),
+			configKey: syncBuzzerEventChainKey(channelIndex, syncbuzzer),
+			startPeriod: syncBuzzerStartPeriod(syncbuzzer),
+			periodKey: timerPeriodKey(syncbuzzer),
+			timingKey: pwmEventChainTimingKey(syncbuzzer)
 		});
 	}
+	if (sid.enabled) {
+		effects.push({
+			source: sidStepSource(channelIndex, sid, options),
+			configKey: sidEventChainKey(channelIndex, sid),
+			startPeriod: sidStartPeriod(sid),
+			periodKey: timerPeriodKey(sid),
+			timingKey: sidEventChainTimingKey(sid)
+		});
+	}
+	if (fm.enabled) {
+		effects.push({
+			source: fmStepSource(channelIndex, fm, options),
+			configKey: fmEventChainKey(channelIndex, fm),
+			startPeriod: fmStartPeriod(fm),
+			periodKey: timerPeriodKey(fm),
+			timingKey: pwmEventChainTimingKey(fm)
+		});
+	}
+	if (envFm.enabled) {
+		effects.push({
+			source: envFmStepSource(channelIndex, envFm, options),
+			configKey: envFmEventChainKey(channelIndex, envFm),
+			startPeriod: envFmStartPeriod(envFm),
+			periodKey: timerPeriodKey(envFm),
+			timingKey: pwmEventChainTimingKey(envFm)
+		});
+	}
+	return effects;
+}
 
+function channelEffectSetKey(effects: ChannelEffect[]): string {
+	return effects.map((effect) => effect.configKey).join('|');
+}
+
+function channelEffectTimingKey(effects: ChannelEffect[]): string {
+	return effects.map((effect) => effect.timingKey).join('|');
+}
+
+function channelEffectPeriodKey(effects: ChannelEffect[]): string {
+	return effects.map((effect) => effect.periodKey).join('|');
+}
+
+function channelEffectCacheKey(effects: ChannelEffect[]): string {
+	return eventChainCacheKey(channelEffectSetKey(effects), channelEffectTimingKey(effects));
+}
+
+function getOrCreateMergedEventChain(
+	eventItems: EventItem[],
+	chainStartByKey: Map<string, number>,
+	channelIndex: number,
+	effects: ChannelEffect[]
+): number {
+	const key = channelEffectCacheKey(effects);
+	const existing = chainStartByKey.get(key);
+	if (existing !== undefined) {
+		return existing;
+	}
+	const startIndex = appendEffectStepSources(
+		eventItems,
+		channelIndex,
+		effects.map((effect) => effect.source)
+	);
+	chainStartByKey.set(key, startIndex);
 	return startIndex;
 }
 
@@ -329,6 +609,13 @@ export function encodeTMR(
 		waveform: [0, 7],
 		waveformLoop: 0
 	}));
+	const previousMerged: Array<
+		{ setKey: string; timingKey: string; periodKey: string } | undefined
+	> = [
+		undefined,
+		undefined,
+		undefined
+	];
 	let previousRegisters = new Array(AY_REGISTER_COUNT).fill(0);
 
 	for (const frame of frames) {
@@ -381,8 +668,55 @@ export function encodeTMR(
 			const prevFm = previousFm[channelIndex]!;
 			const prevEnvFm = previousEnvFm[channelIndex]!;
 
-			if (syncbuzzer.enabled) {
+			const effectiveFm: HardwareFmState = fm.enabled && fm.pwm ? normalizePwmPeriods(fm) : fm;
+			const effectiveEnvFm: HardwareEnvFmState =
+				envFm.enabled && envFm.pwm ? normalizePwmPeriods(envFm) : envFm;
+
+			const activeEffectCount =
+				(syncbuzzer.enabled ? 1 : 0) +
+				(sid.enabled ? 1 : 0) +
+				(fm.enabled ? 1 : 0) +
+				(envFm.enabled ? 1 : 0);
+
+			const prevMergedState = previousMerged[channelIndex];
+			previousMerged[channelIndex] = undefined;
+
+			if (activeEffectCount >= 2) {
+				const effects = buildChannelEffects(
+					channelIndex,
+					{
+						syncbuzzer: effectiveSyncbuzzer,
+						sid: effectiveSid,
+						fm: effectiveFm,
+						envFm: effectiveEnvFm
+					},
+					options
+				);
+				const setKey = channelEffectSetKey(effects);
+				const timingKey = channelEffectTimingKey(effects);
+				const periodKey = channelEffectPeriodKey(effects);
+				const setChanged = !prevMergedState || prevMergedState.setKey !== setKey;
+				const timingChanged = !prevMergedState || prevMergedState.timingKey !== timingKey;
+				const periodChanged = !!prevMergedState && prevMergedState.periodKey !== periodKey;
+
+				if (setChanged || timingChanged || periodChanged) {
+					const eventIndex = getOrCreateMergedEventChain(
+						eventItems,
+						chainStartByKey,
+						channelIndex,
+						effects
+					);
+					timers.push({
+						frequency: encodeExportTimerFrequencyHz(effects[0]!.startPeriod, options),
+						eventIndex
+					});
+				} else {
+					timers.push({ frequency: 0, eventIndex: 0 });
+				}
+				previousMerged[channelIndex] = { setKey, timingKey, periodKey };
+			} else if (syncbuzzer.enabled) {
 				const syncbuzzerWaveformChanged =
+					!!prevMergedState ||
 					!prevSyncbuzzer.enabled ||
 					!syncBuzzerWaveformConfigEqual(prevSyncbuzzer, effectiveSyncbuzzer);
 				const syncbuzzerPeriodChanged =
@@ -434,7 +768,7 @@ export function encodeTMR(
 				}
 			} else if (sid.enabled) {
 				const sidWaveformChanged =
-					!prevSid.enabled || !sidWaveformConfigEqual(prevSid, effectiveSid);
+					!!prevMergedState || !prevSid.enabled || !sidWaveformConfigEqual(prevSid, effectiveSid);
 				const sidPeriodChanged =
 					prevSid.period !== effectiveSid.period ||
 					prevSid.periodLow !== effectiveSid.periodLow;
@@ -477,10 +811,8 @@ export function encodeTMR(
 					timers.push({ frequency: 0, eventIndex: 0 });
 				}
 			} else if (fm.enabled) {
-				const effectiveFm: HardwareFmState = fm.pwm
-					? normalizePwmPeriods(fm)
-					: fm;
-				const fmWaveformChanged = !prevFm.enabled || !fmWaveformConfigEqual(prevFm, effectiveFm);
+				const fmWaveformChanged =
+					!!prevMergedState || !prevFm.enabled || !fmWaveformConfigEqual(prevFm, effectiveFm);
 				const fmPeriodChanged =
 					prevFm.period !== effectiveFm.period || prevFm.periodLow !== effectiveFm.periodLow;
 				if (fmWaveformChanged) {
@@ -522,10 +854,8 @@ export function encodeTMR(
 					timers.push({ frequency: 0, eventIndex: 0 });
 				}
 			} else if (envFm.enabled) {
-				const effectiveEnvFm: HardwareEnvFmState = envFm.pwm
-					? normalizePwmPeriods(envFm)
-					: envFm;
 				const envFmWaveformChanged =
+					!!prevMergedState ||
 					!prevEnvFm.enabled || !envFmWaveformConfigEqual(prevEnvFm, effectiveEnvFm);
 				const envFmPeriodChanged =
 					prevEnvFm.period !== effectiveEnvFm.period ||
@@ -712,7 +1042,7 @@ function getOrCreateSyncBuzzerEventChain(
 	syncbuzzer: HardwareSyncBuzzerState,
 	options: TmrEncodeOptions
 ): number {
-	const key = syncBuzzerEventChainKey(channelIndex, syncbuzzer);
+	const key = syncBuzzerEventChainCacheKey(channelIndex, syncbuzzer);
 	const existing = chainStartByKey.get(key);
 	if (existing !== undefined) {
 		return existing;
@@ -729,22 +1059,9 @@ function appendSyncBuzzerEventChain(
 	syncbuzzer: HardwareSyncBuzzerState,
 	options: TmrEncodeOptions
 ): number {
-	const startIndex = eventItems.length;
-	const shapeMask = envelopeShapeRegisterApplyMask();
-
-	for (let stepIndex = 0; stepIndex < syncbuzzer.waveform.length; stepIndex++) {
-		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-		psgData[13] = (syncbuzzer.waveform[stepIndex] ?? 0) & 0xf;
-		const nextIndex = resolveNextWaveformIndex(stepIndex, syncbuzzer);
-		eventItems.push({
-			psgData,
-			psgMask: encodeEventPsgApplyMask(shapeMask, channelIndex),
-			timerFrequency: encodeSyncBuzzerEventTimerFrequency(stepIndex, syncbuzzer, options),
-			timerEventIndex: startIndex + nextIndex
-		});
-	}
-
-	return startIndex;
+	return appendEffectStepSources(eventItems, channelIndex, [
+		syncBuzzerStepSource(channelIndex, syncbuzzer, options)
+	]);
 }
 
 function getOrCreateSidEventChain(
@@ -754,29 +1071,14 @@ function getOrCreateSidEventChain(
 	sid: HardwareSidState,
 	options: TmrEncodeOptions
 ): number {
-	const key = sidEventChainKey(channelIndex, sid);
+	const key = sidEventChainCacheKey(channelIndex, sid);
 	const existing = chainStartByKey.get(key);
 	if (existing !== undefined) {
 		return existing;
 	}
 
-	const startIndex = eventItems.length;
+	const startIndex = appendSidEventChain(eventItems, channelIndex, sid, options);
 	chainStartByKey.set(key, startIndex);
-	const volumeReg = volumeRegisterIndex(channelIndex);
-	const volumeMask = registerApplyMask(volumeReg);
-
-	for (let stepIndex = 0; stepIndex < sid.waveform.length; stepIndex++) {
-		const psgData = new Array(AY_REGISTER_COUNT).fill(0);
-		psgData[volumeReg] = sidVolumeLevel(sid.waveform[stepIndex]!, sid.baseVolume);
-		const nextIndex = resolveNextWaveformIndex(stepIndex, sid);
-		eventItems.push({
-			psgData,
-			psgMask: encodeEventPsgApplyMask(volumeMask, channelIndex),
-			timerFrequency: encodeSidEventTimerFrequency(stepIndex, sid, options),
-			timerEventIndex: startIndex + nextIndex
-		});
-	}
-
 	return startIndex;
 }
 
@@ -787,7 +1089,7 @@ function getOrCreateFmEventChain(
 	fm: HardwareFmState,
 	options: TmrEncodeOptions
 ): number {
-	const key = fmEventChainKey(channelIndex, fm);
+	const key = fmEventChainCacheKey(channelIndex, fm);
 	const existing = chainStartByKey.get(key);
 	if (existing !== undefined) {
 		return existing;
@@ -805,7 +1107,7 @@ function getOrCreateEnvFmEventChain(
 	envFm: HardwareEnvFmState,
 	options: TmrEncodeOptions
 ): number {
-	const key = envFmEventChainKey(channelIndex, envFm);
+	const key = envFmEventChainCacheKey(channelIndex, envFm);
 	const existing = chainStartByKey.get(key);
 	if (existing !== undefined) {
 		return existing;
