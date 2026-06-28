@@ -1,12 +1,17 @@
 import type { Project } from '../../models/project';
+import { EffectType } from '../../models/song';
 import { downloadFile, sanitizeFilename } from '../../utils/file-download';
 import { getTotalVirtualChannelCount } from '../../models/virtual-channels';
 import JSZip from 'jszip';
 import {
 	AY_REGISTER_COUNT,
 	convertRegisterStateToAYRegisters,
+	createDisabledSampleStates,
+	createSampleCaptureTracker,
+	suppressSidForSampleChannels,
 	extractHardwareEnvFmStates,
 	extractHardwareFmStates,
+	extractHardwareSampleStates,
 	extractHardwareSidStates,
 	extractHardwareSyncBuzzerStates,
 	TONE_CHANNELS,
@@ -107,6 +112,34 @@ class PsgExportService {
 		return totalRows;
 	}
 
+	private rowHasPortamentoCommand(row: any): boolean {
+		return (
+			row?.effects?.some((effect: any) => effect?.effect === EffectType.Portamento) ?? false
+		);
+	}
+
+	private readSampleRestartFlags(state: any): boolean[] {
+		const flags = new Array(TONE_CHANNELS).fill(false);
+		if (state.timeline.currentTick !== 0 || !state.currentPattern) {
+			return flags;
+		}
+		const rowIndex = state.timeline.currentRow;
+		const channels = state.currentPattern.channels ?? [];
+		for (let channelIndex = 0; channelIndex < TONE_CHANNELS; channelIndex++) {
+			const row = channels[channelIndex]?.rows?.[rowIndex];
+			if (
+				row &&
+				row.note &&
+				row.note.name >= 2 &&
+				!this.rowHasPortamentoCommand(row) &&
+				!state.channelPortamentoActive?.[channelIndex]
+			) {
+				flags[channelIndex] = true;
+			}
+		}
+		return flags;
+	}
+
 	private async captureRegisterStates(
 		state: any,
 		patternProcessor: any,
@@ -116,9 +149,11 @@ class PsgExportService {
 		song: any,
 		totalRows: number,
 		patterns: any[],
+		chipFrequency: number,
 		onProgress?: (progress: number, message: string) => void
 	): Promise<SongCaptureFrame[]> {
 		const captureFrames: SongCaptureFrame[] = [];
+		const sampleTracker = createSampleCaptureTracker();
 		let totalTicks = 0;
 		const maxTicks = 1000000;
 
@@ -170,24 +205,38 @@ class PsgExportService {
 			patternProcessor.processEffectTables();
 			audioDriver.processInstruments(state, registerState);
 			patternProcessor.processVibrato();
+			const sampleRestartFlags = this.readSampleRestartFlags(state);
 			patternProcessor.processSlides();
 
 			const stateToConvert = mixer.hasVirtualChannels()
 				? mixer.merge(registerState, state)
 				: registerState;
 			const ayRegisters = convertRegisterStateToAYRegisters(stateToConvert);
+			const samples = mixer.hasVirtualChannels()
+				? createDisabledSampleStates()
+				: extractHardwareSampleStates(
+						state,
+						registerState,
+						sampleTracker,
+						chipFrequency,
+						sampleRestartFlags
+					);
+			const sid = extractHardwareSidStates(stateToConvert);
+			suppressSidForSampleChannels(sid, samples);
 			captureFrames.push({
 				registers: [...ayRegisters],
-				sid: extractHardwareSidStates(stateToConvert),
+				sid,
 				syncbuzzer: extractHardwareSyncBuzzerStates(stateToConvert),
 				fm: extractHardwareFmStates(stateToConvert),
-				envFm: extractHardwareEnvFmStates(stateToConvert)
+				envFm: extractHardwareEnvFmStates(stateToConvert),
+				samples
 			});
 			if (mixer.hasVirtualChannels()) {
 				registerState.forceEnvelopeShapeWrite = false;
 			}
 
-			const isLastPattern = state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
+			const isLastPattern =
+				state.timeline.currentPatternOrderIndex >= state.timeline.patternOrder.length - 1;
 			const isLastRow = state.timeline.currentRow >= state.currentPattern.length - 1;
 			const isLastTick = state.timeline.currentTick >= state.timeline.currentSpeed - 1;
 
@@ -282,6 +331,7 @@ class PsgExportService {
 			song,
 			totalRows,
 			patterns,
+			chipFrequency,
 			onProgress
 		);
 
@@ -337,7 +387,9 @@ class PsgExportService {
 		const { default: TrackerPatternProcessor } = await import(
 			/* @vite-ignore */ `${baseUrl}tracker-pattern-processor.js`
 		);
-		const { default: AYAudioDriver } = await import(/* @vite-ignore */ `${baseUrl}ay-audio-driver.js`);
+		const { default: AYAudioDriver } = await import(
+			/* @vite-ignore */ `${baseUrl}ay-audio-driver.js`
+		);
 		const { default: AYChipRegisterState } = await import(
 			/* @vite-ignore */ `${baseUrl}ay-chip-register-state.js`
 		);
@@ -462,7 +514,9 @@ export async function captureSongRegisterFrames(
 		const { default: TrackerPatternProcessor } = await import(
 			/* @vite-ignore */ `${baseUrl}tracker-pattern-processor.js`
 		);
-		const { default: AYAudioDriver } = await import(/* @vite-ignore */ `${baseUrl}ay-audio-driver.js`);
+		const { default: AYAudioDriver } = await import(
+			/* @vite-ignore */ `${baseUrl}ay-audio-driver.js`
+		);
 		const { default: AYChipRegisterState } = await import(
 			/* @vite-ignore */ `${baseUrl}ay-chip-register-state.js`
 		);
